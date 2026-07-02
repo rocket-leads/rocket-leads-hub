@@ -13,6 +13,7 @@ import {
   type PastInvoice,
 } from "@/lib/integrations/stripe"
 import { recordBillingEvent, type BillingAction } from "@/lib/billing/audit"
+import { parseStripeCustomerIds } from "@/lib/integrations/monday"
 import { readCache, writeCache } from "@/lib/cache"
 import type Stripe from "stripe"
 
@@ -71,6 +72,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve the client's Stripe customer for the cache refresh + audit context.
+  // The field can hold multiple ids; use the single one when unambiguous,
+  // else leave null (the action targets an invoice id directly, so it still
+  // works - only the summary-cache refresh is skipped).
   let stripeCustomerId: string | null = null
   if (body.mondayItemId) {
     const supabase = await createAdminClient()
@@ -79,7 +83,8 @@ export async function POST(req: NextRequest) {
       .select("stripe_customer_id")
       .eq("monday_item_id", body.mondayItemId)
       .maybeSingle()
-    stripeCustomerId = (data?.stripe_customer_id as string | null) ?? null
+    const ids = parseStripeCustomerIds((data?.stripe_customer_id as string | null) ?? null)
+    stripeCustomerId = ids.length === 1 ? ids[0] : null
   }
 
   const actor = { actorUserId: session.user.id, actorEmail: session.user.email ?? null }

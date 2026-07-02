@@ -1,13 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Building2, Check, Loader2 } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Building2, Check, Loader2, AlertTriangle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import type { StripeCustomerDetails } from "@/lib/integrations/stripe"
 import { BillingSectionShell } from "./billing-section-shell"
+
+type CustomerResponse = {
+  /** Present when exactly one Stripe customer is linked. */
+  details?: StripeCustomerDetails
+  /** Present when MULTIPLE are linked - finance must resolve to one. */
+  multiple?: StripeCustomerDetails[]
+}
 
 /**
  * Editable Stripe customer card. Lets finance fix the customer's name, email,
@@ -46,7 +53,8 @@ export function StripeCustomerCard({
   mondayItemId: string
   stripeCustomerId: string | null
 }) {
-  const query = useQuery<{ details: StripeCustomerDetails }>({
+  const queryClient = useQueryClient()
+  const query = useQuery<CustomerResponse>({
     queryKey: ["stripe-customer", mondayItemId],
     queryFn: async () => {
       const r = await fetch(`/api/clients/${mondayItemId}/stripe-customer`)
@@ -61,6 +69,11 @@ export function StripeCustomerCard({
   const [saved, setSaved] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which of the multiple linked customers is being applied (its id), so we can
+  // spin just that row's button.
+  const [applyingId, setApplyingId] = useState<string | null>(null)
+
+  const multiple = query.data?.multiple
 
   useEffect(() => {
     if (query.data?.details) {
@@ -71,6 +84,29 @@ export function StripeCustomerCard({
   }, [query.data])
 
   if (!stripeCustomerId) return null
+
+  /** Resolve a multi-customer client to ONE: write the chosen id to the Monday-
+   *  backed stripe_customer_id field (replacing the others), then refetch. */
+  async function pickCustomer(id: string) {
+    setApplyingId(id)
+    setError(null)
+    try {
+      const r = await fetch(`/api/clients/${mondayItemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldKey: "stripe_customer_id", value: id }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error((data as { error?: string }).error ?? "Failed to set Stripe customer")
+      // Re-fetch this card + the invoice list now that it's a single customer.
+      await queryClient.invalidateQueries({ queryKey: ["stripe-customer", mondayItemId] })
+      queryClient.invalidateQueries({ queryKey: ["billing", mondayItemId] })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to set Stripe customer")
+    } finally {
+      setApplyingId(null)
+    }
+  }
 
   const patch = (k: keyof FormState, v: string) =>
     setForm((prev) => (prev ? { ...prev, [k]: v } : prev))
@@ -135,7 +171,7 @@ export function StripeCustomerCard({
         ) : null
       }
     >
-      {query.isLoading || !form ? (
+      {query.isLoading ? (
         <div className="py-6 text-center text-sm text-muted-foreground inline-flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading Stripe customer…
         </div>
@@ -143,7 +179,45 @@ export function StripeCustomerCard({
         <div className="py-6 text-center text-sm text-destructive">
           {query.error instanceof Error ? query.error.message : "Failed to load Stripe customer"}
         </div>
-      ) : (
+      ) : multiple ? (
+        // Multiple Stripe customers linked - block editing/invoicing and make
+        // finance pick the correct one. Company details are shown so they can
+        // tell them apart. Picking one writes it as the single linked customer
+        // (replacing the others).
+        <div className="space-y-3">
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">This client has {multiple.length} Stripe customers linked.</p>
+              <p className="text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                A client should have exactly one. Pick the correct one below — it becomes the single
+                linked customer and the other is removed. Invoicing is blocked until this is resolved.
+              </p>
+            </div>
+          </div>
+          {multiple.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-md border border-border/60 px-3 py-2.5 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{c.name ?? "(no name)"}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {c.email ?? "no email"}
+                  {c.address.city ? ` · ${c.address.city}` : ""}
+                  {c.taxId?.value ? ` · VAT ${c.taxId.value}` : ""}
+                </p>
+                <p className="text-[10px] font-mono text-muted-foreground/50 truncate">{c.id}</p>
+              </div>
+              <Button size="sm" onClick={() => pickCustomer(c.id)} disabled={applyingId !== null}>
+                {applyingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Use this one
+              </Button>
+            </div>
+          ))}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      ) : form ? (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Company name" value={form.name} onChange={(v) => patch("name", v)} disabled={saving} />
@@ -167,6 +241,10 @@ export function StripeCustomerCard({
             </p>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      ) : (
+        <div className="py-6 text-center text-sm text-muted-foreground inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading Stripe customer…
         </div>
       )}
     </BillingSectionShell>

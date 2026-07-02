@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Plus, Trash2, ExternalLink, Check, ChevronLeft, AlertCircle, CalendarClock } from "lucide-react"
+import { Loader2, Plus, Trash2, ExternalLink, Check, ChevronLeft, AlertCircle, CalendarClock, Pencil } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -201,6 +201,83 @@ export function CreateInvoiceDialog({
   const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
   const [preview, setPreview] = useState<InvoiceDraftPreview | null>(null)
   const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null; newCycleStartDate: string | null; mode: InvoiceMode; warnings: string[] } | null>(null)
+
+  // Inline recipient edit (from the preview screen). Fixing the customer's
+  // name / email / address / VAT here writes straight to Stripe, then the
+  // preview is re-fetched so the BTW recalculates (a corrected VAT flips 0% ⇆
+  // 20%). Avoids leaving the send flow just to fix a typo.
+  const [editingRecipient, setEditingRecipient] = useState(false)
+  const [savingRecipient, setSavingRecipient] = useState(false)
+  const [recipientError, setRecipientError] = useState<string | null>(null)
+  const [recipientForm, setRecipientForm] = useState({
+    name: "", email: "", line1: "", line2: "", postalCode: "", city: "", country: "", vatId: "",
+  })
+
+  function startEditRecipient() {
+    const c = preview?.customer
+    setRecipientForm({
+      name: c?.name ?? "",
+      email: c?.email ?? "",
+      line1: c?.address?.line1 ?? "",
+      line2: c?.address?.line2 ?? "",
+      postalCode: c?.address?.postal_code ?? "",
+      city: c?.address?.city ?? "",
+      country: c?.address?.country ?? "",
+      vatId: c?.taxIds?.[0]?.value ?? "",
+    })
+    setRecipientError(null)
+    setEditingRecipient(true)
+  }
+
+  async function saveRecipient() {
+    setSavingRecipient(true)
+    setRecipientError(null)
+    try {
+      const res = await fetch(`/api/clients/${mondayItemId}/stripe-customer`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: recipientForm.name,
+          email: recipientForm.email,
+          address: {
+            line1: recipientForm.line1,
+            line2: recipientForm.line2,
+            postalCode: recipientForm.postalCode,
+            city: recipientForm.city,
+            country: recipientForm.country,
+          },
+          vatId: recipientForm.vatId,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) {
+        setRecipientError(data.error ?? "Failed to update recipient")
+        setSavingRecipient(false)
+        return
+      }
+      // Re-fetch the preview INLINE (don't flip back to the edit screen) so the
+      // recipient block + BTW/total reflect the edit while staying on review.
+      const cleaned = items
+        .map((i) => ({ description: i.description.trim(), amountEuro: signedAmount(i) }))
+        .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro !== 0)
+      const pres = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: Number(daysUntilDue), mode }),
+      })
+      const pdata = (await pres.json().catch(() => ({}))) as (InvoiceDraftPreview & { ok: true }) | { ok?: false; error?: string }
+      if (pres.ok && "ok" in pdata && pdata.ok === true) {
+        const { ok: _ok, ...previewData } = pdata
+        void _ok
+        setPreview(previewData as InvoiceDraftPreview)
+      }
+      setEditingRecipient(false)
+      setSavingRecipient(false)
+    } catch (e) {
+      setRecipientError(e instanceof Error ? e.message : "Failed to update recipient")
+      setSavingRecipient(false)
+    }
+  }
 
   const total = useMemo(
     () =>
@@ -426,39 +503,84 @@ export function CreateInvoiceDialog({
           // sees it before we finalize. Finance's last chance to catch a
           // wrong customer, wrong BTW number, missing line, etc.
           <div className="space-y-4">
-            {/* Customer block */}
+            {/* Customer block - editable inline so finance can fix wrong
+                recipient details (name / email / address / VAT) at the moment
+                of review, without leaving the send flow. Saving writes to
+                Stripe and re-runs the preview so the BTW recalculates. */}
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 text-xs">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1.5">Recipient</p>
-              <p className="font-medium text-sm text-foreground">{preview?.customer.name ?? "(no name)"}</p>
-              {preview?.customer.email && (
-                <p className="text-muted-foreground">{preview.customer.email}</p>
-              )}
-              {preview?.customer.address && (
-                <p className="text-muted-foreground mt-0.5">
-                  {[
-                    preview.customer.address.line1,
-                    preview.customer.address.line2,
-                    [preview.customer.address.postal_code, preview.customer.address.city].filter(Boolean).join(" "),
-                    preview.customer.address.country,
-                  ].filter(Boolean).join(", ")}
-                </p>
-              )}
-              {preview && preview.customer.taxIds.length > 0 && (
-                <p className="text-muted-foreground mt-1">
-                  {preview.customer.taxIds.map((t, i) => (
-                    <span key={i} className="mr-2">
-                      <span className="text-foreground/70 font-medium">{taxIdLabel(t.type)}</span> {t.value}
-                    </span>
-                  ))}
-                </p>
-              )}
-              {preview && preview.customer.taxIds.length === 0 && (
-                // Stripe `automatic_tax` handles the 20% BG VAT on send (no
-                // tax ID → BG origin default rate). This is just a heads-up
-                // for Finance so the BTW row below isn't a surprise.
-                <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
-                  No tax ID on file - Stripe will charge 20% BG VAT.
-                </p>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">Recipient</p>
+                {step === "preview" && !editingRecipient && (
+                  <button
+                    type="button"
+                    onClick={startEditRecipient}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {editingRecipient ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <RecipientInput label="Company name" value={recipientForm.name} onChange={(v) => setRecipientForm((f) => ({ ...f, name: v }))} disabled={savingRecipient} />
+                    <RecipientInput label="Email" value={recipientForm.email} onChange={(v) => setRecipientForm((f) => ({ ...f, email: v }))} disabled={savingRecipient} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <RecipientInput label="Address line 1" value={recipientForm.line1} onChange={(v) => setRecipientForm((f) => ({ ...f, line1: v }))} disabled={savingRecipient} />
+                    <RecipientInput label="Address line 2" value={recipientForm.line2} onChange={(v) => setRecipientForm((f) => ({ ...f, line2: v }))} disabled={savingRecipient} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <RecipientInput label="Postal code" value={recipientForm.postalCode} onChange={(v) => setRecipientForm((f) => ({ ...f, postalCode: v }))} disabled={savingRecipient} />
+                    <RecipientInput label="City" value={recipientForm.city} onChange={(v) => setRecipientForm((f) => ({ ...f, city: v }))} disabled={savingRecipient} />
+                    <RecipientInput label="Country" value={recipientForm.country} onChange={(v) => setRecipientForm((f) => ({ ...f, country: v.toUpperCase() }))} disabled={savingRecipient} placeholder="NL" />
+                  </div>
+                  <RecipientInput label="VAT / BTW number" value={recipientForm.vatId} onChange={(v) => setRecipientForm((f) => ({ ...f, vatId: v }))} disabled={savingRecipient} placeholder="NL123456789B01" />
+                  {recipientError && <p className="text-[11px] text-destructive">{recipientError}</p>}
+                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                    <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(false)} disabled={savingRecipient}>Cancel</Button>
+                    <Button size="xs" onClick={saveRecipient} disabled={savingRecipient}>
+                      {savingRecipient ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      Save to Stripe
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="font-medium text-sm text-foreground">{preview?.customer.name ?? "(no name)"}</p>
+                  {preview?.customer.email && (
+                    <p className="text-muted-foreground">{preview.customer.email}</p>
+                  )}
+                  {preview?.customer.address && (
+                    <p className="text-muted-foreground mt-0.5">
+                      {[
+                        preview.customer.address.line1,
+                        preview.customer.address.line2,
+                        [preview.customer.address.postal_code, preview.customer.address.city].filter(Boolean).join(" "),
+                        preview.customer.address.country,
+                      ].filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                  {preview && preview.customer.taxIds.length > 0 && (
+                    <p className="text-muted-foreground mt-1">
+                      {preview.customer.taxIds.map((t, i) => (
+                        <span key={i} className="mr-2">
+                          <span className="text-foreground/70 font-medium">{taxIdLabel(t.type)}</span> {t.value}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {preview && preview.customer.taxIds.length === 0 && (
+                    // Stripe `automatic_tax` handles the 20% BG VAT on send (no
+                    // tax ID → BG origin default rate). This is just a heads-up
+                    // for Finance so the BTW row below isn't a surprise.
+                    <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
+                      No tax ID on file - Stripe will charge 20% BG VAT.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -722,5 +844,33 @@ export function CreateInvoiceDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Compact labelled input for the inline recipient editor. */
+function RecipientInput({
+  label,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  disabled?: boolean
+  placeholder?: string
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="h-8 text-xs"
+      />
+    </div>
   )
 }

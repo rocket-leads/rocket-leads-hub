@@ -6,7 +6,9 @@ import {
   updateStripeCustomer,
   setStripeCustomerVatId,
   type StripeCustomerUpdate,
+  type StripeCustomerDetails,
 } from "@/lib/integrations/stripe"
+import { parseStripeCustomerIds } from "@/lib/integrations/monday"
 import { recordBillingEvent } from "@/lib/billing/audit"
 
 /**
@@ -18,18 +20,24 @@ import { recordBillingEvent } from "@/lib/billing/audit"
  * source of truth); the Hub keeps no shadow copy, so the invoice preview and
  * the actual send always reflect the corrected data.
  *
+ * A client should have exactly ONE Stripe customer, but the field can hold
+ * multiple comma-separated IDs (legacy data / entity changes). When it does,
+ * GET returns them all with their company details so the Billing tab can flag
+ * it and let finance pick the correct one (which replaces the other via the
+ * normal client-field PATCH). Edits are blocked until it's resolved to one.
+ *
  * Reachable only from role-gated surfaces (client Billing tab requires
  * canViewBilling); we still re-resolve the customer id server-side from the
  * Monday item id so a tampered client can't retarget another customer.
  */
-async function resolveCustomerId(mondayItemId: string): Promise<string | null> {
+async function resolveCustomerIds(mondayItemId: string): Promise<string[]> {
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("clients")
     .select("stripe_customer_id")
     .eq("monday_item_id", mondayItemId)
     .maybeSingle()
-  return (data?.stripe_customer_id as string | null) ?? null
+  return parseStripeCustomerIds((data?.stripe_customer_id as string | null) ?? null)
 }
 
 export async function GET(
@@ -41,12 +49,33 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const { id: mondayItemId } = await params
-  const customerId = await resolveCustomerId(mondayItemId)
-  if (!customerId) {
+  const ids = await resolveCustomerIds(mondayItemId)
+  if (ids.length === 0) {
     return NextResponse.json({ error: "No Stripe customer linked for this client." }, { status: 404 })
   }
   try {
-    const details = await fetchStripeCustomerDetails(customerId)
+    // More than one linked → return each customer's details so finance can
+    // tell them apart and pick the right one. Best-effort per id: a deleted /
+    // unknown id still lists (with nulls) so it can be picked away.
+    if (ids.length > 1) {
+      const settled = await Promise.all(
+        ids.map(async (id): Promise<StripeCustomerDetails> => {
+          try {
+            return await fetchStripeCustomerDetails(id)
+          } catch {
+            return {
+              id,
+              name: null,
+              email: null,
+              address: { line1: null, line2: null, postalCode: null, city: null, country: null },
+              taxId: null,
+            }
+          }
+        }),
+      )
+      return NextResponse.json({ ok: true, multiple: settled })
+    }
+    const details = await fetchStripeCustomerDetails(ids[0])
     return NextResponse.json({ ok: true, details })
   } catch (e) {
     return NextResponse.json(
@@ -80,10 +109,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const { id: mondayItemId } = await params
-  const customerId = await resolveCustomerId(mondayItemId)
-  if (!customerId) {
+  const ids = await resolveCustomerIds(mondayItemId)
+  if (ids.length === 0) {
     return NextResponse.json({ error: "No Stripe customer linked for this client." }, { status: 404 })
   }
+  // Can't edit customer fields when it's ambiguous which customer is meant.
+  if (ids.length > 1) {
+    return NextResponse.json(
+      { error: "This client has multiple Stripe customers linked. Pick the correct one first." },
+      { status: 409 },
+    )
+  }
+  const customerId = ids[0]
 
   let body: PatchBody
   try {

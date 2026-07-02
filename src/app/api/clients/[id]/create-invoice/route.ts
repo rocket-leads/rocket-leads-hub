@@ -10,7 +10,7 @@ import {
   type InvoiceDraftPreview,
   type PastInvoice,
 } from "@/lib/integrations/stripe"
-import { fetchBothBoards } from "@/lib/integrations/monday"
+import { fetchBothBoards, parseStripeCustomerIds } from "@/lib/integrations/monday"
 import { updateClientField, advanceBundledSiblings } from "@/lib/clients/edit"
 import { addMonthsIso } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
@@ -110,6 +110,29 @@ export async function POST(
     )
   }
 
+  // A client should have exactly ONE Stripe customer. The field can hold
+  // multiple comma-separated IDs (legacy / entity changes), but we must never
+  // hand a combined string to Stripe - it can't look up "cus_A, cus_B" and
+  // errors. When there's more than one, block invoicing and point finance to
+  // the Billing tab, where they pick the correct customer (which replaces the
+  // other). A single well-formed id is used as-is.
+  const stripeIds = parseStripeCustomerIds(client.stripe_customer_id)
+  if (stripeIds.length === 0) {
+    return NextResponse.json(
+      { error: "No valid Stripe customer linked for this client." },
+      { status: 400 },
+    )
+  }
+  if (stripeIds.length > 1) {
+    return NextResponse.json(
+      {
+        error: `This client has ${stripeIds.length} Stripe customers linked. Open the client's Billing tab → "Stripe customer details" and pick the correct one before invoicing.`,
+      },
+      { status: 400 },
+    )
+  }
+  const customerId = stripeIds[0]
+
   const action = "action" in body ? body.action : "send"
 
   // Items + due-days are validated the same way for preview and send.
@@ -137,7 +160,7 @@ export async function POST(
     let preview: InvoiceDraftPreview
     try {
       preview = await fetchInvoicePreview({
-        customerId: client.stripe_customer_id,
+        customerId: customerId,
         items,
         daysUntilDue: body.daysUntilDue,
         cycleStartDate: periodCycle,
@@ -166,7 +189,7 @@ export async function POST(
   let result: Awaited<ReturnType<typeof createAndSendInvoice>>
   try {
     result = await createAndSendInvoice({
-      customerId: client.stripe_customer_id,
+      customerId: customerId,
       items,
       daysUntilDue: body.daysUntilDue,
       cycleStartDate: periodCycle,
@@ -183,7 +206,7 @@ export async function POST(
   await recordBillingEvent({
     action: "invoice_sent",
     mondayItemId,
-    stripeCustomerId: client.stripe_customer_id,
+    stripeCustomerId: customerId,
     stripeInvoiceId: result.invoiceId,
     invoiceNumber: result.number,
     amountEur: result.amountDue,
@@ -290,16 +313,16 @@ export async function POST(
 
   // 2. Refresh this customer's billing summary so payment-status pill flips.
   try {
-    const fresh = await fetchBillingSummary(client.stripe_customer_id)
+    const fresh = await fetchBillingSummary(customerId)
     const existing =
       (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
     await writeCache("billing_summaries", {
       ...existing,
-      [client.stripe_customer_id]: fresh,
+      [customerId]: fresh,
     })
   } catch (e) {
     console.error(
-      `[create-invoice] billing summary refresh failed for ${client.stripe_customer_id}:`,
+      `[create-invoice] billing summary refresh failed for ${customerId}:`,
       e instanceof Error ? e.message : e,
     )
   }
