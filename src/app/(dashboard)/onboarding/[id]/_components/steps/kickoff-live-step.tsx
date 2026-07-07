@@ -659,6 +659,17 @@ export function KickoffLiveStep({
             service="stripe-customer"
             companyName={companyName}
           />
+          {/* First-invoice payment status pinned directly under the Stripe
+              link, so "Stripe linked + first invoice paid" reads in one glance
+              (polled every 30s). */}
+          <div className="pl-1 pb-1">
+            <PaymentStatusRow
+              status={paymentQuery.data}
+              loading={paymentQuery.isLoading}
+              hasCustomerId={Boolean(client.stripeCustomerId)}
+              locale={locale}
+            />
+          </div>
           <ConnectedEntity
             mondayItemId={mondayItemId}
             fieldKey="client_board_id"
@@ -744,18 +755,6 @@ export function KickoffLiveStep({
         </div>
       </section>
 
-      {/* Live status - payment indicator (polled) */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
-        <h3 className="text-sm font-semibold mb-3">
-          {t("onboarding.wizard.kickoff.status.title", locale)}
-        </h3>
-        <PaymentStatusRow
-          status={paymentQuery.data}
-          loading={paymentQuery.isLoading}
-          hasCustomerId={Boolean(client.stripeCustomerId)}
-          locale={locale}
-        />
-      </section>
 
       {/* Aanbod — wat we leveren + prijs per maand + cycle picker. */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
