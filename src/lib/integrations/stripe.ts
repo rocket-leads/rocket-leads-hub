@@ -3,7 +3,19 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 import type { ResolvedEntity } from "./resolved-entity"
 
+// Memoise the Stripe client (module-level, per warm serverless instance) so we
+// don't re-query api_tokens + AES-decrypt the key on every single Stripe call.
+// A request that makes several Stripe calls (e.g. retrieve + listTaxIds, or a
+// multi-customer resolve) previously paid that Supabase round-trip N times.
+// TTL-bounded so a key rotation in Settings takes effect within 10 minutes
+// without a redeploy.
+let stripeCache: { client: Stripe; at: number } | null = null
+const STRIPE_CLIENT_TTL_MS = 10 * 60 * 1000
+
 async function getStripe(): Promise<Stripe> {
+  if (stripeCache && Date.now() - stripeCache.at < STRIPE_CLIENT_TTL_MS) {
+    return stripeCache.client
+  }
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("api_tokens")
@@ -12,7 +24,9 @@ async function getStripe(): Promise<Stripe> {
     .single()
   if (!data) throw new Error("Stripe token not configured. Go to Settings → API Tokens.")
   const key = decrypt(data.token_encrypted)
-  return new Stripe(key)
+  const client = new Stripe(key)
+  stripeCache = { client, at: Date.now() }
+  return client
 }
 
 export type InvoiceRow = {

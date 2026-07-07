@@ -8,7 +8,8 @@ import {
   type StripeCustomerUpdate,
   type StripeCustomerDetails,
 } from "@/lib/integrations/stripe"
-import { parseStripeCustomerIds } from "@/lib/integrations/monday"
+import { parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
 import { recordBillingEvent } from "@/lib/billing/audit"
 
 /**
@@ -31,6 +32,16 @@ import { recordBillingEvent } from "@/lib/billing/audit"
  * Monday item id so a tampered client can't retarget another customer.
  */
 async function resolveCustomerIds(mondayItemId: string): Promise<string[]> {
+  // Read the monday_boards cache FIRST. updateClientField patches it
+  // synchronously on every edit, so a just-resolved single id shows up
+  // immediately here - whereas the Supabase mirror is fire-and-forget and lags
+  // an immediate refetch (that lag is exactly why "pick one" still showed two
+  // ids right after). Supabase is the fallback when the cache is cold.
+  const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+  if (cached) {
+    const hit = [...cached.onboarding, ...cached.current].find((c) => c.mondayItemId === mondayItemId)
+    if (hit) return parseStripeCustomerIds(hit.stripeCustomerId)
+  }
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("clients")
