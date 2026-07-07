@@ -36,6 +36,44 @@ function signedAmount(item: LineItemDraft): number {
   return item.discount ? -Math.abs(n) : n
 }
 
+/** Whole days from `a` to `b` (both `YYYY-MM-DD`), UTC so no DST drift. */
+function daysBetweenIso(a: string, b: string): number {
+  const [ay, am, ad] = a.split("-").map(Number)
+  const [by, bm, bd] = b.split("-").map(Number)
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000)
+}
+
+/** Today as a local `YYYY-MM-DD`. */
+function todayIso(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/**
+ * Prorate a package's monthly price to the part of the CURRENT period still to
+ * run - i.e. from today up to the next payment date. The current period is the
+ * month ending at the payment date, so a package added halfway is billed for
+ * ~half now (once), and the full monthly amount rides the regular invoice from
+ * the next cycle (finance updates the agreement separately).
+ *
+ * Returns null when there's no valid payment date to prorate against.
+ */
+function computeProration(
+  monthly: number,
+  cycleStartDate: string | null | undefined,
+): { amount: number; daysRemaining: number; daysInPeriod: number; from: string; to: string } | null {
+  if (!cycleStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(cycleStartDate) || !Number.isFinite(monthly)) return null
+  const to = cycleStartDate
+  const periodStart = addMonthsIso(cycleStartDate, -1)
+  if (!periodStart) return null
+  const daysInPeriod = daysBetweenIso(periodStart, to)
+  const from = todayIso()
+  const daysRemaining = Math.max(0, Math.min(daysBetweenIso(from, to), daysInPeriod))
+  const amount = daysInPeriod > 0 ? Math.round(((monthly * daysRemaining) / daysInPeriod) * 100) / 100 : 0
+  return { amount, daysRemaining, daysInPeriod, from, to }
+}
+
 /** Per-campaign info used to seed line items when the parent client has
  *  multiple Monday rows (= multiple campaigns) sharing one Stripe customer. */
 export type SiblingCampaignSeed = {
@@ -196,6 +234,33 @@ export function CreateInvoiceDialog({
   const [nextPaymentDate, setNextPaymentDate] = useState<string>(
     () => (cycleStartDate ? addMonthsIso(cycleStartDate, 1) ?? "" : ""),
   )
+
+  // Proration helper (invoice-dialog approach): finance types a package's
+  // monthly price; we add a prorated line for the days left until the payment
+  // date. The full monthly amount rides future cycles once finance updates the
+  // agreement separately.
+  const [showProration, setShowProration] = useState(false)
+  const [prorationMonthly, setProrationMonthly] = useState("")
+  const [prorationLabel, setProrationLabel] = useState("")
+  const prorationPreview = prorationMonthly.trim()
+    ? computeProration(Number(prorationMonthly), cycleStartDate)
+    : null
+
+  function addProrationLine() {
+    if (!prorationPreview || prorationPreview.amount <= 0) return
+    const label = prorationLabel.trim() || "Package"
+    setItems((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        description: `Pro-rata: ${label} (${fmtDateLong(prorationPreview.from)} – ${fmtDateLong(prorationPreview.to)})`,
+        amountEuro: String(prorationPreview.amount),
+      },
+    ])
+    setShowProration(false)
+    setProrationMonthly("")
+    setProrationLabel("")
+  }
 
   // State machine - exactly one of these is the active state.
   const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
@@ -772,7 +837,71 @@ export function CreateInvoiceDialog({
                   <Plus className="h-3.5 w-3.5" />
                   Add discount
                 </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowProration((v) => !v)} disabled={inFlight} className="text-muted-foreground">
+                  <Plus className="h-3.5 w-3.5" />
+                  Pro-rata
+                </Button>
               </div>
+
+              {/* Prorated charge helper - type a package's monthly price, get a
+                  line for the days left until the payment date. */}
+              {showProration && (
+                <div className="rounded-md border border-border/60 px-3 py-2.5 space-y-2">
+                  <p className="text-[12px] font-medium text-foreground">Prorated charge</p>
+                  {!cycleStartDate ? (
+                    <p className="text-[11px] text-muted-foreground">Set a payment date first to prorate against it.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Package monthly price</Label>
+                          <div className="relative">
+                            <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-xs text-muted-foreground">€</span>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="0.01"
+                              value={prorationMonthly}
+                              onChange={(e) => setProrationMonthly(e.target.value)}
+                              placeholder="0.00"
+                              disabled={inFlight}
+                              className="h-8 pl-5 text-sm tabular-nums"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Description</Label>
+                          <Input
+                            value={prorationLabel}
+                            onChange={(e) => setProrationLabel(e.target.value)}
+                            placeholder="e.g. Google Ads"
+                            disabled={inFlight}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                      {prorationPreview && prorationPreview.amount > 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {prorationPreview.daysRemaining} of {prorationPreview.daysInPeriod} days →{" "}
+                          <span className="font-medium text-foreground">{fmtEuro(prorationPreview.amount)}</span> until{" "}
+                          {fmtDateLong(prorationPreview.to)}
+                        </p>
+                      ) : prorationMonthly.trim() ? (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                          Payment date is today or past - no partial period to prorate. Add the full amount as a normal line instead.
+                        </p>
+                      ) : null}
+                      <div className="flex items-center justify-end gap-2">
+                        <Button size="xs" variant="ghost" onClick={() => setShowProration(false)} disabled={inFlight}>Cancel</Button>
+                        <Button size="xs" onClick={addProrationLine} disabled={inFlight || !prorationPreview || prorationPreview.amount <= 0}>
+                          Add line
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Next payment date - monthly only. On send, the cycle advances
