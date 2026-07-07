@@ -129,41 +129,56 @@ const META_GRAPH_VERSION = "v20.0"
 const HQ_COSTS_MONTHLY = 5000
 const MONTH_NAMES_NL = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
 
-// Targets-board lead-status buckets - used to slice the booked-calls funnel
+// Targets-board lead-status buckets - used to slice the appointment funnel
 // into "actually happened" (taken), "didn't happen" (no-show / cancellation)
-// and "still pending" (notUpdated). Roy 2026-05-27: qualification dropped
-// from the funnel entirely; the pipeline is now Opt-in → Booked → Taken →
-// Deal, with show-up rate computed as Taken / (Taken + NoShow + Cancellations).
+// and "still pending" (notUpdated). Pipeline is Opt-in → Booked → Taken → Deal.
 //
-// Status labels follow the *current* targets-board options. Old labels
-// (DEAL, No deal/FU, No deal, Lead cancelation, Gepland) are kept in the
-// same buckets so historical items still count correctly until the board is
-// fully migrated to the new naming.
+// Booked  = every row with an appointment date (datum_afspraak) in range.
+// Taken   = booked (past appointments only) minus the "not-taken" statuses:
+//           no-shows, cancellations, and still-to-qualify (Qualified).
+// Deals   = rows with a Date-deal (date3) in range in a closed-positive status.
+//
+// Roy 2026-07-07: these label lists were rewritten to match the board's ACTUAL
+// status options (queried live). The previous lists referenced labels that
+// never existed on the board ("No deal not interested", "Not interested",
+// "No deal follow up"), so Taken was silently undercounted - the real labels are
+// "No deal/NI", "No deal/UQ", "No deal/FU" and "Not interesting". Old /
+// deactivated labels (DEAL - AE, Lead cancelation, Gepland, No show automation)
+// are kept in their buckets so historical ranges still count correctly.
 const STATUS_MAP = {
-  /** Call actually happened. Outcome may be positive (Deal/Signed) or
-   *  negative (No deal X variants - call took place, just didn't close). */
+  /** Call actually happened. Outcome may be positive (DEAL/Signed) or negative
+   *  (No deal/* variants - call took place, just didn't close). */
   taken: [
-    "Deal", "Signed",
-    "No deal follow up", "No deal not interested", "No deal unqualified",
-    // Back-compat with the pre-2026-05-27 status labels:
-    "DEAL", "No deal/FU", "No deal",
+    "DEAL", "Signed", "DEAL - AE",
+    "No deal/FU", "No deal/NI", "No deal/UQ",
+    // Back-compat with pre-2026 status labels:
+    "Deal", "No deal",
   ],
-  /** Closed-positive subset of taken. */
-  deals: ["Deal", "Signed", "DEAL"],
+  /** Closed-positive subset. Gated on Date-deal (date3), not appointment. */
+  deals: ["DEAL", "Signed", "DEAL - AE", "Deal"],
   /** Booked but didn't show up. */
-  noShows: ["No show"],
-  /** Lead canceled BEFORE the call - different from "No deal not interested"
-   *  which means the call DID happen and they then said no. "Not interested"
-   *  here is the standalone cancel-status (lead pulled out before the call).
-   *  Old label "Lead cancelation" stays in this bucket for historical items. */
+  noShows: ["No show", "No show automation"],
+  /** Lead canceled/declined BEFORE the call took place - different from
+   *  "No deal/NI" (call DID happen, they then said no). "Not interesting" is
+   *  the standalone cancel-status (lead pulled out before the call). Old label
+   *  "Lead cancelation" stays here for historical items. */
   cancellations: [
-    "Cancelled", "Cancelled/TBR", "Cancelled No deal", "Not interested",
+    "Cancelled", "Cancelled/TBR", "Cancelled No deal", "Not interesting",
     // Back-compat:
-    "Lead cancelation",
+    "Lead cancelation", "Not interested",
+  ],
+  /** Booked but the call did NOT (yet) take place: no-show, cancellation, or
+   *  still-pending qualification. Taken = booked (past) minus these. Kept as one
+   *  set so Taken means "everything that isn't clearly a non-event" - robust to
+   *  new outcome labels being added to the board. */
+  notTaken: [
+    "No show", "No show automation",
+    "Cancelled", "Cancelled/TBR", "Cancelled No deal", "Not interesting", "Not interested", "Lead cancelation",
+    "Qualified",
   ],
   /** Past-appointment statuses that mean the closer hasn't processed the call
-   *  yet. Counted as taken in the rates so closers can't game it by leaving
-   *  things un-updated, but surfaced as a separate "X not updated" warning. */
+   *  yet - surfaced as a "X not updated" data-quality warning on the closer
+   *  table. Not counted as taken (Qualified/Planned are pre-outcome). */
   notUpdated: ["Planned", "Qualified", "Gepland"],
 }
 
@@ -435,26 +450,24 @@ export async function fetchMondayTargets(
 
     if (includeInTopLevel) addTo(country, (a) => a.totalItems++)
 
+    // Leads = rows CREATED in range - the CPL denominator (spend / leads).
+    // Kept on creation date; it's "how many leads did our spend generate this
+    // period", independent of when/if they later booked a call.
     if (includeInTopLevel && isInRange(datumCreated, startDate, endDate)) {
-      addTo(country, (a) => { a.leads++; a.calls++ })
-      // Booked-calls funnel slicing - replaces the old qualified/rejections
-      // counters (2026-05-27: qualification stage dropped from the dashboard).
-      // Booked = total items; Taken = call happened; NoShow + Cancellation =
-      // call did not happen; Planned/Qualified open = still pending outcome
-      // (counted as taken in rates via the past-appointment block below).
-      if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
-      if (STATUS_MAP.cancellations.includes(status)) addTo(country, (a) => a.cancellations++)
+      addTo(country, (a) => a.leads++)
     }
+    // Booked → Taken funnel is APPOINTMENT-date based (datum_afspraak), NOT
+    // creation date. Booked = every row with an appointment in range. Taken =
+    // booked (past appointments) minus the "not-taken" statuses (no-show,
+    // cancellation, still-to-qualify). Future appointments are booked but not
+    // yet taken. NoShow + Cancellation counters power the "Booked − Taken"
+    // breakdown line and are counted on the same appointment basis so they
+    // reconcile with Booked.
     if (includeInTopLevel && isInRange(datumAfspraak, startDate, endDate)) {
-      if (STATUS_MAP.taken.includes(status)) {
-        addTo(country, (a) => a.takenCalls++)
-      } else if (
-        STATUS_MAP.notUpdated.includes(status)
-        && datumAfspraak !== null
-        && datumAfspraak < todayStr
-      ) {
-        // Past appointment still in pre-call status - count as taken anyway so the
-        // conversion rate can't be gamed by closers leaving statuses un-updated.
+      addTo(country, (a) => a.calls++)
+      if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
+      else if (STATUS_MAP.cancellations.includes(status)) addTo(country, (a) => a.cancellations++)
+      if (datumAfspraak !== null && datumAfspraak < todayStr && !STATUS_MAP.notTaken.includes(status)) {
         addTo(country, (a) => a.takenCalls++)
       }
     }
@@ -534,15 +547,14 @@ export async function fetchMondayTargets(
     // doesn't match. Without this, a filtered view would still show team-wide
     // weekly bars next to a single closer's KPI cards.
     if (includeInTopLevel) {
-      if (datumCreated) {
-        const ws = getMondayOfWeek(datumCreated)
-        if (targetWeeks.has(ws)) {
-          addWeek(country, ws, (w) => { w.calls++ })
-        }
-      }
+      // Weekly bars mirror the top-level funnel: Booked (calls) + Taken are both
+      // appointment-date based so the chart reconciles with the KPI cards.
       if (datumAfspraak) {
         const ws = getMondayOfWeek(datumAfspraak)
-        if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) addWeek(country, ws, (w) => w.taken++)
+        if (targetWeeks.has(ws)) {
+          addWeek(country, ws, (w) => { w.calls++ })
+          if (datumAfspraak < todayStr && !STATUS_MAP.notTaken.includes(status)) addWeek(country, ws, (w) => w.taken++)
+        }
       }
       if (dateDeal && STATUS_MAP.deals.includes(status)) {
         const ws = getMondayOfWeek(dateDeal)

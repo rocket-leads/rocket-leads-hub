@@ -67,8 +67,13 @@ export async function GET(request: Request) {
   const periodMonth = getRangeCalendarMonth(startDate, endDate)
   if (!closer && periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
     try {
+      // baseKey bumped to _v2 on 2026-07-07: closed-month entries are cached
+      // forever and hasFreshSchema can't detect the appointment-funnel logic
+      // change (booked/taken now on datum_afspraak, corrected status labels,
+      // deals no longer suppressed by late date3 backfill). The new key forces
+      // every historical month to recompute once on next load.
       const result = await cachedHistoricalMonth(
-        "targets_monday",
+        "targets_monday_v2",
         periodMonth.year,
         periodMonth.month,
         () => fetchMondayTargets(startDate, endDate),
