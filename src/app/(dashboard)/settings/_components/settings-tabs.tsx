@@ -43,6 +43,7 @@ type AdminProps = {
     teamChannelId: string | null
     salesChannelId: string | null
     closers: React.ComponentProps<typeof AutomationsTab>["closers"]
+    configs: React.ComponentProps<typeof AutomationsTab>["notificationConfigs"]
   }
 }
 
@@ -117,6 +118,7 @@ export function SettingsTabs(props: Props) {
           teamChannelId={props.notifications.teamChannelId}
           salesChannelId={props.notifications.salesChannelId}
           closers={props.notifications.closers}
+          notificationConfigs={props.notifications.configs}
         />
       )}
       {isAdmin && activeTab === "clients" && <ClientsTab />}

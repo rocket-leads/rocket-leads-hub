@@ -11,6 +11,7 @@ import { ApiHealthBar } from "./_components/api-health-bar"
 import { SetupChecklistBanner } from "./_components/setup-checklist-banner"
 import { PageHeader } from "@/components/ui/page-header"
 import { getSlackChannels } from "@/lib/slack"
+import { getAllNotificationConfigs } from "@/lib/slack/notification-config"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
@@ -97,6 +98,7 @@ export default async function SettingsPage({
     { data: automationRulesRow },
     slackChannels,
     setupChecklist,
+    notificationConfigs,
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
@@ -106,6 +108,7 @@ export default async function SettingsPage({
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
     getSlackChannels(),
     fetchSetupChecklist(),
+    getAllNotificationConfigs(),
   ])
 
   // Trengo channels, Fathom team members, Monday boards + mondayPeople and
@@ -237,6 +240,7 @@ export default async function SettingsPage({
               teamChannelId: slackChannels.team_watchlist ?? null,
               salesChannelId: slackChannels.sales ?? null,
               closers,
+              configs: notificationConfigs,
             }}
           />
         )

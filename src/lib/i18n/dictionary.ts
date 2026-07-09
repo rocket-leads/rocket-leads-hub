@@ -1958,6 +1958,8 @@ export const DICTIONARY = {
   "settings.notifications.example.hide": { nl: "Voorbeeld verbergen", en: "Hide example" },
   "settings.notifications.metadata.schedule": { nl: "Schema", en: "Schedule" },
   "settings.notifications.metadata.destination": { nl: "Bestemming", en: "Destination" },
+  "settings.notifications.schedule.on": { nl: "Aan", en: "On" },
+  "settings.notifications.schedule.off": { nl: "Uit", en: "Off" },
   "settings.notifications.metadata.recipients": { nl: "Ontvangers", en: "Recipients" },
   "settings.notifications.recipients.empty": { nl: "Nog geen gebruikers hebben een Slack ID - voeg er één toe in Kolom mapping.", en: "No users have a Slack ID configured yet - add one in Column Mapping." },
   "settings.notifications.recipients.no_slack": { nl: "(geen Slack ID)", en: "(no Slack ID)" },

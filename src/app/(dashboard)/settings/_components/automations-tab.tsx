@@ -26,8 +26,10 @@ import {
   setInboxAutomationRule,
   triggerInboxAutomationsNow,
   updateCloserSlackId,
+  updateNotificationConfig,
 } from "../actions"
 import type { InboxAutomationRules } from "../types"
+import type { AllNotificationConfigs, NotificationKey } from "@/lib/slack/notification-config"
 import type { AutomationRunResult, CreatedItem } from "@/lib/inbox/automations"
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -530,16 +532,45 @@ function NotificationsSection({
   teamChannelId,
   salesChannelId,
   closers: initialClosers,
+  notificationConfigs,
 }: {
   slackConnected: boolean
   recipients: Recipient[]
   teamChannelId: string | null
   salesChannelId: string | null
   closers: Closer[]
+  notificationConfigs: AllNotificationConfigs
 }) {
   const locale = useLocale()
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+
+  // Enabled/disabled state per notification, seeded from saved config. The daily
+  // cron only fires when enabled (shouldRunNow); Preview/Send-now still work even
+  // when off, so a disabled card can still be tested manually.
+  const [enabled, setEnabled] = useState<Record<string, boolean>>(() => {
+    const seed: Record<string, boolean> = {}
+    for (const [key, cfg] of Object.entries(notificationConfigs)) seed[key] = cfg.enabled
+    return seed
+  })
+  const [togglePending, setTogglePending] = useState<Record<string, boolean>>({})
+  const [, startEnabledTransition] = useTransition()
+
+  function toggleEnabled(key: NotificationKey) {
+    const next = !enabled[key]
+    setEnabled((s) => ({ ...s, [key]: next }))
+    setTogglePending((s) => ({ ...s, [key]: true }))
+    startEnabledTransition(async () => {
+      try {
+        await updateNotificationConfig(key, { enabled: next })
+      } catch (e) {
+        setEnabled((s) => ({ ...s, [key]: !next })) // revert on failure
+        console.error("Failed to toggle notification", e)
+      } finally {
+        setTogglePending((s) => ({ ...s, [key]: false }))
+      }
+    })
+  }
 
   const closersQuery = useQuery<{ closers: Closer[] }>({
     queryKey: ["settings-closers"],
@@ -742,6 +773,9 @@ Open Targets`,
               key={n.id}
               def={n}
               slackConnected={slackConnected}
+              enabled={enabled[n.id] ?? true}
+              togglePending={!!togglePending[n.id]}
+              onToggleEnabled={() => toggleEnabled(n.id as NotificationKey)}
               busy={!!busy[n.id]}
               result={results[n.id]}
               onPreview={() => runPreview(n.id, n.previewEndpoint)}
@@ -814,6 +848,9 @@ function TestDmCard({ slackConnected }: { slackConnected: boolean }) {
 function NotificationCard({
   def,
   slackConnected,
+  enabled,
+  togglePending,
+  onToggleEnabled,
   busy,
   result,
   onPreview,
@@ -824,6 +861,9 @@ function NotificationCard({
 }: {
   def: NotificationDef
   slackConnected: boolean
+  enabled: boolean
+  togglePending: boolean
+  onToggleEnabled: () => void
   busy: boolean
   result?: { ok: boolean; message: string }
   onPreview: () => void
@@ -836,9 +876,17 @@ function NotificationCard({
   return (
     <AutomationCard
       icon={<Bell className="h-4 w-4" />}
-      tone="purple"
+      tone={enabled ? "purple" : "muted"}
       title={def.title}
       description={def.description}
+      status={
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[10px] uppercase tracking-wider ${enabled ? "text-emerald-500" : "text-muted-foreground/50"}`}>
+            {enabled ? t("settings.notifications.schedule.on", locale) : t("settings.notifications.schedule.off", locale)}
+          </span>
+          <ToggleSwitch enabled={enabled} pending={togglePending} onClick={onToggleEnabled} />
+        </div>
+      }
     >
       <div className="space-y-3">
         <MetaGrid
@@ -1116,6 +1164,7 @@ type Props = {
   teamChannelId: string | null
   salesChannelId: string | null
   closers: Closer[]
+  notificationConfigs: AllNotificationConfigs
 }
 
 export function AutomationsTab({
@@ -1125,6 +1174,7 @@ export function AutomationsTab({
   teamChannelId,
   salesChannelId,
   closers,
+  notificationConfigs,
 }: Props) {
   return (
     <div className="space-y-10 max-w-3xl">
@@ -1138,6 +1188,7 @@ export function AutomationsTab({
         teamChannelId={teamChannelId}
         salesChannelId={salesChannelId}
         closers={closers}
+        notificationConfigs={notificationConfigs}
       />
     </div>
   )
