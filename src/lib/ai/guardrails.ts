@@ -108,15 +108,18 @@ export function aiLanguageDirective(locale: "nl" | "en"): string {
 
 /**
  * Strip the dead-giveaway "AI written this" markers from generated text.
- * Em-dashes (-) and en-dashes (–) are the strongest signal; ASCII " - " as a
- * sentence-splitter is the runner-up. All three get converted to a comma so
- * the prose reads like a human typed it.
+ * True em-dashes (—) and en-dashes (–) are the strongest signal; an ASCII
+ * hyphen used as a splitter (" - ", " -- ") is the runner-up. All get
+ * converted to a comma so the prose reads like a human typed it.
  *
  * What this DOES NOT touch:
- *   - Hyphens inside compound words (`no-budget`, `high-ticket`, `op-de-man`)
- *    ,those have no surrounding spaces so the regex won't match them.
- *   - Bullet-list dashes at the START of a line (`- item`, `• item`),we
- *     anchor on dashes flanked by word/punctuation chars, not line-leading.
+ *   - Hyphens inside compound words (`no-budget`, `high-ticket`, `op-de-man`):
+ *     the Unicode-dash pass only matches — and –, and the ASCII-hyphen pass
+ *     requires a space on BOTH sides, so a bare `word-word` never matches.
+ *   - Bullet-list dashes at the START of a line (`- item`, `• item`): the
+ *     leading lookbehind needs a non-space char before the dash, and the
+ *     ASCII pass uses [ \t] (not \s) so a newline before the bullet doesn't
+ *     count as a flanking space.
  *   - Existing commas, full stops, or other natural punctuation.
  *
  * Safe to run on any string, idempotent. Designed to be a final backstop on
@@ -127,10 +130,13 @@ export function stripAiTells(text: string): string {
   if (!text) return text
   return (
     text
-      // Em-dash and en-dash with optional surrounding spaces → ", "
-      // The (?<=\S)…(?=\S) lookarounds ensure we only hit dashes BETWEEN words,
-      // never at the start of a list item ("- item") or as a standalone line.
-      .replace(/(?<=\S)\s*[-–]\s*(?=\S)/g, ", ")
+      // True em-dash (—) and en-dash (–) with optional surrounding spaces → ", ".
+      // ONLY these two Unicode dashes here - NOT the ASCII hyphen "-", which is
+      // handled below only when space-flanked. Including "-" in this class
+      // mangled compound words ("no-budget" → "no, budget") and swallowed the
+      // newline before a leading bullet dash ("actie\n- tweede" → "actie, tweede").
+      // The (?<=\S)…(?=\S) lookarounds keep us between words.
+      .replace(/(?<=\S)\s*[—–]\s*(?=\S)/g, ", ")
       // ASCII " - " as a sentence splitter (less common but same AI tell).
       // Requires a space on BOTH sides,leaves compound-word hyphens alone.
       .replace(/(?<=\S) - (?=\S)/g, ", ")
@@ -250,11 +256,13 @@ export function validateAiOutput(
   }
 
   // ─ Em-dash / en-dash AI tell ─
-  // Anchored on dashes BETWEEN words so list bullets and standalone dashes
-  // don't trip; matches the same shape `stripAiTells` cleans up. Logged
-  // separately so we can see how often the model still emits them despite
-  // the prompt rule.
-  const emDash = /(?<=\S)\s*[-–]\s*(?=\S)/g
+  // Mirrors `stripAiTells`: flag a true em-dash (—) / en-dash (–) between
+  // words (spacing optional), OR an ASCII hyphen used as a splitter with
+  // spaces on BOTH sides (" - ", " -- "). We deliberately exclude compound
+  // hyphens ("no-budget") and leading bullet dashes ("\n- item") - the ASCII
+  // branch uses [ \t] (not \s) so a newline before a bullet never counts as
+  // a space-flanked splitter. Logged separately to track model habits.
+  const emDash = /(?<=\S)(?:\s*[—–]\s*|[ \t]+-{1,2}[ \t]+)(?=\S)/g
   let dm: RegExpExecArray | null
   while ((dm = emDash.exec(text)) !== null) {
     violations.push({

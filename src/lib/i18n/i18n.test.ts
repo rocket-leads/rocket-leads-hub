@@ -37,8 +37,8 @@ describe("dictionary completeness", () => {
 
 describe("t() - translation lookup", () => {
   it("returns the right string per locale", () => {
-    expect(t("nav.clients", "nl")).toBe("Klanten")
-    expect(t("nav.clients", "en")).toBe("Clients")
+    expect(t("nav.clients", "nl")).toBe("Huidige klanten")
+    expect(t("nav.clients", "en")).toBe("Current clients")
   })
 
   it("interpolates {placeholder} params", () => {
