@@ -49,24 +49,17 @@ import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { InboxItem, InboxSource, TaskStatus, UpdateStatus } from "@/types/inbox"
 
-export type InboxUser = { id: string; name: string | null; email: string; role: string }
-export type InboxClientOption = {
-  id: string
-  name: string
-  /** Whether the client is currently live (Hub-canonical status). The composer
-   *  client picker pins live ones to the top so AMs see their active book
-   *  first instead of having to type to find them. */
-  isLive?: boolean
-}
-export type CurrentUser = { id: string; name: string; role: string }
-
-type LockedClient = InboxClientOption & {
-  /** Trengo contact ID - if present, the Client Inbox sub-tab renders the
-   * Trengo conversation history for this client. Otherwise the tab is hidden. */
-  trengoContactId?: string | null
-  /** Role-based gate on the Client Inbox sub-tab. */
-  canViewCommunication?: boolean
-}
+// Canonical definitions now live in ./shell/types (lifted out so the new
+// 3-pane shell can share them without importing the monolith). Imported for
+// local use AND re-exported so existing consumers (inbox-tab, chat-pane,
+// item-detail-dialog) that import from "./inbox-view" keep working unchanged.
+import type {
+  InboxUser,
+  InboxClientOption,
+  CurrentUser,
+  LockedClient,
+} from "./shell/types"
+export type { InboxUser, InboxClientOption, CurrentUser }
 
 type Props = {
   currentUser: CurrentUser

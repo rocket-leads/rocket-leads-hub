@@ -8,19 +8,29 @@ import {
   renderFromParts,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
+import {
+  readWeeklyUpdateCache,
+  writeWeeklyUpdateCache,
+} from "@/lib/clients/weekly-update-cache"
+import { fetchClientById } from "@/lib/integrations/monday"
+import { resolveClientSendChannel } from "@/lib/clients/send-channel"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Client-facing weekly update draft.
  *
- * Thin HTTP wrapper around `buildWeeklyUpdateDraft`. Composed fresh each
- * time the AM opens the "Update" button on the clients table (the weekly
- * KPI window is last week's already-completed range, so a live build
- * always reflects the right data). Returns editable parts + a fresh
- * preview render + the resolved WhatsApp template name (hardcoded
- * `rl_weekly_<voornaam>`) so the dialog can post the right send payload.
+ * Thin HTTP wrapper around `buildWeeklyUpdateDraft`. Serves the Monday
+ * cron's pre-cached snapshot (`weekly_update_cache`) when present so the
+ * dialog opens instantly during the Monday bulk send; on a miss it builds
+ * live (the 20-40s Meta + Stripe + Pedro + template fan-out) and lazily
+ * writes the result to the cache so the next open is fast too. The weekly
+ * KPI window is last week's already-completed range, so a cached snapshot
+ * stays valid for the whole week.
  *
- * No AI call - pulls from Pedro's daily cache + the 7d KPI cache.
+ * Returns editable parts + a fresh preview render + the resolved WhatsApp
+ * template name (`rl_weekly_<voornaam>`) so the dialog can post the right
+ * send payload. No AI call - pulls from Pedro's daily cache + the 7d KPI
+ * cache.
  */
 
 export type ClientUpdateChannel = WeeklyUpdateChannel
@@ -55,11 +65,48 @@ export async function POST(
   const { id: mondayItemId } = await params
 
   try {
+    // Fast path: serve the Monday cron's pre-built snapshot. It holds the
+    // expensive-to-compute bits (parts + channel + template); the cheap
+    // recipient/channel-label fields come from a single Monday read so the
+    // "To: <address>" preview always matches what the send path resolves.
+    const cached = await readWeeklyUpdateCache(mondayItemId)
+    if (cached) {
+      const client = await fetchClientById(mondayItemId)
+      if (client) {
+        const resolved = resolveClientSendChannel(client)
+        return NextResponse.json<ClientUpdateResponse>({
+          parts: cached.parts,
+          preview: renderFromParts(cached.parts),
+          channel: cached.channel,
+          channelLabel: client.contactChannel ?? "",
+          trengoContactLinked: resolved.ok,
+          whatsappTemplateName: cached.templateName,
+          // The cron resolved the slug via `hardcodedTemplateName`, so the
+          // dialog should treat it as "hardcoded" too.
+          whatsappTemplateSource: cached.templateName ? "hardcoded" : "none",
+          recipientEmail: client.email || null,
+          recipientPhone: client.phone || null,
+        })
+      }
+      // Monday fetch failed - fall through to the live build below.
+    }
+
     const built = await buildWeeklyUpdateDraft({
       userId: session.user.id,
       mondayItemId,
     })
     if (!built) return NextResponse.json({ error: "Client not found" }, { status: 404 })
+
+    // Populate the cache so the next open this week is instant even if the
+    // cron didn't cover this client (flipped Live mid-week, or opened before
+    // Monday's run). Awaited - it's one fast upsert and the caller already
+    // paid the live-build wait.
+    await writeWeeklyUpdateCache({
+      mondayItemId,
+      parts: built.parts,
+      channel: built.channel,
+      templateName: built.whatsappTemplateName,
+    })
 
     return NextResponse.json<ClientUpdateResponse>({
       parts: built.parts,
