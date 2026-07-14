@@ -40,56 +40,28 @@ export const INTROS = [
   "Snelle update over de cijfers van afgelopen week:",
 ] as const
 
-/**
- * Default action-bullet pool. Used when Pedro hasn't generated actions yet
- * (new client, cron hasn't tickt, no signal): we pre-fill three plausible
- * actions from the campaign-manager playbook so the AM only has to tweak
- * them instead of starting from a blank list.
- *
- * Items are written to be generic-but-credible - none of them refer to a
- * specific ad name, so they read fine for any client. The seed rotates which
- * three appear per week so the same client doesn't get the literal same
- * starter list two weeks in a row.
- */
-const DEFAULT_ACTIONS = [
-  "Nieuwe creatives lanceren met verse hooks",
-  "Top-performer dupliceren in een tweede ad set",
-  "Lead-kwaliteit checken met de opvolging voor feedback",
-  "Underperformer pauzeren en budget herverdelen",
-  "Frequency check op de winnende ad set",
-  "Nieuwe angle testen voor volgende week",
-] as const
-
 /** Conclusion-zin op basis van de CPL delta. Used when Pedro hasn't produced
  *  a conclusion yet.
  *
- *  IMPORTANT: must NOT restate what the trend sentence already says. The
- *  trend sentence covers "wat is er gebeurd" (CPL loopt op / mooie beweging)
- *  - the conclusion is then *complementary*, focusing on "wat doe ik
- *  komende dagen". Mirroring the trend would produce a visibly-duplicate
- *  message ("Kost per lead loopt op …" twice in a row). */
+ *  IMPORTANT (Roy 2026-07-14): must be a NEUTRAL, honest stance - never a
+ *  fabricated specific commitment. Earlier phrasings like "nieuwe creatives
+ *  staan klaar" or "plan een refresh in" asserted concrete work nobody had
+ *  agreed to (the CM might not do it, and it can contradict the data). The
+ *  client-facing conclusion states what genuinely happens - we monitor and
+ *  optimise daily (process.md Fase 4) - without promising a specific task.
+ *
+ *  Must also NOT restate the trend sentence ("wat is er gebeurd"); this is
+ *  complementary and forward-leaning in tone only. */
 function defaultConclusion(kpi: KpiSummary | null): string {
   if (!kpi || !kpi.prevCpl || kpi.prevPeriodReliable === false) {
-    return "Ik kijk komende dagen mee om bij te sturen waar nodig."
+    return "Ik houd de campagne dagelijks in de gaten en stuur bij waar nodig."
   }
   const pct = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-  if (pct <= -25) return "Hier gaan we komende week op doorbouwen, de winnende richting blijven we pushen."
-  if (pct <= -10) return "Goeie kant op, ik laat de huidige set lopen en plan een refresh in."
-  if (pct >= 25) return "Komende dagen werk ik aan optimalisaties, nieuwe creatives staan klaar."
-  if (pct >= 10) return "Komende dagen kijk ik naar nieuwe creatives om dit weer omlaag te krijgen."
-  return "Komende dagen kijk ik of we ergens scherper kunnen."
-}
-
-/** Pick 3 distinct default actions from the pool, rotated weekly by seed.
- *  Step of 2 keeps the trio reasonably spread across the pool rather than
- *  three consecutive items every time. */
-function defaultActions(seed: number): string[] {
-  const len = DEFAULT_ACTIONS.length
-  const picks = new Set<number>()
-  for (let step = 0; picks.size < 3 && step < len * 2; step += 2) {
-    picks.add((seed + step) % len)
-  }
-  return Array.from(picks).map((i) => DEFAULT_ACTIONS[i])
+  if (pct <= -25) return "Sterke lijn, die houden we vast."
+  if (pct <= -10) return "Goeie richting, we blijven dit volgen en bijsturen waar nodig."
+  if (pct >= 25) return "Hier ligt deze week onze aandacht, we optimaliseren dagelijks."
+  if (pct >= 10) return "Hier letten we op en sturen dagelijks bij waar nodig."
+  return "We houden de cijfers dagelijks in de gaten."
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -212,16 +184,35 @@ function cplDeltaBullet(kpi: KpiSummary | null): string {
  *  text because CMs DO want the precise window labels.
  */
 function sanitizePedroConclusionForClient(s: string): string {
-  return s
-    // Strip "(7d)" / "(14d)" / "(prev 7d)" / "(30d)" / "(all-time)" tags.
-    .replace(/\s*\((?:prev\s+)?(?:\d+d|all-time)\)/gi, "")
-    // Strip trailing "naar €X,XX" / "naar €X.XX" CPL specifics. Tolerates
-    // optional thousands separator and 0-2 decimals.
-    .replace(/\s+naar\s+€\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?/gi, "")
-    // Collapse the double-space / orphan-comma cases the strips can create.
-    .replace(/\s+([.,!?])/g, "$1")
-    .replace(/ {2,}/g, " ")
-    .trim()
+  return (
+    s
+      // Strip "(7d)" / "(14d)" / "(prev 7d)" / "(30d)" / "(all-time)" tags.
+      .replace(/\s*\((?:prev\s+)?(?:\d+d|all-time)\)/gi, "")
+      // Strip "<preposition> €X,XX" CPL specifics (naar / op / van / tot /
+      // richting / rond). Tolerates optional thousands separator + 0-2
+      // decimals. Keeps the directional verb ("CPL is flink gedaald").
+      .replace(
+        /\s+(?:naar|op|van|tot|richting|rond)\s+€\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?/gi,
+        "",
+      )
+      // Strip any remaining bare "€X,XX" the preposition pass missed.
+      .replace(/\s*€\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?/gi, "")
+      // Repair dangling stubs: removing a number can leave a short clause
+      // that ends in a bare linking/state verb ("…, CPL is." / "…, spend
+      // was."), which reads as a broken sentence to the client. Drop that
+      // trailing clause (from its leading comma) so the sentence closes
+      // cleanly. Bounded length + verb anchor keeps it from eating real
+      // clauses. Roy 2026-07-14.
+      .replace(
+        /,\s+[^,.!?]{1,30}?\s+(?:is|zijn|was|waren|wordt|worden|blijft|blijven|ligt|liggen|staat|staan)\s*(?=[.!?]|$)/gi,
+        "",
+      )
+      // Collapse the double-space / orphan-comma cases the strips can create.
+      .replace(/\s+([.,!?])/g, "$1")
+      .replace(/,\s*\./g, ".")
+      .replace(/ {2,}/g, " ")
+      .trim()
+  )
 }
 
 function trendSentenceFor(kpi: KpiSummary | null): string {
@@ -386,15 +377,15 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
       ? `${trendLine}\n\n${bodyConclusion}`
       : bodyConclusion
 
-  // Actions: Pedro's bullets win. When Pedro produced none, pre-fill three
-  // generic playbook actions so the AM only tweaks them. Empty-state skips
-  // actions entirely - there's nothing to act on yet.
+  // Actions: ONLY Pedro's data-grounded bullets - never a generic filler
+  // list. Roy 2026-07-14: the old fallback invented plausible-but-fake
+  // actions ("nieuwe angle testen") that committed the team to work nobody
+  // agreed to. When Pedro has nothing concrete, the section stays empty:
+  // for email `renderFromParts` omits it entirely, and for WhatsApp the
+  // fixed template header falls back to an honest "we optimise daily" line
+  // (see `partsToWeeklyUpdateParams`), not a fabricated task.
   const pedroActions = (input.pedro?.actions ?? []).filter((a) => a.trim().length > 0)
-  const actions = noSignal
-    ? []
-    : pedroActions.length > 0
-      ? pedroActions.slice(0, 3)
-      : defaultActions(seed)
+  const actions = noSignal ? [] : pedroActions.slice(0, 3)
 
   return {
     parts: {
@@ -569,8 +560,13 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
     firstName || "daar",
     intro || "Update over de afgelopen week.",
     kpiInline || "Geen meetbare cijfers deze week.",
-    bodyInline || "Komende dagen kijk ik mee om bij te sturen waar nodig.",
-    actionsInline || "Geen specifieke actiepunten deze week.",
+    bodyInline || "Ik houd de campagne dagelijks in de gaten en stuur bij waar nodig.",
+    // WhatsApp forces content under the fixed "✅ Wat we deze week gaan
+    // doen:" template header, so an empty {{5}} isn't allowed. When Pedro
+    // gave us no concrete, data-grounded actions we do NOT invent a task -
+    // we state the honest standard practice (daily optimisation, process.md
+    // Fase 4) instead of a fabricated commitment. Roy 2026-07-14.
+    actionsInline || "We optimaliseren de campagne dagelijks en sturen bij waar nodig.",
   ]
 }
 

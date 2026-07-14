@@ -220,10 +220,13 @@ describe("composeInitialParts - defaults when Pedro hasn't generated yet", () =>
       pedro: null,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.conclusion).toMatch(/(loopt op|optimalisaties)/i)
+    expect(parts.conclusion).toMatch(/(aandacht|optimaliseren)/i)
   })
 
-  it("pre-fills 3 plausible actions when Pedro has none", () => {
+  it("leaves actions empty when Pedro has none - never invents filler", () => {
+    // Roy 2026-07-14: the old behaviour pre-filled 3 generic playbook
+    // actions ("nieuwe angle testen") that committed the team to work
+    // nobody agreed to. Grounded-only now: no Pedro actions → no actions.
     const { parts } = composeInitialParts({
       firstName: "Bram",
       clientId: "12345",
@@ -231,14 +234,7 @@ describe("composeInitialParts - defaults when Pedro hasn't generated yet", () =>
       pedro: null,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.actions).toHaveLength(3)
-    // All defaults are non-empty, generic playbook actions
-    expect(parts.actions.every((a) => a.trim().length > 5)).toBe(true)
-    // No duplicates within the trio
-    expect(new Set(parts.actions).size).toBe(3)
-    // Header is provided by the V2 Trengo template body - not by the
-    // variable content - so it stays empty in `parts`.
-    expect(parts.actionsHeader).toBe("")
+    expect(parts.actions).toEqual([])
   })
 
   it("strips window labels and mismatched-CPL claims from Pedro's conclusion before injecting", () => {
@@ -264,6 +260,30 @@ describe("composeInitialParts - defaults when Pedro hasn't generated yet", () =>
     expect(out.parts.conclusion).not.toMatch(/€\s?12[.,]71/)
     expect(out.parts.conclusion).toContain("CPL is flink gedaald")
     expect(out.parts.conclusion).toContain("Nieuwe creatives doen het goed")
+  })
+
+  it("repairs a dangling stub left after stripping a bare CPL number", () => {
+    // Regression: stripping "€24,52" out of "…, CPL is €24,52." left the
+    // broken fragment "…, CPL is." in the client message (Roy's screenshot,
+    // 2026-07-14). The stub-repair drops that trailing clause so the
+    // sentence closes cleanly, keeping the surrounding prose intact.
+    const pedro: PedroInsightBody = {
+      conclusion: "Mooie week, CPL is €24,52. Het herstel houdt aan.",
+      actions: [],
+    }
+    const out = composeInitialParts({
+      firstName: "Bram",
+      clientId: "stub-test",
+      // prevPeriodReliable: false → no trend line, so the conclusion is
+      // exactly the sanitised Pedro sentence (isolates the repair).
+      kpi: { ...KPI, cpl: 24.52, prevCpl: 20, prevPeriodReliable: false },
+      pedro,
+      now: MONDAY_WEEK_20,
+    })
+    expect(out.parts.conclusion).not.toMatch(/€/)
+    expect(out.parts.conclusion).not.toMatch(/CPL is\./)
+    expect(out.parts.conclusion).toContain("Mooie week")
+    expect(out.parts.conclusion).toContain("Het herstel houdt aan")
   })
 
   it("Pedro wins over defaults when present", () => {
@@ -361,22 +381,6 @@ describe("composeInitialParts - defaults when Pedro hasn't generated yet", () =>
     expect(noteIdx).toBeLessThan(conclusionIdx)
   })
 
-  it("rotates the default actions across weeks so the trio differs", () => {
-    const inputs = [0, 1, 2, 3].map((wOffset) => {
-      const d = new Date(MONDAY_WEEK_20)
-      d.setUTCDate(d.getUTCDate() + 7 * wOffset)
-      return composeInitialParts({
-        firstName: "Bram",
-        clientId: "12345",
-        kpi: KPI,
-        pedro: null,
-        now: d,
-      }).parts.actions
-    })
-    // At least one of the offset weeks should produce a different action trio.
-    const allSame = inputs.every((trio) => trio.join("|") === inputs[0].join("|"))
-    expect(allSame).toBe(false)
-  })
 })
 
 describe("partsToWeeklyUpdateParams - V2 multi-variable template mapping", () => {
@@ -447,10 +451,13 @@ describe("partsToWeeklyUpdateParams - V2 multi-variable template mapping", () =>
     expect(out[3]).toBe("Volgende week zien we of dit zich vertaalt.")
   })
 
-  it("handles empty actions list with a fallback placeholder for {{5}}", () => {
+  it("falls back to an honest non-fabricated {{5}} when there are no actions", () => {
     const out = partsToWeeklyUpdateParams({ ...baseParts, actions: [] })
-    // Meta rejects empty body params - must substitute something non-empty.
-    expect(out[4]).toBe("Geen specifieke actiepunten deze week.")
+    // Meta rejects empty body params, and the template header ("✅ Wat we
+    // deze week gaan doen:") is fixed - so {{5}} must be non-empty. It states
+    // the honest standard practice (daily optimisation), never a fabricated
+    // specific task.
+    expect(out[4]).toBe("We optimaliseren de campagne dagelijks en sturen bij waar nodig.")
   })
 
   it("substitutes per-slot fallbacks when every editable field is empty (defends against Meta 422)", () => {
