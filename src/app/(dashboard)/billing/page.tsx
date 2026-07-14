@@ -13,6 +13,7 @@ import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
 import { RefreshBillingButton } from "./_components/refresh-billing-button"
+import { GlobalCreateInvoice } from "./_components/global-create-invoice"
 import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
@@ -264,7 +265,12 @@ export default async function BillingPage() {
     <div>
       <PageHeader
         title="Billing"
-        actions={<RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <GlobalCreateInvoice />
+            <RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />
+          </div>
+        }
       />
       <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} adminOptions={adminOptions} />
     </div>

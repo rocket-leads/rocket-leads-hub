@@ -9,6 +9,7 @@ import { mondayStatusToHub } from "@/lib/clients/status"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { Skeleton } from "@/components/ui/skeleton"
 import { InboxView } from "./_components/inbox-view"
+import { InboxShell } from "./_components/shell/inbox-shell"
 
 function InboxLoading() {
   return (
@@ -21,7 +22,7 @@ function InboxLoading() {
   )
 }
 
-async function InboxData() {
+async function InboxData({ v2 }: { v2: boolean }) {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
@@ -54,30 +55,41 @@ async function InboxData() {
     role: string
   }>
 
+  const currentUser = {
+    id: userId,
+    name: session.user.name ?? session.user.email,
+    role,
+  }
+  const clientOptions = visibleClients.map((c) => ({
+    id: c.mondayItemId,
+    name: c.name,
+    isLive: mondayStatusToHub(c.campaignStatus, c.boardType) === "live",
+  }))
+
+  // ?v2 opts into the new 3-pane unified inbox shell while the legacy
+  // InboxView stays the default. Cut over once the shell is validated.
+  const Component = v2 ? InboxShell : InboxView
   return (
-    <InboxView
-      currentUser={{
-        id: userId,
-        name: session.user.name ?? session.user.email,
-        role,
-      }}
+    <Component
+      currentUser={currentUser}
       initialUpdates={updates}
       initialTasks={tasks}
       users={users}
-      clients={visibleClients.map((c) => ({
-        id: c.mondayItemId,
-        name: c.name,
-        isLive: mondayStatusToHub(c.campaignStatus, c.boardType) === "live",
-      }))}
+      clients={clientOptions}
     />
   )
 }
 
-export default function InboxPage() {
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ v2?: string }>
+}) {
+  const { v2 } = await searchParams
   return (
     <div>
       <Suspense fallback={<InboxLoading />}>
-        <InboxData />
+        <InboxData v2={v2 !== undefined} />
       </Suspense>
     </div>
   )
