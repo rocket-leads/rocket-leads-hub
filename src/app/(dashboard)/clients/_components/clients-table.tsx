@@ -295,16 +295,23 @@ function fmtKpi(value: number, type: "currency" | "integer"): string {
   return value.toLocaleString("en-GB")
 }
 
-/** YYYY-MM-DD of "today" so two timestamps on the same calendar day compare
- *  equal regardless of how many hours apart they were. We compare ISO date
- *  prefixes rather than ms-deltas because "24h ago" and "today" aren't the
- *  same concept - Roy wants the button to come back at the start of the
- *  next calendar day, not 24h after the last send. */
-function isSameLocalDay(iso: string | undefined): boolean {
+/** True when `iso` falls on/after the most recent Monday 00:00 local time.
+ *  The weekly update runs on a Monday-Sunday cadence, so "sent this week"
+ *  (not "sent today") is the right signal: on any given Monday an AM wants
+ *  one glance at who has already had this week's update and who hasn't.
+ *  A send on Monday keeps the row green through the following Sunday, then
+ *  the button returns the next Monday. Roy 2026-07-14. */
+function isSentThisWeek(iso: string | undefined): boolean {
   if (!iso) return false
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return false
-  return d.toLocaleDateString("en-CA") === new Date().toLocaleDateString("en-CA")
+  const now = new Date()
+  const monday = new Date(now)
+  // getDay(): 0 = Sunday … 6 = Saturday → offset back to this week's Monday.
+  const offsetFromMonday = (now.getDay() + 6) % 7
+  monday.setDate(now.getDate() - offsetFromMonday)
+  monday.setHours(0, 0, 0, 0)
+  return d.getTime() >= monday.getTime()
 }
 
 /** "Laatste update: 15 mei" - short caption matching the MRR/budget style. */
@@ -322,8 +329,8 @@ function fmtLastUpdateLabel(iso: string | undefined, locale: Locale): string {
  * Combined cell for the Client update column.
  *
  * Renders one of two states:
- *   - Updated today  → green "Geüpdatet vandaag ✓" pill, blocks accidental
- *     re-send within the same calendar day.
+ *   - Sent this week → green "Deze week verstuurd ✓" pill, blocks accidental
+ *     re-send before next Monday (weekly cadence - one update per week).
  *   - Otherwise      → the Update button. Beneath either state we add a
  *     small grey "Laatste update: <date>" caption when there's a prior send,
  *     same visual treatment as the MRR / budget caption.
@@ -339,15 +346,15 @@ function ClientUpdateCell({
   lastUpdateAt: string | undefined
   locale: Locale
 }) {
-  const updatedToday = isSameLocalDay(lastUpdateAt)
+  const sentThisWeek = isSentThisWeek(lastUpdateAt)
   const caption = lastUpdateAt ? fmtLastUpdateLabel(lastUpdateAt, locale) : ""
 
   return (
     <div className="leading-tight inline-flex flex-col items-center gap-0.5">
-      {updatedToday ? (
+      {sentThisWeek ? (
         <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          {t("clients.client_update.updated_today", locale)}
+          {t("clients.client_update.sent_this_week", locale)}
         </span>
       ) : (
         <ClientUpdateButton mondayItemId={mondayItemId} clientName={clientName} />

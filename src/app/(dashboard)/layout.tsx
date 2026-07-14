@@ -4,7 +4,6 @@ import { ClientSearch } from "@/components/client-search"
 import { CommandBar } from "@/components/copilot/command-bar"
 import { ApiHealthBanner } from "@/components/api-health-banner"
 import { GlobalClientSlideOver } from "@/components/global-client-slide-over"
-import { WeeklyUpdatesChip } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
 import { auth } from "@/lib/auth"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -33,14 +32,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               search field, not a full nav bar). z-40 sits beneath the
               client slide-over (z-50) so the panel still covers it. */}
           <header className="sticky top-0 z-40 flex h-14 items-center justify-end gap-2 px-8 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
-            {/* Order matters (Roy 2026-06-11): scheduled-deliverable chips
-                first (calendar), then the AI surface (Co-pilot command bar).
-                Keeps the "agenda"-style work to the left of the "AI"-style
-                work so the two don't read as the same thing. Roy 2026-06-12:
-                the standalone notification bell collapsed into the Co-pilot
-                button - one button, badge counter + drafts panel both live
-                on/inside the ⌘J surface now. */}
-            <WeeklyUpdatesChip />
+            {/* The AI surface (Co-pilot command bar) + global client search.
+                Roy 2026-07-14: the weekly-update queue chip was removed - the
+                weekly update now runs entirely through the per-row "Update"
+                button + "Client update" column on the clients table, so there's
+                no separate queue window to surface here anymore. */}
             <CommandBar />
             <ClientSearch />
           </header>

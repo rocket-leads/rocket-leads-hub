@@ -86,29 +86,12 @@ export type CreateCalendarEventAction = {
   addMeetLink?: boolean
 }
 
-/** Compose + queue a weekly client-update draft for the given client.
- *  The executor calls the same pipeline the Monday cron uses (KPI + Pedro
- *  + Stripe overdue + channel detection from Monday's `contact_channel`
- *  column), upserts it into `weekly_update_drafts` with status='pending',
- *  then deep-links the AM into the WeeklyUpdatesChip queue sheet with
- *  this draft pre-selected. Channel (WhatsApp template vs Email body) is
- *  picked automatically from the client's preferred contact channel.
- *
- *  Roy 2026-06-12: "schrijf een update naar ZoomX op basis van de huidige
- *  performance" → fire this; the AM reviews + edits + sends from the
- *  existing dialog. */
-export type PrepareClientUpdateAction = {
-  type: "prepare_client_update"
-  clientId: string
-}
-
 export type CopilotAction =
   | CreateTaskAction
   | CreateReminderAction
   | TriggerPedroRefreshAction
   | NavigateToClientAction
   | CreateCalendarEventAction
-  | PrepareClientUpdateAction
 
 export const COPILOT_TOOLS: Anthropic.Tool[] = [
   {
@@ -220,21 +203,6 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
           type: "string",
           enum: ["campaigns", "billing", "communication", "settings"],
           description: "Which tab to open. Default 'campaigns' when not specified.",
-        },
-      },
-      required: ["clientId"],
-    },
-  },
-  {
-    name: "prepare_client_update",
-    description:
-      "Compose + queue an AD-HOC MID-WEEK update for a client — a casual, AI-generated check-in covering recent performance (7d/14d/30d vs prior windows), Pedro action items, overdue invoices, and last-contact context. This is DIFFERENT from the Monday-morning weekly digest (which runs as a cron and has a fixed structured shape); the mid-week version is conversational, varies in tone per send, and is meant to be sent any day of the week when an AM wants to proactively reach out. Use when the user says 'schrijf een update voor [klant]', 'maak een update voor [klant]', 'stuur [klant] een update', 'kort appje met update voor [klant]', 'write an update for [client]', 'check-in [klant]', etc. Channel (WhatsApp template vs Email body) is picked automatically from the client's preferred-channel setting on Monday — don't try to control it from the prompt. The AM never has to confirm a separate editor step for this tool; the draft lands in the weekly-update queue surface ready for review + send.",
-    input_schema: {
-      type: "object",
-      properties: {
-        clientId: {
-          type: "string",
-          description: "Monday item ID of the client. MUST be a roster match — this tool only works for known clients, since the channel + recipient + template all come from Monday's client row.",
         },
       },
       required: ["clientId"],

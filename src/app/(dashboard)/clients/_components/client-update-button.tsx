@@ -28,7 +28,6 @@ import {
   renderFromParts,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
-import { useWeeklyDraftAutosave } from "@/lib/clients/use-weekly-draft-autosave"
 
 type Props = {
   mondayItemId: string
@@ -504,28 +503,9 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
 
 // ─── Dialog ───────────────────────────────────────────────────────────────
 
-/** Subset of WeeklyUpdateDraftListItem the dialog actually needs to skip
- *  the generate fetch. Kept inline here (not imported from the route) so
- *  the dialog stays decoupled from the list endpoint's response shape and
- *  can be hydrated by any caller - queue overlay, mass-send tool, etc. */
-export type ClientUpdateDraftSeed = {
-  draftId: string
-  parts: EditableParts
-  channel: "whatsapp" | "email" | "unknown"
-  templateName: string | null
-}
-
 type DialogProps = Props & {
   open: boolean
   onOpenChange: (next: boolean) => void
-  /** Pre-generated draft (from the Monday cron) - when present, the dialog
-   *  skips its own /client-update POST and renders from this seed
-   *  immediately. On successful send, also PATCHes the draft to
-   *  status='sent' so it disappears from the queue. */
-  draftSeed?: ClientUpdateDraftSeed
-  /** Optional callback fired after a draft-backed send completes (sent
-   *  OR dismissed) so the parent can refresh its queue list. */
-  onDraftResolved?: () => void
 }
 
 export function ClientUpdateDialog({
@@ -533,8 +513,6 @@ export function ClientUpdateDialog({
   clientName,
   open,
   onOpenChange,
-  draftSeed,
-  onDraftResolved,
 }: DialogProps) {
   const queryClient = useQueryClient()
   const [parts, setParts] = useState<EditableParts | null>(null)
@@ -627,34 +605,11 @@ export function ClientUpdateDialog({
       }
       return res.json()
     },
-    onSuccess: async (data) => {
+    onSuccess: () => {
       setSent(true)
+      // Refresh the "Client update" column so the row flips to the green
+      // "Deze week verstuurd" state immediately after send.
       void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
-      // Test sends never consume a draft or trigger client-side state
-      // changes - they're verifications, not real client communications.
-      // The dialog closes after the success indicator and the draft
-      // queue stays untouched.
-      const wasTest = (data as { test?: boolean })?.test === true
-      // Draft-backed send → mark the draft consumed so it leaves the queue.
-      // Fire-and-forget: a flake here shouldn't roll back the visible
-      // "Sent" state, the cron is idempotent so worst case the draft
-      // reappears next Monday.
-      if (!wasTest && draftSeed?.draftId) {
-        try {
-          await fetch(`/api/weekly-update-drafts/${draftSeed.draftId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              status: "sent",
-              sentMessageId: (data as { outboundMsgId?: string })?.outboundMsgId,
-            }),
-          })
-        } catch {
-          // swallowed - see fire-and-forget comment above
-        }
-        void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
-        onDraftResolved?.()
-      }
       setTimeout(() => onOpenChange(false), 1200)
     },
     onError: (e: Error) => setSendError(e.message),
@@ -662,23 +617,11 @@ export function ClientUpdateDialog({
 
   useEffect(() => {
     if (!open) return
-    // Draft-backed open: hydrate state from the seed and skip the fetch.
-    // The seed comes from the Monday cron's pre-composed parts, which were
-    // generated using the SAME pipeline as /client-update would run now,
-    // so re-fetching would just produce identical data (assuming same
-    // KPI/Pedro cache state). The reshape was already applied at cron time
-    // when templateVersion === 2 (now always V2), so we use parts verbatim.
-    if (draftSeed && !parts) {
-      setParts(draftSeed.parts)
-      setChannel(draftSeed.channel)
-      setChannelLabel(draftSeed.channel === "email" ? "Email" : "WhatsApp")
-      // Cron only generates drafts for Live + Trengo-linked clients, so
-      // by construction the contact is always linked when seeded.
-      setTrengoLinked(true)
-      setWaTemplateName(draftSeed.templateName)
-      return
-    }
-    if (!draftSeed && !generate.data && !generate.isPending) generate.mutate()
+    // Compose the weekly update fresh on open via /client-update (same
+    // KPI + Pedro + Stripe + channel pipeline the cron used to run). The
+    // weekly window is last week's already-completed range, so a fresh
+    // build always reflects the right data.
+    if (!generate.data && !generate.isPending) generate.mutate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -713,20 +656,6 @@ export function ClientUpdateDialog({
   const inputsDisabled = isSending || sent
   const isEmail = channel === "email"
 
-  // Autosave the latest edits back to the cron-generated draft (if any)
-  // so an AM never loses work when Trengo errors mid-send, the dialog
-  // is closed mid-edit, or the page is hard-reloaded. No-op for ad-hoc
-  // sends (no `draftSeed.draftId` → nothing to write to). Roy 2026-05-23
-  // after Danny lost edits on a failed send.
-  const { flushNow } = useWeeklyDraftAutosave({
-    draftId: draftSeed?.draftId ?? null,
-    parts,
-    suspendDuring: inputsDisabled,
-  })
-  const sendErrorObj = send.error
-  useEffect(() => {
-    if (sendErrorObj) void flushNow()
-  }, [sendErrorObj, flushNow])
   // For WhatsApp the AM's HSM template is required (Meta won't accept free
   // text outside the 24h window, and we route ALL outbound via template).
   // For email no template is needed - Trengo handles the email channel

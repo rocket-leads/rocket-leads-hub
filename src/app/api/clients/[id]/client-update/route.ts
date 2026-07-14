@@ -8,14 +8,15 @@ import {
   renderFromParts,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
-import { createAdminClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Client-facing weekly update draft.
  *
- * Thin HTTP wrapper around `buildWeeklyUpdateDraft` - the same composition
- * pipeline the Monday-morning cron uses. Returns editable parts + a fresh
+ * Thin HTTP wrapper around `buildWeeklyUpdateDraft`. Composed fresh each
+ * time the AM opens the "Update" button on the clients table (the weekly
+ * KPI window is last week's already-completed range, so a live build
+ * always reflects the right data). Returns editable parts + a fresh
  * preview render + the resolved WhatsApp template name (hardcoded
  * `rl_weekly_<voornaam>`) so the dialog can post the right send payload.
  *
@@ -44,16 +45,6 @@ export type ClientUpdateResponse = {
   recipientPhone: string | null
 }
 
-/** ISO date (YYYY-MM-DD) of the Monday of `d` (UTC). Matches the
- *  `week_of` key the Monday cron writes into `weekly_update_drafts`. */
-function mondayOfUtc(d: Date): string {
-  const day = d.getUTCDay() // 0 = Sunday … 6 = Saturday
-  const offsetFromMonday = (day + 6) % 7 // Mon→0, Tue→1, …, Sun→6
-  const monday = new Date(d)
-  monday.setUTCDate(d.getUTCDate() - offsetFromMonday)
-  return monday.toISOString().slice(0, 10)
-}
-
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -62,67 +53,6 @@ export async function POST(
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: mondayItemId } = await params
-
-  // Cache check - the Monday-morning cron pre-builds a draft for every
-  // Live + Trengo-linked client and stores it in `weekly_update_drafts`.
-  // Reusing that snapshot skips the Meta + Stripe + Trengo + Pedro fan-out
-  // that buildWeeklyUpdateDraft does, which is the 30-40s "Update
-  // klaarzetten…" hang the AM sees mid-week. The data hasn't changed -
-  // the weekly KPI window is last week's already-completed range - so
-  // the cron's snapshot is the right thing to show. Falls through to the
-  // live build only when no pending draft exists (client wasn't a cron
-  // candidate, e.g. flipped Live mid-week, or the cron hasn't run yet).
-  try {
-    const supabase = await createAdminClient()
-    const weekOf = mondayOfUtc(new Date())
-    const { data: cachedDraft } = await supabase
-      .from("weekly_update_drafts")
-      .select("parts, channel, template_name")
-      .eq("monday_item_id", mondayItemId)
-      .eq("week_of", weekOf)
-      .eq("status", "pending")
-      .maybeSingle<{
-        parts: EditableParts | null
-        channel: ClientUpdateChannel | null
-        template_name: string | null
-      }>()
-
-    if (cachedDraft?.parts) {
-      // Read recipient email/phone straight from Monday (no Trengo
-      // roundtrip). The send path now uses these columns directly, so
-      // the dialog preview should match exactly what gets sent.
-      const { fetchClientById } = await import("@/lib/integrations/monday")
-      const { resolveClientSendChannel } = await import("@/lib/clients/send-channel")
-      const client = await fetchClientById(mondayItemId)
-      const resolved = client ? resolveClientSendChannel(client) : null
-      const channel: ClientUpdateChannel =
-        cachedDraft.channel === "email" || cachedDraft.channel === "whatsapp"
-          ? cachedDraft.channel
-          : "unknown"
-
-      return NextResponse.json<ClientUpdateResponse>({
-        parts: cachedDraft.parts,
-        preview: renderFromParts(cachedDraft.parts),
-        channel,
-        channelLabel: client?.contactChannel ?? "",
-        trengoContactLinked: !!(resolved && resolved.ok),
-        whatsappTemplateName: cachedDraft.template_name,
-        // The cron resolved the slug via the same `hardcodedTemplateName`
-        // helper, so the dialog's branching logic on the source field
-        // should treat it as "hardcoded" too.
-        whatsappTemplateSource: cachedDraft.template_name ? "hardcoded" : "none",
-        recipientEmail: client?.email || null,
-        recipientPhone: client?.phone || null,
-      })
-    }
-  } catch (e) {
-    // Cache lookup failure should never block the live build. Log and
-    // fall through.
-    console.error(
-      "[client-update] weekly_update_drafts cache lookup failed:",
-      e instanceof Error ? e.message : e,
-    )
-  }
 
   try {
     const built = await buildWeeklyUpdateDraft({

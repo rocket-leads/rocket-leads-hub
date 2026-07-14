@@ -22,10 +22,10 @@ import { resolveClientSendChannel } from "@/lib/clients/send-channel"
 /**
  * Shared "build a weekly update draft for ONE client" pipeline.
  *
- * Used by the Monday-morning cron (`/api/cron/weekly-update-drafts`) and
- * the interactive Client Update dialog endpoint so both walk identical
- * composition logic - KPI + Pedro lookup, hardcoded `rl_weekly_<voornaam>`
- * template resolution, channel detection.
+ * Called by the interactive Client Update dialog endpoint
+ * (`POST /api/clients/[id]/client-update`) each time an AM opens the
+ * "Update" button on the clients table - KPI + Pedro lookup, hardcoded
+ * `rl_weekly_<voornaam>` template resolution, channel detection.
  *
  * WhatsApp path: always uses the V2 multi-variable template
  * (`rl_weekly_<voornaam>`). No env flag, no V1 fallback. If the template

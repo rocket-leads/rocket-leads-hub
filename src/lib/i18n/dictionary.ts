@@ -346,7 +346,7 @@ export const DICTIONARY = {
   "clients.col.leads": { nl: "Leads", en: "Leads" },
   "clients.col.cpl": { nl: "CPL", en: "CPL" },
   "clients.col.client_update": { nl: "Client update", en: "Client update" },
-  "clients.client_update.updated_today": { nl: "Vandaag verstuurd", en: "Sent today" },
+  "clients.client_update.sent_this_week": { nl: "Deze week verstuurd", en: "Sent this week" },
   "clients.client_update.last": { nl: "Laatste: {date}", en: "Last: {date}" },
 
   // Health / payment status labels
@@ -2176,14 +2176,6 @@ export const DICTIONARY = {
   "copilot.field.attendee_name": { nl: "Naam genodigde", en: "Attendee name" },
   "copilot.field.attendee_name_placeholder": { nl: "Pieter, Lisa, …", en: "Pieter, Lisa, …" },
   "copilot.field.attendee_email": { nl: "E-mail genodigde", en: "Attendee email" },
-  "copilot.confirm.btn.prepare_update": {
-    nl: "Update klaarzetten",
-    en: "Queue update",
-  },
-  "copilot.client_update.hint": {
-    nl: "Kanaal (WhatsApp-template of e-mail) wordt automatisch gekozen op basis van de preferred contact van de klant. Na 'Update klaarzetten' opent de queue met deze draft bovenaan — daar kun je 'm controleren, aanpassen en versturen.",
-    en: "Channel (WhatsApp template or email) is picked automatically from the client's preferred contact. After queuing, the queue sheet opens with this draft pre-selected so you can review, edit, and send.",
-  },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
