@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sanitizeWaTemplateParam } from "./reply"
+import { sanitizeWaTemplateParam, resolveWaSessionMessageId } from "./reply"
 
 describe("sanitizeWaTemplateParam", () => {
   it("returns empty input unchanged", () => {
@@ -54,5 +54,35 @@ describe("sanitizeWaTemplateParam", () => {
     expect(out).toContain("Bram!")
     expect(out).toContain("• CPL: €11.42")
     expect(out).toContain("• Nieuwe varianten testen")
+  })
+})
+
+describe("resolveWaSessionMessageId", () => {
+  // The real-world regression: Trengo's wa_sessions success body nests the
+  // created message under `message.id`. The phone-template helper used to
+  // ignore that key, so a delivered WhatsApp update threw "returned no id -
+  // keys: message" and the audit stamp was skipped.
+  it("reads the id from a nested message object (the send-error regression)", () => {
+    expect(resolveWaSessionMessageId({ message: { id: 987 } })).toBe(987)
+  })
+
+  it("reads a top-level message_id", () => {
+    expect(resolveWaSessionMessageId({ message_id: "abc" })).toBe("abc")
+  })
+
+  it("reads a top-level id", () => {
+    expect(resolveWaSessionMessageId({ id: 42 })).toBe(42)
+  })
+
+  it("reads a nested data.message_id", () => {
+    expect(resolveWaSessionMessageId({ data: { message_id: 7 } })).toBe(7)
+  })
+
+  it("returns null when message is an error string (genuine failure)", () => {
+    expect(resolveWaSessionMessageId({ message: "The given data was invalid." })).toBeNull()
+  })
+
+  it("returns null on an empty body", () => {
+    expect(resolveWaSessionMessageId({})).toBeNull()
   })
 })

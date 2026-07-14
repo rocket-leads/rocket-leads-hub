@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/supabase/server"
  *   - `rl_universal_<voornaam>` - single-variable wrapper for ad-hoc /
  *     AI-drafted updates (inbox composer, per-client "Update" button)
  *   - `rl_weekly_<voornaam>`    - multi-variable structured template for
- *     the Monday weekly update queue
+ *     the weekly Client Update (per-client "Update" button on the clients
+ *     table; composed fresh on open)
  *
  * The AM's `<voornaam>` is derived from `users.name` (first token,
  * lowercased). No per-AM override is consulted - onboarding a new AM
@@ -99,8 +100,8 @@ export async function resolveWaTemplate(args: {
 }
 
 /** Weekly Update HSM template (`rl_weekly_<voornaam>`) - used by the
- *  Monday-morning cron + the per-client Client Update dialog when the
- *  V2 env flag is on. */
+ *  per-client Client Update dialog (the "Update" button on the clients
+ *  table). */
 export async function resolveWeeklyUpdateTemplate(args: {
   userId: string
   /** Accepted for backwards-compat - see resolveWaTemplate. */

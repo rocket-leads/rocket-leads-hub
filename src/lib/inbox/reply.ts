@@ -287,6 +287,43 @@ export async function sendTrengoTemplateAsUser(
  * derived id is used by the route to mirror the outbound into
  * inbox_events as usual.
  */
+/** Shape of the JSON Trengo's `POST /v2/wa_sessions` can return. The
+ *  success body nests the created message under `message` (an object with
+ *  its own `id`); some error bodies put a human-readable string there
+ *  instead. Older/other endpoints expose the id at the top level or under
+ *  `data`. We accept all of these so a good send is never mis-read as a
+ *  failure (which would skip the audit stamp and tempt a duplicate resend). */
+export type WaSessionResponse = {
+  id?: number | string
+  message_id?: number | string
+  message?: { id?: number | string } | string | null
+  data?: {
+    id?: number | string
+    ticket_id?: number | string
+    message_id?: number | string
+    message?: { id?: number | string } | null
+  } | null
+}
+
+/** Pull the created-message id out of a `wa_sessions` response, tolerating
+ *  every shape Trengo has been observed to return. Returns `null` when no
+ *  id is present anywhere (a genuine failure). Pure + exported for tests. */
+export function resolveWaSessionMessageId(
+  json: WaSessionResponse,
+): number | string | null {
+  const nestedMessageId =
+    json.message && typeof json.message === "object" ? json.message.id : undefined
+  const id =
+    json.data?.message_id ??
+    json.message_id ??
+    json.id ??
+    nestedMessageId ??
+    json.data?.message?.id ??
+    json.data?.id ??
+    json.data?.ticket_id
+  return id ?? null
+}
+
 export async function sendTrengoTemplateToPhoneAsUser(
   userId: string,
   recipientPhoneNumber: string,
@@ -352,17 +389,16 @@ export async function sendTrengoTemplateToPhoneAsUser(
     )
   }
 
-  const json = (await res.json()) as {
-    id?: number | string
-    message_id?: number | string
-    data?: { id?: number | string; ticket_id?: number | string; message_id?: number | string }
-  }
-  const id =
-    json.data?.message_id ?? json.message_id ?? json.id ?? json.data?.id ?? json.data?.ticket_id
+  const json = (await res.json()) as WaSessionResponse
+  const id = resolveWaSessionMessageId(json)
   if (id == null) {
-    throw new Error(
-      `Trengo wa_sessions returned no id - keys: ${Object.keys(json).join(",")}`,
-    )
+    // Surface the full body (trimmed) instead of just the top-level keys.
+    // When Trengo 200s with `{message:"<reason>"}` this exposes the reason;
+    // it also protects against a false "failed" toast on a send that
+    // actually went out (which would otherwise skip the audit stamp and
+    // tempt the AM into a duplicate re-send).
+    const raw = JSON.stringify(json).slice(0, 400)
+    throw new Error(`Trengo wa_sessions returned no message id. Response: ${raw}`)
   }
   return { message_id: String(id) }
 }
