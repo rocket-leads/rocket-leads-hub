@@ -632,10 +632,16 @@ export type ChatThreadSummary = {
    *  for the WA line). Useful in the thread header so the user can see
    *  exactly which inbox the message came in on. */
   channelName: string | null
-  /** Trengo channel id (numeric). Surfaced so the WhatsApp composer can
-   *  fetch the templates approved for this channel without an extra
-   *  thread-detail round-trip. Null for non-Trengo sources. */
+  /** Trengo channel id (numeric) of the thread's primary/most-recent channel.
+   *  Surfaced so the WhatsApp composer can fetch the templates approved for
+   *  this channel without an extra thread-detail round-trip. Null for
+   *  non-Trengo sources. */
   trengoChannelId: number | null
+  /** All distinct Trengo channel ids seen across the thread's rows. A thread is
+   *  shown under a channel if it has ANY message on it, so a contact who was
+   *  messaged on more than one line still surfaces under each - and the
+   *  per-channel filter never mis-files a thread onto a single wrong channel. */
+  channelIds: number[]
   /** Most recent message preview (truncated). */
   latestPreview: string
   /** Latest email subject across the thread - drives the bold title on
@@ -663,6 +669,19 @@ export type ChatThreadSummary = {
   isStarred: boolean
   isArchived: boolean
   snoozedUntil: string | null
+  /** True when the thread contains any outbound/team message (author_kind
+   *  'rl_team') - whether sent from the Hub composer or directly in Trengo
+   *  (the webhook ingests those too). Drives the Open -> Assigned ("Opgepakt")
+   *  transition in the external inbox: a ticket becomes Assigned the moment
+   *  we've replied to it, and stays there until it's closed (archived). */
+  hasTeamReply: boolean
+  /** Inbound (client) messages received AFTER our last outbound reply. This is
+   *  the "awaiting your response" count shown on the ticket row - NOT the raw
+   *  unread-status count. Roy 2026-07-15: a thread showed 13 unread when only
+   *  2 client messages came in after our last send; we count exactly those. If
+   *  we never replied, every inbound message counts (the whole ticket is
+   *  pending). */
+  pendingCount: number
 }
 
 export type ChatMessage = {
@@ -1005,6 +1024,31 @@ async function groupAndDecorateChatRows(
     // ("klant heeft op je archive geantwoord → back in inbox").
     const isStarred = threadRows.some((r) => r.starred === true)
     const isArchived = latest.archived_at != null
+    // Every distinct Trengo channel this thread has rows on (for the "any row
+    // on channel X" per-channel filter).
+    const channelIds = Array.from(
+      new Set(
+        threadRows
+          .map((r) => r.trengo_channel_id)
+          .filter((x): x is number => x != null),
+      ),
+    )
+    // Any outbound/team message → the ticket has been picked up ("Opgepakt").
+    const hasTeamReply = threadRows.some((r) => r.author_kind === "rl_team")
+    // Pending = client messages after our last reply. threadRows is DESC by
+    // created_at, so the first rl_team row is our most recent send.
+    let lastTeamAt: string | null = null
+    for (const r of threadRows) {
+      if (r.author_kind === "rl_team") {
+        lastTeamAt = r.created_at
+        break
+      }
+    }
+    const pendingCount = threadRows.filter((r) => {
+      const inbound = r.author_kind === "client" || r.author_kind === "external"
+      if (!inbound) return false
+      return lastTeamAt == null || r.created_at > lastTeamAt
+    }).length
     let snoozedUntil: string | null = null
     for (const r of threadRows) {
       if (!r.snoozed_until) continue
@@ -1088,6 +1132,9 @@ async function groupAndDecorateChatRows(
       isStarred,
       isArchived,
       snoozedUntil,
+      hasTeamReply,
+      pendingCount,
+      channelIds,
     })
   }
 

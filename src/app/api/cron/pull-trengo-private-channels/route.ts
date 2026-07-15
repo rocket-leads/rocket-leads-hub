@@ -150,6 +150,14 @@ function eventsFromMessageList(
   cutoffMs: number,
 ): EventToInsert[] {
   const out: EventToInsert[] = []
+  // Use the ticket's OWN channel, not the channel we happened to fetch FOR.
+  // Trengo's `/tickets?channel_id=X` filter is unreliable for personal tokens
+  // (it returns the user's tickets across channels), so stamping the loop's
+  // `channelId` on every row cross-contaminated the per-channel inbox
+  // (Roy 2026-07-15: Roel's channel showed Shanna's / other lines' tickets).
+  // The webhook already reads `ticket.channel.id`; match it here. Falls back to
+  // the fetched channelId only when the list response omits the channel object.
+  const realChannelId = ticket.channel?.id ?? channelId
   for (const m of messages) {
     // Same timestamp normalization as the ticket-level check - Trengo's
     // "YYYY-MM-DD HH:mm:ss" doesn't parse uniformly without coercing
@@ -214,7 +222,7 @@ function eventsFromMessageList(
         : m.author?.name ?? contact?.name ?? "Unknown"
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
-      channelId,
+      channelId: realChannelId,
       ticketId: ticket.id,
       contactId,
       contactName: contact?.name ?? null,
