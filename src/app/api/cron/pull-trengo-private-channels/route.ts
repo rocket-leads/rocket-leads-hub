@@ -147,6 +147,25 @@ function ticketIsFresh(ticket: TrengoConversation, cutoffMs: number): boolean {
   return false
 }
 
+/** The authoritative channel for a ticket = the channel a webhook row already
+ *  stored for it (webhook rows carry classify_method='ai'). Returns null when
+ *  no webhook row exists yet (genuinely silent channel), so the caller falls
+ *  back to the fetched channel. */
+async function lookupTicketWebhookChannel(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  ticketId: number,
+): Promise<number | null> {
+  const { data } = await supabase
+    .from("inbox_events")
+    .select("trengo_channel_id")
+    .eq("source_thread", `trengo:ticket:${ticketId}`)
+    .eq("classify_method", "ai")
+    .not("trengo_channel_id", "is", null)
+    .limit(1)
+    .maybeSingle<{ trengo_channel_id: number | null }>()
+  return data?.trengo_channel_id ?? null
+}
+
 function eventsFromMessageList(
   channelId: number,
   ticket: TrengoConversation,
@@ -515,8 +534,17 @@ export async function GET(req: NextRequest) {
                 userToken: token,
                 ticketId: ticket.id,
               })
+              // Trengo's `?channel_id=` filter is unreliable for personal
+              // tokens - it returns a contact's tickets across lines - and the
+              // list omits `ticket.channel`. So the fetched channelId is NOT a
+              // trustworthy channel for a gap-filled message. The webhook IS
+              // authoritative, so if this ticket already has a webhook row,
+              // inherit its channel instead of stamping the fetched one (Roy
+              // 2026-07-15: a single poll-ingested message landed under the
+              // wrong line, fragmenting the conversation).
+              const webhookCh = await lookupTicketWebhookChannel(supabase, ticket.id)
               candidates.push(
-                ...eventsFromMessageList(channelId, ticket, messages, cutoffMs),
+                ...eventsFromMessageList(webhookCh ?? channelId, ticket, messages, cutoffMs),
               )
             } catch (e) {
               console.error(
