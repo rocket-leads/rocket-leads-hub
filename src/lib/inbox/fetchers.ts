@@ -668,6 +668,10 @@ export type ChatThreadSummary = {
    *                    default in Active views. */
   isStarred: boolean
   isArchived: boolean
+  /** Explicit "picked up" (Opgepakt) state - set by the pick-up button or by
+   *  replying, cleared by moving back to Open. Distinct from hasTeamReply so
+   *  the transition is reversible. */
+  isAssigned: boolean
   snoozedUntil: string | null
   /** True when the thread contains any outbound/team message (author_kind
    *  'rl_team') - whether sent from the Hub composer or directly in Trengo
@@ -733,6 +737,7 @@ type RawChatRow = {
   status: string
   starred: boolean | null
   archived_at: string | null
+  assigned_at: string | null
   snoozed_until: string | null
   created_at: string
   created_at_src: string | null
@@ -746,7 +751,7 @@ type RawChatRow = {
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, body_html,
-  email_subject, email_from, status, starred, archived_at, snoozed_until,
+  email_subject, email_from, status, starred, archived_at, assigned_at, snoozed_until,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
@@ -1046,6 +1051,7 @@ async function groupAndDecorateChatRows(
     // ("klant heeft op je archive geantwoord → back in inbox").
     const isStarred = threadRows.some((r) => r.starred === true)
     const isArchived = latestAny.archived_at != null
+    const isAssigned = threadRows.some((r) => r.assigned_at != null)
     // Every distinct Trengo channel this thread has rows on (for the "any row
     // on channel X" per-channel filter).
     const channelIds = Array.from(
@@ -1155,6 +1161,7 @@ async function groupAndDecorateChatRows(
       unreadCount,
       isStarred,
       isArchived,
+      isAssigned,
       snoozedUntil,
       hasTeamReply,
       pendingCount,
@@ -1430,6 +1437,47 @@ export async function setChatThreadArchived(
     .update({ archived_at: archived ? new Date().toISOString() : null })
     .in("id", ids)
   if (error) throw new Error(`Failed to update archive: ${error.message}`)
+  return { updated: ids.length }
+}
+
+/**
+ * Mark a chat thread "picked up" (Opgepakt) or move it back to Open. Stamps
+ * every row's assigned_at so the rollup sees it regardless of which row is
+ * latest. Moving to Open also un-archives so the 3-state transitions are clean
+ * (Closed → Assigned/Open both land it back in the active inbox).
+ */
+export async function setChatThreadAssigned(
+  threadKey: string,
+  userId: string,
+  role: Role,
+  assigned: boolean,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+  const ids = await visibleThreadEventIds(supabase, threadKey, userId, role)
+  if (ids.length === 0) return { updated: 0 }
+  const patch = assigned
+    ? { assigned_at: new Date().toISOString(), archived_at: null }
+    : { assigned_at: null }
+  const { error } = await supabase.from("inbox_events").update(patch).in("id", ids)
+  if (error) throw new Error(`Failed to update assigned: ${error.message}`)
+  return { updated: ids.length }
+}
+
+/** Move a chat thread back to Open: clear both the assigned + archived markers
+ *  in one write, so Closed→Open and Assigned→Open are a single clean action. */
+export async function setChatThreadOpen(
+  threadKey: string,
+  userId: string,
+  role: Role,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+  const ids = await visibleThreadEventIds(supabase, threadKey, userId, role)
+  if (ids.length === 0) return { updated: 0 }
+  const { error } = await supabase
+    .from("inbox_events")
+    .update({ assigned_at: null, archived_at: null })
+    .in("id", ids)
+  if (error) throw new Error(`Failed to reopen thread: ${error.message}`)
   return { updated: ids.length }
 }
 
