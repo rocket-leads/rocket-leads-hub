@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck } from "lucide-react"
+import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs } from "@/components/ui/segmented-tabs"
@@ -208,14 +208,14 @@ export function InboxShell({
   // "multi-channel" inbox can carry BOTH WhatsApp and email (content-classified
   // via channelKind). A WhatsApp channel's badge must count only WhatsApp
   // threads, matching what clicking it shows (Roy 2026-07-15).
+  // Per-channel, per-kind counts = Open + Assigned (everything NOT closed) on
+  // the channel, so the rail badge reflects the total workload per line, not
+  // just what's awaiting a reply (Roy 2026-07-15: "3 open + 18 opgepakt = 21").
   const pendingByChannel = useMemo(() => {
     const m = new Map<number, { whatsapp: number; email: number }>()
     for (const t of threads) {
-      if (t.pendingCount === 0) continue
+      if (t.isArchived) continue // closed tickets don't count
       if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
-      // Count the thread under EVERY channel it has a message on (matches the
-      // "any row on channel X" filter below). Guard against a thread missing
-      // channelIds (stale cached response from before this field existed).
       for (const cid of t.channelIds ?? []) {
         const e = m.get(cid) ?? { whatsapp: 0, email: 0 }
         e[t.channelKind] += 1
@@ -327,8 +327,26 @@ export function InboxShell({
   // --- External selection + detail ------------------------------------------
   const [openRow, setOpenRow] = useState<FeedRow | null>(null)
   const [extState, setExtState] = useState<TicketState>("open")
+  const [extSearch, setExtSearch] = useState("")
 
-  const extBase = mentionedOnly ? mentionedRows : channelRows
+  // Ticket search: contact name, linked client, or the latest message preview.
+  // Searching across ALL channels (not just the selected one) so you can find a
+  // ticket without knowing which line it's on.
+  const searchBase = useMemo(() => {
+    const q = extSearch.trim().toLowerCase()
+    const base = mentionedOnly ? mentionedRows : channelRows
+    if (!q) return base
+    const allExternal = threads
+      .map(threadToFeedRow)
+      .filter((r): r is FeedRow => r !== null)
+    return allExternal.filter((r) => {
+      const t = r.thread
+      const hay = `${t?.primaryName ?? ""} ${t?.clientName ?? ""} ${t?.latestPreview ?? ""} ${t?.latestSubject ?? ""}`.toLowerCase()
+      return q.split(/\s+/).every((w) => hay.includes(w))
+    })
+  }, [extSearch, mentionedOnly, mentionedRows, channelRows, threads])
+
+  const extBase = searchBase
 
   // Mentioned uses a per-user Open / Closed split (a personal to-do checkbox,
   // like Trengo). Channels use the shared Open / Assigned / Closed lifecycle.
@@ -344,15 +362,17 @@ export function InboxShell({
 
   // Mentioned has no "assigned" state; fall back to Open if it's selected.
   const effectiveState: TicketState = mentionedOnly && extState === "assigned" ? "open" : extState
-  const visibleExternalRows = useMemo(
-    () =>
-      extBase.filter((r) => {
-        if (!r.thread) return false
-        const s = mentionedOnly ? (mentionDone(r.id) ? "closed" : "open") : threadState(r.thread)
-        return s === effectiveState
-      }),
-    [extBase, mentionedOnly, mentionDone, effectiveState],
-  )
+  const searching = extSearch.trim().length > 0
+  const visibleExternalRows = useMemo(() => {
+    // While searching, show every match regardless of the Open/Assigned/Closed
+    // tab - you're hunting for a specific ticket, not triaging.
+    if (searching) return extBase
+    return extBase.filter((r) => {
+      if (!r.thread) return false
+      const s = mentionedOnly ? (mentionDone(r.id) ? "closed" : "open") : threadState(r.thread)
+      return s === effectiveState
+    })
+  }, [extBase, mentionedOnly, mentionDone, effectiveState, searching])
 
   const extFilterTabs: TopTab<TicketState>[] = mentionedOnly
     ? [
@@ -575,10 +595,35 @@ export function InboxShell({
         </div>
       )}
 
+      {/* Ticket search - spans the row, finds a ticket across ALL channels by
+          contact name, client, or the latest message text. */}
+      {isExternal && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <input
+            type="text"
+            value={extSearch}
+            onChange={(e) => setExtSearch(e.target.value)}
+            placeholder="Search tickets — name, client, or message…"
+            className="h-9 w-full rounded-md border border-border/60 bg-card pl-9 pr-9 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+          />
+          {extSearch && (
+            <button
+              type="button"
+              onClick={() => setExtSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {isExternal ? (
         <div
           className={cn(
-            "grid gap-4",
+            "grid min-w-0 gap-4",
             containerH,
             locked
               ? "grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr]"
@@ -590,7 +635,7 @@ export function InboxShell({
           {!locked && !railCollapsed && (
             <aside className="hidden min-h-0 overflow-y-auto xl:block">{externalRail}</aside>
           )}
-          <div className="min-h-0">
+          <div className="min-h-0 min-w-0">
             <UnifiedFeed
               rows={visibleExternalRows}
               loading={externalLoading}
@@ -607,7 +652,7 @@ export function InboxShell({
               emptyHint={emptyHint}
             />
           </div>
-          <div className="hidden min-h-0 lg:block">
+          <div className="hidden min-h-0 min-w-0 lg:block">
             <DetailPane
               row={openRow}
               currentUser={currentUser}
@@ -621,11 +666,11 @@ export function InboxShell({
           </div>
         </div>
       ) : (
-        <div className={cn("grid gap-4", containerH, railCollapsed ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-[230px_1fr]")}>
+        <div className={cn("grid min-w-0 gap-4", containerH, railCollapsed ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-[230px_1fr]")}>
           {!locked && !railCollapsed && (
             <aside className="hidden min-h-0 overflow-y-auto xl:block">{internalRail}</aside>
           )}
-          <div className="w-full min-h-0 max-w-3xl">
+          <div className="w-full min-h-0 min-w-0 max-w-3xl">
             <UpdateFeed
               items={items}
               currentUserId={currentUser.id}

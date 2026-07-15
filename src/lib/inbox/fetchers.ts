@@ -999,8 +999,13 @@ async function groupAndDecorateChatRows(
     const externalAuthor = clientRows.find(
       (r) => r.author_kind && r.author_kind !== "rl_team",
     )
-    const fallbackName =
-      externalAuthor?.author_name_cached ?? latest.author_name_cached ?? "Unknown"
+    // Name the thread after the CONTACT, never the teammate who sent an
+    // outbound message. When there's no inbound client row yet (outbound-only,
+    // e.g. an automated weekly-update to "Hi Sergio"), fall to "Unknown" so the
+    // greeting-extraction below recovers the real recipient - otherwise it used
+    // to show the sending agent (Roy 2026-07-15: "John Kuil" instead of the
+    // client Sergio | AltaDent).
+    const fallbackName = externalAuthor?.author_name_cached ?? "Unknown"
     let primaryName = deriveThreadName(threadKey, fallbackName)
 
     // If the resolved name is the generic "Team" (our WhatsApp Business
