@@ -9,9 +9,12 @@
 -- update, matching Monday's per-update reaction bar. Reactions on individual
 -- replies can be added later with a sibling table if the need shows up.
 
+-- NB: the items table was renamed inbox_items -> inbox_events in an earlier
+-- migration; the FK must point at inbox_events (the original `inbox_items`
+-- reference failed the push and blocked every migration after it).
 create table if not exists inbox_reactions (
   id uuid primary key default gen_random_uuid(),
-  item_id uuid not null references inbox_items(id) on delete cascade,
+  item_id uuid not null references inbox_events(id) on delete cascade,
   user_id uuid not null references users(id) on delete cascade,
   emoji text not null,
   created_at timestamptz not null default now(),
