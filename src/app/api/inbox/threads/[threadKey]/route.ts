@@ -5,8 +5,6 @@ import {
   markChatThreadRead,
   markChatThreadUnread,
   setChatThreadArchived,
-  setChatThreadAssigned,
-  setChatThreadOpen,
   setChatThreadSnoozedUntil,
   setChatThreadStarred,
 } from "@/lib/inbox/fetchers"
@@ -93,9 +91,6 @@ export async function PATCH(
     "unstar",
     "archive",
     "unarchive",
-    "assign",
-    "unassign",
-    "open",
     "snooze",
     "unsnooze",
   ])
@@ -126,15 +121,6 @@ export async function PATCH(
         break
       case "unarchive":
         result = await setChatThreadArchived(threadKey, userId, role, false)
-        break
-      case "assign":
-        result = await setChatThreadAssigned(threadKey, userId, role, true)
-        break
-      case "unassign":
-        result = await setChatThreadAssigned(threadKey, userId, role, false)
-        break
-      case "open":
-        result = await setChatThreadOpen(threadKey, userId, role)
         break
       case "snooze": {
         // Validate the until timestamp before writing it - silently
