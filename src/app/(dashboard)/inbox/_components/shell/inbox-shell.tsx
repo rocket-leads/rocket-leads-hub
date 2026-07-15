@@ -595,64 +595,65 @@ export function InboxShell({
         </div>
       )}
 
-      {/* Ticket search - spans the row, finds a ticket across ALL channels by
-          contact name, client, or the latest message text. */}
-      {isExternal && (
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-          <input
-            type="text"
-            value={extSearch}
-            onChange={(e) => setExtSearch(e.target.value)}
-            placeholder="Search tickets — name, client, or message…"
-            className="h-9 w-full rounded-md border border-border/60 bg-card pl-9 pr-9 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
-          />
-          {extSearch && (
-            <button
-              type="button"
-              onClick={() => setExtSearch("")}
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      )}
-
       {isExternal ? (
-        <div
-          className={cn(
-            "grid min-w-0 gap-4",
-            containerH,
-            locked
-              ? "grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr]"
-              : railCollapsed
-                ? "grid-cols-1 lg:grid-cols-[minmax(340px,420px)_1fr]"
-                : "grid-cols-1 lg:grid-cols-[minmax(340px,420px)_1fr] xl:grid-cols-[230px_minmax(340px,420px)_1fr]",
-          )}
-        >
-          {!locked && !railCollapsed && (
-            <aside className="hidden min-h-0 overflow-y-auto xl:block">{externalRail}</aside>
-          )}
-          <div className="min-h-0 min-w-0">
-            <UnifiedFeed
-              rows={visibleExternalRows}
-              loading={externalLoading}
-              activeId={openRow?.id ?? null}
-              showClient={!locked}
-              filterTabs={extFilterTabs}
-              filterValue={effectiveState}
-              onFilterChange={setExtState}
-              onOpen={openItem}
-              onAction={handleRowAction}
-              onCloseRow={mentionedOnly ? closeMention : closeThread}
-              closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
-              users={users}
-              emptyHint={emptyHint}
-            />
+        <div className={cn("flex min-w-0 flex-col gap-4 lg:flex-row", containerH)}>
+          {/* Left block: the ticket search sits ABOVE the rail + feed (only as
+              wide as those two columns, Roy 2026-07-15) and shrinks with them
+              when the rail collapses. The chat sits beside it at full height. */}
+          <div
+            className={cn(
+              "flex w-full min-w-0 flex-col gap-3",
+              locked
+                ? "lg:w-[380px]"
+                : railCollapsed
+                  ? "lg:w-[400px]"
+                  : "lg:w-[400px] xl:w-[640px]",
+            )}
+          >
+            <div className="relative shrink-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+              <input
+                type="text"
+                value={extSearch}
+                onChange={(e) => setExtSearch(e.target.value)}
+                placeholder="Search tickets — name, client, or message…"
+                className="h-9 w-full rounded-md border border-border/60 bg-card pl-9 pr-9 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+              />
+              {extSearch && (
+                <button
+                  type="button"
+                  onClick={() => setExtSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex min-h-0 flex-1 gap-4">
+              {!locked && !railCollapsed && (
+                <aside className="hidden w-[210px] shrink-0 overflow-y-auto xl:block">{externalRail}</aside>
+              )}
+              <div className="min-h-0 min-w-0 flex-1">
+                <UnifiedFeed
+                  rows={visibleExternalRows}
+                  loading={externalLoading}
+                  activeId={openRow?.id ?? null}
+                  showClient={!locked}
+                  filterTabs={extFilterTabs}
+                  filterValue={effectiveState}
+                  onFilterChange={setExtState}
+                  onOpen={openItem}
+                  onAction={handleRowAction}
+                  onCloseRow={mentionedOnly ? closeMention : closeThread}
+                  closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
+                  users={users}
+                  emptyHint={emptyHint}
+                />
+              </div>
+            </div>
           </div>
-          <div className="hidden min-h-0 min-w-0 lg:block">
+          <div className="hidden min-h-0 min-w-0 flex-1 lg:block">
             <DetailPane
               row={openRow}
               currentUser={currentUser}
