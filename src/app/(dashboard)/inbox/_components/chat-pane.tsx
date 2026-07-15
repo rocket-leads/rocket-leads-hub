@@ -1869,25 +1869,32 @@ function ThreadMessages({
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-background/40">
-        {messagesQuery.isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : messages.length === 0 ? (
-          <p className="text-sm text-muted-foreground/60 text-center py-8">
-            No messages in this thread.
-          </p>
-        ) : (
-          <ThreadMessagesList
-            messages={messages}
-            isEmailThread={isEmail}
-            clientId={thread.clientId}
-            onMakeTaskFromMessage={onMakeTaskFromMessage}
-          />
-        )}
-        <div ref={messagesEndRef} />
+      {/* Messages. `overflow-x-hidden` + `min-w-0` stop a wide child (an
+          email card, a long unbreakable token) from forcing the whole
+          detail pane to scroll sideways. The inner `max-w-4xl mx-auto`
+          caps the reading column so the conversation stays comfortable on
+          wide monitors instead of stretching edge-to-edge - Roy 2026-07-15
+          "chat box ineens heel erg breed". */}
+      <div className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-3 bg-background/40">
+        <div className="mx-auto w-full min-w-0 max-w-4xl space-y-3">
+          {messagesQuery.isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : messages.length === 0 ? (
+            <p className="text-sm text-muted-foreground/60 text-center py-8">
+              No messages in this thread.
+            </p>
+          ) : (
+            <ThreadMessagesList
+              messages={messages}
+              isEmailThread={isEmail}
+              clientId={thread.clientId}
+              onMakeTaskFromMessage={onMakeTaskFromMessage}
+            />
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Email composer rail. When closed, the chat pane gets the full
@@ -3175,7 +3182,7 @@ function MessageBubble({
       )}
       <div
         className={cn(
-          "max-w-[75%] rounded-2xl px-3 py-2",
+          "min-w-0 max-w-[75%] rounded-2xl px-3 py-2",
           isInternal
             ? "bg-amber-500/15 border border-amber-500/30 text-foreground"
             : isUs
@@ -3203,7 +3210,7 @@ function MessageBubble({
             {fmtTime(msg.at)}
           </span>
         </div>
-        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">{msg.body}</p>
       </div>
       {!isUs && onMakeTask && (
         <MakeTaskInlineButton onClick={onMakeTask} />
@@ -3313,6 +3320,7 @@ function EmailMessageCard({
     color: #1a1a1a;
     line-height: 1.55;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
     padding: 14px 16px;
   }
   img { max-width: 100% !important; height: auto !important; }
@@ -3391,7 +3399,7 @@ function EmailMessageCard({
           style={{ width: "100%", height, border: "none", display: "block", background: "#fff" }}
         />
       ) : (
-        <div className="px-4 py-3 bg-background text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+        <div className="px-4 py-3 bg-background text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
           {msg.body || (
             <span className="italic text-muted-foreground/60">No body content.</span>
           )}
