@@ -1,6 +1,6 @@
 "use client"
 
-import { AtSign, MessageCircle, Mail, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { AtSign, Inbox, MessageCircle, Mail, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /** One selectable channel in the external rail (a single Trengo WhatsApp line
@@ -14,11 +14,15 @@ type Props = {
   whatsapp: ChannelEntry[]
   email: ChannelEntry[]
   /** The single channel currently in focus (Trengo-style: one channel at a
-   *  time). Null when the Mentioned view is active. */
+   *  time). Null when the All / Mentioned view is active. */
   activeChannelId: number | null
+  /** "All channels" view - every line merged into one feed. */
+  allActive: boolean
+  allCount: number
   mentionedOnly: boolean
   mentionedCount: number
   expanded: Record<ExternalGroup, boolean>
+  onSelectAll: () => void
   onSelectChannel: (id: number) => void
   onToggleExpand: (group: ExternalGroup) => void
   onSelectMentioned: () => void
@@ -50,9 +54,12 @@ export function ExternalRail({
   whatsapp,
   email,
   activeChannelId,
+  allActive,
+  allCount,
   mentionedOnly,
   mentionedCount,
   expanded,
+  onSelectAll,
   onSelectChannel,
   onToggleExpand,
   onSelectMentioned,
@@ -80,6 +87,24 @@ export function ExternalRail({
         <AtSign className="h-4 w-4 shrink-0" />
         <span>Mentioned</span>
         <CountPill n={mentionedCount} active={mentionedOnly} />
+      </button>
+
+      {/* All channels - every line merged into one feed. The only way to see
+          everything at once (Roy 2026-07-15); channels below narrow to one. */}
+      <button
+        type="button"
+        onClick={onSelectAll}
+        aria-current={allActive}
+        className={cn(
+          "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          allActive
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        )}
+      >
+        <Inbox className="h-4 w-4 shrink-0" />
+        <span>All channels</span>
+        <CountPill n={allCount} active={allActive} />
       </button>
 
       {loading && whatsapp.length === 0 && email.length === 0 ? (

@@ -201,7 +201,11 @@ export function InboxShell({
   // Single-select channel (Trengo-style): exactly one channel in focus at a
   // time, or the Mentioned view. Null falls back to the first channel.
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
-  const [mentionedOnly, setMentionedOnly] = useState(false)
+  // External view: All channels (overview) / Mentioned / a single channel.
+  const [viewMode, setViewMode] = useState<"all" | "mentioned" | "channel">("all")
+  // When a channel is focused, search either just that line or across all.
+  const [searchScope, setSearchScope] = useState<"current" | "all">("current")
+  const mentionedOnly = viewMode === "mentioned"
   const [expanded, setExpanded] = useState<Record<ExternalGroup, boolean>>({ whatsapp: true, email: true })
 
   // Per-channel, per-kind pending counts. Split by kind because a single Trengo
@@ -316,12 +320,28 @@ export function InboxShell({
   )
 
   const onSelectChannel = useCallback((id: number) => {
-    setMentionedOnly(false)
+    setViewMode("channel")
     setSelectedChannelId(id)
   }, [])
+  const onSelectAll = useCallback(() => setViewMode("all"), [])
   const toggleExpand = useCallback(
     (group: ExternalGroup) => setExpanded((prev) => ({ ...prev, [group]: !prev[group] })),
     [],
+  )
+
+  // Every external thread as a row (the "All channels" overview + the search
+  // pool when scope is "all channels").
+  const allChannelRows = useMemo(() => {
+    const rows = threads.map(threadToFeedRow).filter((r): r is FeedRow => r !== null)
+    rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+    return rows
+  }, [threads])
+  const allCount = useMemo(
+    () =>
+      threads.filter(
+        (t) => !t.isArchived && (t.channelKind === "whatsapp" || t.channelKind === "email"),
+      ).length,
+    [threads],
   )
 
   // --- External selection + detail ------------------------------------------
@@ -329,24 +349,24 @@ export function InboxShell({
   const [extState, setExtState] = useState<TicketState>("open")
   const [extSearch, setExtSearch] = useState("")
 
-  // Ticket search: contact name, linked client, or the latest message preview.
-  // Searching across ALL channels (not just the selected one) so you can find a
-  // ticket without knowing which line it's on.
-  const searchBase = useMemo(() => {
+  // Rows for the active view (before the state-tab filter).
+  const currentBase =
+    viewMode === "mentioned" ? mentionedRows : viewMode === "all" ? allChannelRows : channelRows
+
+  // Ticket search: contact name, client, or the latest message text. By default
+  // it stays within the view you're in (a specific channel stays that channel -
+  // Roy 2026-07-15: searching shouldn't silently jump to every line). The scope
+  // toggle widens a channel search to all channels.
+  const extBase = useMemo(() => {
     const q = extSearch.trim().toLowerCase()
-    const base = mentionedOnly ? mentionedRows : channelRows
-    if (!q) return base
-    const allExternal = threads
-      .map(threadToFeedRow)
-      .filter((r): r is FeedRow => r !== null)
-    return allExternal.filter((r) => {
+    if (!q) return currentBase
+    const pool = viewMode !== "channel" || searchScope === "all" ? allChannelRows : channelRows
+    return pool.filter((r) => {
       const t = r.thread
       const hay = `${t?.primaryName ?? ""} ${t?.clientName ?? ""} ${t?.latestPreview ?? ""} ${t?.latestSubject ?? ""}`.toLowerCase()
       return q.split(/\s+/).every((w) => hay.includes(w))
     })
-  }, [extSearch, mentionedOnly, mentionedRows, channelRows, threads])
-
-  const extBase = searchBase
+  }, [extSearch, currentBase, viewMode, searchScope, allChannelRows, channelRows])
 
   // Mentioned uses a per-user Open / Closed split (a personal to-do checkbox,
   // like Trengo). Channels use the shared Open / Assigned / Closed lifecycle.
@@ -458,7 +478,7 @@ export function InboxShell({
   )
 
   const selectMentioned = useCallback(() => {
-    setMentionedOnly(true)
+    setViewMode("mentioned")
     setExtState((s) => (s === "assigned" ? "open" : s))
   }, [])
 
@@ -526,10 +546,13 @@ export function InboxShell({
     <ExternalRail
       whatsapp={waEntries}
       email={emailEntries}
-      activeChannelId={mentionedOnly ? null : activeChannelId}
+      activeChannelId={viewMode === "channel" ? activeChannelId : null}
+      allActive={viewMode === "all"}
+      allCount={allCount}
       mentionedOnly={mentionedOnly}
       mentionedCount={mentionedCount}
       expanded={expanded}
+      onSelectAll={onSelectAll}
       onSelectChannel={onSelectChannel}
       onToggleExpand={toggleExpand}
       onSelectMentioned={selectMentioned}
@@ -560,11 +583,15 @@ export function InboxShell({
   )
 
   const emptyHint = isExternal
-    ? mentionedOnly
-      ? "No tickets mention you right now."
-      : identityChannels.length === 0
-        ? "No channels connected — add them in Account settings."
-        : "No tickets on this channel in this view."
+    ? searching
+      ? "No tickets match your search."
+      : mentionedOnly
+        ? "No tickets mention you right now."
+        : identityChannels.length === 0
+          ? "No channels connected — add them in Account settings."
+          : viewMode === "all"
+            ? "No tickets in this view."
+            : "No tickets on this channel in this view."
     : null
 
   return (
@@ -630,6 +657,33 @@ export function InboxShell({
                 </button>
               )}
             </div>
+            {/* Scope toggle: when searching inside one channel, choose whether
+                to stay on that line or widen to all channels (Trengo-style). */}
+            {searching && viewMode === "channel" && (
+              <div className="flex shrink-0 items-center gap-1.5 px-1 text-xs">
+                <span className="text-muted-foreground/60">Search in:</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope("current")}
+                  className={cn(
+                    "rounded-md px-2 py-0.5 font-medium transition-colors",
+                    searchScope === "current" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
+                  )}
+                >
+                  {[...waEntries, ...emailEntries].find((e) => e.id === activeChannelId)?.name ?? "This channel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope("all")}
+                  className={cn(
+                    "rounded-md px-2 py-0.5 font-medium transition-colors",
+                    searchScope === "all" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
+                  )}
+                >
+                  All channels
+                </button>
+              </div>
+            )}
             <div className="flex min-h-0 flex-1 gap-4">
               {!locked && !railCollapsed && (
                 <aside className="hidden w-[210px] shrink-0 overflow-y-auto xl:block">{externalRail}</aside>
