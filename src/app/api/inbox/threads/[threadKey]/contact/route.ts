@@ -30,14 +30,16 @@ export async function PATCH(
   }
 
   const { threadKey: encoded } = await params
-  const threadKey = decodeURIComponent(encoded)
-  if (!threadKey.startsWith("trengo:contact:")) {
+  // Threads are now channel-scoped ("<base>|ch:<id>"); contact edits are a
+  // contact-level op, so strip the channel suffix and act on the base key.
+  const base = decodeURIComponent(encoded).replace(/\|ch:.*$/, "")
+  if (!base.startsWith("trengo:contact:")) {
     return NextResponse.json(
       { error: "Editable name is only supported on Trengo contact threads" },
       { status: 400 },
     )
   }
-  const contactId = threadKey.replace(/^trengo:contact:/, "")
+  const contactId = base.replace(/^trengo:contact:/, "")
   if (!contactId) {
     return NextResponse.json({ error: "Missing contact id in threadKey" }, { status: 400 })
   }
@@ -63,7 +65,7 @@ export async function PATCH(
       await supabase
         .from("inbox_events")
         .update({ author_name_cached: name })
-        .eq("thread_key", threadKey)
+        .eq("thread_key", base)
         .neq("author_kind", "rl_team")
     } catch (e) {
       console.error("Failed to update mirrored author_name_cached:", e)

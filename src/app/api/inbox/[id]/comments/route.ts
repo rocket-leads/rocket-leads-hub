@@ -30,8 +30,11 @@ export async function POST(
   const item = await getInboxItem(id, session.user.id, session.user.role)
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  if (item.kind !== "task") {
-    return NextResponse.json({ error: "Comments are only available on tasks" }, { status: 400 })
+  // Replies are allowed on tasks AND updates now - the internal inbox is a
+  // Monday-style feed where every update can be discussed inline, not just
+  // tasks. Chat threads have their own reply path (Trengo), so exclude them.
+  if (item.kind !== "task" && item.kind !== "update") {
+    return NextResponse.json({ error: "Replies are only available on tasks and updates" }, { status: 400 })
   }
 
   let parsed: { body?: string }

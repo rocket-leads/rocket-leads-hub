@@ -116,6 +116,10 @@ type EventToInsert = {
    *  phishing at a glance. Null for non-email rows. */
   emailFrom: string | null
   authorKind: "rl_team" | "client"
+  /** True for Trengo internal notes (NOTE / INTERNAL_* types) - @mentions to
+   *  teammates and externally-posted [AI Summary] blocks. Rendered as internal
+   *  notes (yellow) and excluded from the client-facing conversation metrics. */
+  isInternal: boolean
   authorName: string
   createdAtSrc: string
 }
@@ -190,6 +194,8 @@ function eventsFromMessageList(
       messageType === "INBOUND" || messageType === "INBOUND_MESSAGE"
     const outboundType =
       messageType.startsWith("OUTBOUND") || messageType.startsWith("NOTE") || messageType.includes("INTERNAL")
+    // Internal notes (@mentions, [AI Summary] posts) - not client conversation.
+    const isInternal = messageType.startsWith("NOTE") || messageType.includes("INTERNAL")
     const authorKind: "rl_team" | "client" = inboundType
       ? "client"
       : outboundType
@@ -231,6 +237,7 @@ function eventsFromMessageList(
       emailSubject,
       emailFrom,
       authorKind,
+      isInternal,
       authorName,
       createdAtSrc: m.created_at,
     })
@@ -361,6 +368,7 @@ async function insertEvents(
       classify_method: "manual",
       created_at_src: e.createdAtSrc,
       trengo_channel_id: e.channelId,
+      is_internal: e.isInternal,
     }
   })
 

@@ -1,8 +1,9 @@
 "use client"
 
+import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { InboxListRow, type RowAction } from "../inbox-list-row"
-import { SourceIcon, ChannelBadge, fmtRelative } from "../chat-pane"
+import { SourceIcon, fmtRelative } from "../chat-pane"
 import type { InboxUser, FeedRow } from "./types"
 
 /**
@@ -19,10 +20,16 @@ type Props = {
   showClient: boolean
   onOpen: () => void
   onAction?: (action: RowAction) => void
+  /** Chat rows only: close/reopen the ticket. When set, a checkbox renders on
+   *  the row. */
+  onClose?: () => void
+  /** Checkbox checked-state override. Channel tickets use archive (default);
+   *  the Mentioned view passes its own per-user "mention done" state here. */
+  closed?: boolean
   users?: InboxUser[]
 }
 
-export function FeedRow({ row, active, showClient, onOpen, onAction, users }: Props) {
+export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, users }: Props) {
   if (row.kind !== "chat" && row.item) {
     return (
       <InboxListRow
@@ -39,6 +46,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, users }: Pr
   const thread = row.thread
   if (!thread) return null
   const railColor = row.channel === "whatsapp" ? "bg-emerald-500" : "bg-violet-500"
+  const isClosed = closed ?? thread.isArchived
 
   return (
     <div
@@ -61,43 +69,50 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, users }: Pr
       <span aria-hidden className={cn("absolute left-0 top-0 bottom-0 w-1", railColor, !row.unread && "opacity-40")} />
       {row.unread && <span aria-hidden className="absolute inset-0 bg-emerald-500/[0.04] pointer-events-none" />}
 
+      {/* Simplified row (Roy 2026-07-15): channel icon + contact name + message,
+          date top-right, pending count + close checkbox on the right. No channel
+          badge, no linked/unlinked, no duplicate name line. */}
       <div className="flex items-start gap-3">
         <span className="mt-0.5 shrink-0 text-muted-foreground/80">
           <SourceIcon thread={thread} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className={cn("truncate text-sm", row.unread ? "font-semibold text-foreground" : "font-medium text-foreground/90")}>
-              {row.title}
-            </p>
-            <ChannelBadge thread={thread} />
-            <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
-              {fmtRelative(row.sortAt)}
-            </span>
-          </div>
+          <p className={cn("truncate text-sm", row.unread ? "font-semibold text-foreground" : "font-medium text-foreground/90")}>
+            {row.title}
+          </p>
           {row.preview && (
             <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{row.preview}</p>
           )}
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">
-            <span className="truncate">{thread.primaryName}</span>
-            {showClient && thread.clientName && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="truncate">{thread.clientName}</span>
-              </>
-            )}
-            {showClient && !thread.clientName && (
-              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                Unlinked
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className="text-xs text-muted-foreground/70 tabular-nums">{fmtRelative(row.sortAt)}</span>
+          <div className="flex items-center gap-1.5">
+            {row.unreadCount > 0 && (
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-500/15 px-1.5 text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {row.unreadCount > 99 ? "99+" : row.unreadCount}
               </span>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onClose()
+                }}
+                aria-pressed={isClosed}
+                title={isClosed ? "Reopen" : "Mark done"}
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full border transition-colors",
+                  isClosed
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : "border-muted-foreground/40 text-transparent hover:border-emerald-500/60 hover:text-emerald-500/40",
+                )}
+              >
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              </button>
             )}
           </div>
         </div>
-        {row.unreadCount > 0 && (
-          <span className="mt-0.5 inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 px-1.5 text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-            {row.unreadCount > 99 ? "99+" : row.unreadCount}
-          </span>
-        )}
       </div>
     </div>
   )

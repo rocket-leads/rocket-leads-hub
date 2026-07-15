@@ -28,7 +28,9 @@ export async function POST(
   }
 
   const { threadKey: encoded } = await params
-  const threadKey = decodeURIComponent(encoded)
+  // Threads are channel-scoped ("<base>|ch:<id>"); linking a contact to a
+  // client is contact-level, so act on the base key across all channels.
+  const threadKey = decodeURIComponent(encoded).replace(/\|ch:.*$/, "")
   if (!threadKey.startsWith("trengo:contact:")) {
     return NextResponse.json(
       { error: "Linking is only supported on Trengo contact threads" },

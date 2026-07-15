@@ -1,22 +1,23 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus } from "lucide-react"
+import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
+import type { TopTab } from "@/components/ui/top-tabs"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
 import { ComposerDialog } from "../composer-dialog"
-import { ChannelRail } from "./channel-rail"
-import { UnifiedFeed, type FeedFilter } from "./unified-feed"
+import { ExternalRail, type ChannelEntry, type ExternalGroup } from "./external-rail"
+import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
+import { UnifiedFeed } from "./unified-feed"
+import { UpdateFeed } from "./update-feed"
 import { DetailPane } from "./detail-pane"
 import {
-  ALL_CHANNELS,
-  mergeFeed,
-  parseChannelsParam,
-  serializeChannelsParam,
-  type FeedChannel,
+  threadToFeedRow,
   type FeedRow,
   type CurrentUser,
   type InboxUser,
@@ -25,6 +26,7 @@ import {
 } from "./types"
 import type { InboxItem, InboxKind } from "@/types/inbox"
 import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
+import type { TrengoIdentity } from "@/app/api/inbox/trengo-identity/route"
 import type { RowAction } from "../inbox-list-row"
 
 type Props = {
@@ -33,17 +35,43 @@ type Props = {
   initialTasks: InboxItem[]
   users: InboxUser[]
   clients: InboxClientOption[]
-  /** When set, the shell is scoped to a single client (per-client inbox tab). */
   lockedClient?: LockedClient
 }
 
+type InboxScope = "internal" | "external"
 const REFETCH_MS = 5000
+const ALL_TYPES: InternalType[] = ["task", "update"]
+
+function mentionThreadKey(item: InboxItem): string | null {
+  const ref = item.sourceRef
+  const key = ref && typeof ref === "object" ? (ref as Record<string, unknown>).trengo_mention_in_thread_key : null
+  return typeof key === "string" ? key : null
+}
+
+/** Strip the per-channel suffix ("<base>|ch:<id>") from a thread key. Mentions
+ *  are recorded against the base contact key, so mention lookups compare bases. */
+function baseThreadKey(key: string): string {
+  const i = key.indexOf("|ch:")
+  return i === -1 ? key : key.slice(0, i)
+}
+
+/** External ticket lifecycle:
+ *   Open     - a fresh ticket, nothing done yet (no team reply, not closed)
+ *   Assigned - we've replied (hasTeamReply), still active
+ *   Closed   - closed via the checkbox (archived)
+ * Derived, not stored: replying anywhere (Hub or Trengo) sets hasTeamReply,
+ * which moves Open -> Assigned automatically. */
+type TicketState = "open" | "assigned" | "closed"
+function threadState(t: ChatThreadSummary): TicketState {
+  if (t.isArchived) return "closed"
+  return t.hasTeamReply ? "assigned" : "open"
+}
 
 /**
- * The 3-pane unified inbox: channel rail (multi-select) → merged feed → wide
- * detail pane. Replaces the InboxView monolith's layout. Reuses every data
- * endpoint and detail/composer component; the shell only owns the merge, the
- * channel filter, and the pane layout.
+ * The unified inbox split into Internal (a Monday-style feed of tasks + updates
+ * with inline replies + reactions) and External (client communication grouped
+ * by Trengo channel + a Mentioned view). Both share the same underlying item /
+ * thread queries and composer.
  */
 export function InboxShell({
   currentUser,
@@ -56,57 +84,54 @@ export function InboxShell({
   const queryClient = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const locale = useLocale()
 
   const locked = lockedClient ?? null
   const canViewComms = locked ? locked.canViewCommunication !== false : true
-  const hiddenChannels: FeedChannel[] = canViewComms ? [] : ["whatsapp", "email"]
 
-  // Channel selection. URL is the source of truth in global mode (shareable,
-  // back-button friendly); locked mode keeps it in local state so it doesn't
-  // rewrite the client page's URL. Channels the user can't view are stripped.
-  const [lockedSelected, setLockedSelected] = useState<Set<FeedChannel>>(
-    () => new Set(ALL_CHANNELS.filter((c) => !hiddenChannels.includes(c))),
+  // --- Top-level scope -------------------------------------------------------
+  const urlScope = searchParams.get("scope")
+  const [scope, setScopeState] = useState<InboxScope>(
+    urlScope === "external" && canViewComms ? "external" : "internal",
   )
-  const selected = useMemo(() => {
-    const base = locked ? lockedSelected : parseChannelsParam(searchParams.get("channels"))
-    // never surface a hidden channel even if the URL forces it
-    const pruned = new Set<FeedChannel>()
-    for (const c of base) if (!hiddenChannels.includes(c)) pruned.add(c)
-    return pruned
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked, lockedSelected, searchParams, canViewComms])
-
-  const setSelected = useCallback(
-    (next: Set<FeedChannel>) => {
-      if (locked) {
-        setLockedSelected(next)
-        return
-      }
-      const serialized = serializeChannelsParam(next)
+  const setScope = useCallback(
+    (next: InboxScope) => {
+      setScopeState(next)
       const params = new URLSearchParams(Array.from(searchParams.entries()))
-      if (serialized === null) params.delete("channels")
-      else params.set("channels", serialized)
+      params.set("scope", next)
       const qs = params.toString()
       router.replace(qs ? `?${qs}` : "?", { scroll: false })
     },
-    [locked, router, searchParams],
+    [router, searchParams],
   )
+  const isExternal = scope === "external"
 
-  const toggleChannel = useCallback(
-    (channel: FeedChannel) => {
-      const next = new Set(selected)
-      if (next.has(channel)) next.delete(channel)
-      else next.add(channel)
-      setSelected(next)
-    },
-    [selected, setSelected],
-  )
-  const selectAll = useCallback(() => {
-    setSelected(new Set(ALL_CHANNELS.filter((c) => !hiddenChannels.includes(c))))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setSelected, canViewComms])
+  // Collapsible left rail (channels / filters). Mirrors the main sidebar's
+  // PanelLeft toggle: default expanded so SSR + first client paint agree, then
+  // the effect applies the persisted choice. Collapsing hands the reclaimed
+  // width to the feed / chat - Roy's ask.
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (window.localStorage.getItem("inbox-rail-collapsed") === "1") setRailCollapsed(true)
+    } catch {
+      // localStorage unavailable - stay expanded.
+    }
+  }, [])
+  const toggleRail = useCallback(() => {
+    setRailCollapsed((v) => {
+      const next = !v
+      try {
+        window.localStorage.setItem("inbox-rail-collapsed", next ? "1" : "0")
+      } catch {
+        // ignore write failures (private mode / full storage)
+      }
+      return next
+    })
+  }, [])
 
-  // --- Data sources (all existing endpoints) ---------------------------------
+  // --- Data sources ----------------------------------------------------------
   const clientQ = locked ? `&clientId=${encodeURIComponent(locked.id)}` : "&assignedToMe=true"
 
   const tasksQuery = useQuery<{ items: InboxItem[] }>({
@@ -125,7 +150,6 @@ export function InboxShell({
     refetchInterval: REFETCH_MS,
     refetchIntervalInBackground: false,
   })
-  // Shares the cache key with ChatPane so mark/reply invalidations line up.
   const threadsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
     queryKey: ["inbox-threads", "external"],
     queryFn: () => fetch("/api/inbox/threads?scope=external").then((r) => r.json()),
@@ -134,31 +158,224 @@ export function InboxShell({
     refetchInterval: REFETCH_MS,
     refetchIntervalInBackground: false,
   })
+  const identityQuery = useQuery<TrengoIdentity>({
+    queryKey: ["inbox-trengo-identity"],
+    queryFn: () => fetch("/api/inbox/trengo-identity").then((r) => r.json()),
+    enabled: canViewComms,
+    staleTime: 5 * 60 * 1000,
+  })
 
-  const items = useMemo(
-    () => [...(tasksQuery.data?.items ?? []), ...(updatesQuery.data?.items ?? [])],
-    [tasksQuery.data?.items, updatesQuery.data?.items],
-  )
+  const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items])
+  const updates = useMemo(() => updatesQuery.data?.items ?? [], [updatesQuery.data?.items])
+  const items = useMemo(() => [...tasks, ...updates], [tasks, updates])
   const threads = useMemo(() => {
     const all = threadsQuery.data?.threads ?? []
-    // Per-client mode: the threads endpoint isn't client-scoped, so narrow here.
     return locked ? all.filter((t) => t.clientId === locked.id) : all
   }, [threadsQuery.data?.threads, locked])
 
-  // Full merge across ALL channels drives the rail badge counts; the display
-  // feed is the same merge filtered to the checked channels.
-  const allRows = useMemo(() => mergeFeed(items, threads, new Set(ALL_CHANNELS)), [items, threads])
-  const feedRows = useMemo(() => allRows.filter((r) => selected.has(r.channel)), [allRows, selected])
+  const refreshItems = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["shell-tasks", locked?.id ?? "me"] })
+    queryClient.invalidateQueries({ queryKey: ["shell-updates", locked?.id ?? "me"] })
+  }, [queryClient, locked?.id])
 
-  const counts = useMemo(() => {
-    const c: Record<FeedChannel, number> = { tasks: 0, updates: 0, whatsapp: 0, email: 0 }
-    for (const r of allRows) if (r.unread) c[r.channel] += 1
+  // --- Internal scope --------------------------------------------------------
+  const [internalTypes, setInternalTypes] = useState<Set<InternalType>>(() => new Set(ALL_TYPES))
+  const [deadline, setDeadline] = useState<DeadlineFilter>("all")
+  const internalCounts = useMemo(() => {
+    const c: Record<InternalType, number> = { task: 0, update: 0 }
+    for (const it of tasks) if (it.status === "open") c.task += 1
+    for (const it of updates) if (it.status === "unread") c.update += 1
     return c
-  }, [allRows])
+  }, [tasks, updates])
+  const toggleType = useCallback((t: InternalType) => {
+    setInternalTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(t)) next.delete(t)
+      else next.add(t)
+      return next
+    })
+  }, [])
+  const selectAllTypes = useCallback(() => setInternalTypes(new Set(ALL_TYPES)), [])
 
-  // --- Selection + detail ----------------------------------------------------
+  // --- External scope --------------------------------------------------------
+  // Single-select channel (Trengo-style): exactly one channel in focus at a
+  // time, or the Mentioned view. Null falls back to the first channel.
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
+  const [mentionedOnly, setMentionedOnly] = useState(false)
+  const [expanded, setExpanded] = useState<Record<ExternalGroup, boolean>>({ whatsapp: true, email: true })
+
+  // Per-channel, per-kind pending counts. Split by kind because a single Trengo
+  // "multi-channel" inbox can carry BOTH WhatsApp and email (content-classified
+  // via channelKind). A WhatsApp channel's badge must count only WhatsApp
+  // threads, matching what clicking it shows (Roy 2026-07-15).
+  const pendingByChannel = useMemo(() => {
+    const m = new Map<number, { whatsapp: number; email: number }>()
+    for (const t of threads) {
+      if (t.pendingCount === 0) continue
+      if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
+      // Count the thread under EVERY channel it has a message on (matches the
+      // "any row on channel X" filter below). Guard against a thread missing
+      // channelIds (stale cached response from before this field existed).
+      for (const cid of t.channelIds ?? []) {
+        const e = m.get(cid) ?? { whatsapp: 0, email: 0 }
+        e[t.channelKind] += 1
+        m.set(cid, e)
+      }
+    }
+    return m
+  }, [threads])
+
+  const identityChannels = useMemo(() => identityQuery.data?.channels ?? [], [identityQuery.data?.channels])
+  const waEntries: ChannelEntry[] = useMemo(
+    () =>
+      identityChannels
+        .filter((c) => c.type === "whatsapp")
+        .map((c) => ({ id: c.id, name: c.name, unread: pendingByChannel.get(c.id)?.whatsapp ?? 0 })),
+    [identityChannels, pendingByChannel],
+  )
+  const emailEntries: ChannelEntry[] = useMemo(
+    () =>
+      identityChannels
+        .filter((c) => c.type === "email")
+        .map((c) => ({ id: c.id, name: c.name, unread: pendingByChannel.get(c.id)?.email ?? 0 })),
+    [identityChannels, pendingByChannel],
+  )
+  // Default focus = first channel (WhatsApp channels first, then email) until
+  // the user clicks one. Derived, so no effect needed for the default.
+  const firstChannelId = waEntries[0]?.id ?? emailEntries[0]?.id ?? null
+  const activeChannelId = selectedChannelId ?? firstChannelId
+  // The kind of the selected channel - used to keep the feed strictly to that
+  // medium (WhatsApp channel → WhatsApp threads only).
+  const activeGroup: ExternalGroup | null =
+    activeChannelId == null
+      ? null
+      : waEntries.some((e) => e.id === activeChannelId)
+        ? "whatsapp"
+        : emailEntries.some((e) => e.id === activeChannelId)
+          ? "email"
+          : null
+
+  const mentionedThreadKeys = useMemo(() => {
+    const s = new Set<string>()
+    for (const u of updates) {
+      const key = mentionThreadKey(u)
+      if (key) s.add(key)
+    }
+    return s
+  }, [updates])
+  const mentionedRows = useMemo(() => {
+    const rows = threads
+      .filter((t) => mentionedThreadKeys.has(baseThreadKey(t.threadKey)))
+      .map(threadToFeedRow)
+      .filter((r): r is FeedRow => r !== null)
+    rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+    return rows
+  }, [threads, mentionedThreadKeys])
+
+  // Single channel in focus → only that channel's threads, AND only the medium
+  // the channel represents (so a WhatsApp line never shows the emails a
+  // multi-channel Trengo inbox happens to route through it).
+  const channelRows = useMemo(() => {
+    if (activeChannelId == null) return []
+    const rows = threads
+      .filter(
+        (t) =>
+          t.channelIds.includes(activeChannelId) &&
+          (activeGroup == null || t.channelKind === activeGroup),
+      )
+      .map(threadToFeedRow)
+      .filter((r): r is FeedRow => r !== null)
+    rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+    return rows
+  }, [threads, activeChannelId, activeGroup])
+
+  // Mention "done" is per-user: it's the read-state of the mention UPDATE rows
+  // the Trengo webhook created for me (assigned to me), keyed by the thread
+  // they point at. Marking a mention done ≠ archiving the thread for everyone.
+  const mentionUpdatesByThread = useMemo(() => {
+    const m = new Map<string, InboxItem[]>()
+    for (const u of updates) {
+      const key = mentionThreadKey(u)
+      if (!key) continue
+      const list = m.get(key) ?? []
+      list.push(u)
+      m.set(key, list)
+    }
+    return m
+  }, [updates])
+  const mentionDone = useCallback(
+    (threadKey: string): boolean => {
+      const list = mentionUpdatesByThread.get(baseThreadKey(threadKey))
+      return !!list && list.length > 0 && list.every((u) => u.status === "read")
+    },
+    [mentionUpdatesByThread],
+  )
+  const mentionedCount = useMemo(
+    () => mentionedRows.filter((r) => !mentionDone(r.id)).length,
+    [mentionedRows, mentionDone],
+  )
+
+  const onSelectChannel = useCallback((id: number) => {
+    setMentionedOnly(false)
+    setSelectedChannelId(id)
+  }, [])
+  const toggleExpand = useCallback(
+    (group: ExternalGroup) => setExpanded((prev) => ({ ...prev, [group]: !prev[group] })),
+    [],
+  )
+
+  // --- External selection + detail ------------------------------------------
   const [openRow, setOpenRow] = useState<FeedRow | null>(null)
-  const [filter, setFilter] = useState<FeedFilter>("unread")
+  const [extState, setExtState] = useState<TicketState>("open")
+
+  const extBase = mentionedOnly ? mentionedRows : channelRows
+
+  // Mentioned uses a per-user Open / Closed split (a personal to-do checkbox,
+  // like Trengo). Channels use the shared Open / Assigned / Closed lifecycle.
+  const extCounts = useMemo(() => {
+    const c: Record<TicketState, number> = { open: 0, assigned: 0, closed: 0 }
+    for (const r of extBase) {
+      if (!r.thread) continue
+      if (mentionedOnly) c[mentionDone(r.id) ? "closed" : "open"] += 1
+      else c[threadState(r.thread)] += 1
+    }
+    return c
+  }, [extBase, mentionedOnly, mentionDone])
+
+  // Mentioned has no "assigned" state; fall back to Open if it's selected.
+  const effectiveState: TicketState = mentionedOnly && extState === "assigned" ? "open" : extState
+  const visibleExternalRows = useMemo(
+    () =>
+      extBase.filter((r) => {
+        if (!r.thread) return false
+        const s = mentionedOnly ? (mentionDone(r.id) ? "closed" : "open") : threadState(r.thread)
+        return s === effectiveState
+      }),
+    [extBase, mentionedOnly, mentionDone, effectiveState],
+  )
+
+  const extFilterTabs: TopTab<TicketState>[] = mentionedOnly
+    ? [
+        { id: "open", label: "Open", icon: Circle, count: extCounts.open, accent: "primary" },
+        { id: "closed", label: locale === "nl" ? "Gesloten" : "Closed", icon: CircleCheck, count: extCounts.closed },
+      ]
+    : [
+        { id: "open", label: "Open", icon: Circle, count: extCounts.open, accent: "primary" },
+        { id: "assigned", label: locale === "nl" ? "Opgepakt" : "Assigned", icon: User, count: extCounts.assigned },
+        { id: "closed", label: locale === "nl" ? "Gesloten" : "Closed", icon: CircleCheck, count: extCounts.closed },
+      ]
+
+  // Auto-open the top ticket on the external side (Roy: don't land on an empty
+  // "select an item" state). Re-selects when the current one leaves the list
+  // (channel/tab switch, or it got replied-to and moved tabs). No-op while the
+  // open ticket is still visible, so it doesn't fight manual selection.
+  useEffect(() => {
+    if (!isExternal) return
+    const stillVisible = openRow != null && visibleExternalRows.some((r) => r.id === openRow.id)
+    if (stillVisible) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenRow(visibleExternalRows[0] ?? null)
+  }, [isExternal, visibleExternalRows, openRow])
 
   const markThread = useCallback(
     (thread: ChatThreadSummary, action: string, payload?: { until?: string | null }) => {
@@ -173,7 +390,6 @@ export function InboxShell({
     },
     [queryClient],
   )
-
   const openItem = useCallback(
     (row: FeedRow) => {
       setOpenRow(row)
@@ -183,18 +399,48 @@ export function InboxShell({
     },
     [markThread],
   )
-
-  const refreshItems = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["shell-tasks", locked?.id ?? "me"] })
-    queryClient.invalidateQueries({ queryKey: ["shell-updates", locked?.id ?? "me"] })
-  }, [queryClient, locked?.id])
-
   const onReplied = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
     if (openRow?.thread) {
       queryClient.invalidateQueries({ queryKey: ["inbox-thread", openRow.thread.threadKey] })
     }
-  }, [queryClient, openRow?.thread])
+  }, [queryClient, openRow])
+
+  // Close/reopen a ticket = archive/unarchive. The Open->Assigned move is
+  // automatic (hasTeamReply); Closed is the only explicit lifecycle action.
+  const closeThread = useCallback(
+    (row: FeedRow) => {
+      if (!row.thread) return
+      markThread(row.thread, row.thread.isArchived ? "unarchive" : "archive")
+    },
+    [markThread],
+  )
+
+  // Mark a mention done/undone = flip the read-state of MY mention update rows
+  // for that thread (per-user; doesn't touch the shared thread).
+  const closeMention = useCallback(
+    (row: FeedRow) => {
+      const list = mentionUpdatesByThread.get(baseThreadKey(row.id)) ?? []
+      if (list.length === 0) return
+      const done = list.every((u) => u.status === "read")
+      const status = done ? "unread" : "read"
+      Promise.all(
+        list.map((u) =>
+          fetch(`/api/inbox/${u.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          }),
+        ),
+      ).then(refreshItems)
+    },
+    [mentionUpdatesByThread, refreshItems],
+  )
+
+  const selectMentioned = useCallback(() => {
+    setMentionedOnly(true)
+    setExtState((s) => (s === "assigned" ? "open" : s))
+  }, [])
 
   // --- Composer --------------------------------------------------------------
   const [composerOpen, setComposerOpen] = useState(false)
@@ -204,7 +450,6 @@ export function InboxShell({
     title?: string
     body?: string
   }>({ kind: "task" })
-
   const openComposer = useCallback((kind: InboxKind = "task") => {
     setComposerDefaults({ kind })
     setComposerOpen(true)
@@ -214,7 +459,6 @@ export function InboxShell({
     setComposerOpen(true)
   }, [])
 
-  // --- Row (task/update) actions --------------------------------------------
   const handleRowAction = useCallback(
     async (row: FeedRow, action: RowAction) => {
       if (row.kind === "chat" || !row.item) return
@@ -225,7 +469,6 @@ export function InboxShell({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         }).then(refreshItems)
-
       if (action === "done") return void patch({ status: "done" })
       if (action === "reopen") return void patch({ status: "open" })
       if (action === "read") return void patch({ status: "read" })
@@ -247,13 +490,62 @@ export function InboxShell({
     [refreshItems, openComposerFromChat, openRow?.id],
   )
 
-  const loading = tasksQuery.isLoading || updatesQuery.isLoading || (canViewComms && threadsQuery.isLoading)
-  const showClient = !locked
+  // --- Render ----------------------------------------------------------------
+  const externalLoading = canViewComms && threadsQuery.isLoading
+  const internalLoading = tasksQuery.isLoading || updatesQuery.isLoading
   const containerH = locked
     ? "h-[calc(100vh-320px)] min-h-[440px]"
-    : "h-[calc(100vh-172px)] min-h-[540px]"
+    : "h-[calc(100vh-208px)] min-h-[520px]"
 
-  const emptyHint = !canViewComms ? null : selected.size === 0 ? "No channels selected — pick one on the left." : null
+  const scopeItems: Array<{ id: InboxScope; label: string }> = [
+    { id: "internal", label: "Internal" },
+    { id: "external", label: "External" },
+  ]
+
+  const externalRail = (
+    <ExternalRail
+      whatsapp={waEntries}
+      email={emailEntries}
+      activeChannelId={mentionedOnly ? null : activeChannelId}
+      mentionedOnly={mentionedOnly}
+      mentionedCount={mentionedCount}
+      expanded={expanded}
+      onSelectChannel={onSelectChannel}
+      onToggleExpand={toggleExpand}
+      onSelectMentioned={selectMentioned}
+      loading={identityQuery.isLoading}
+    />
+  )
+  const internalRail = (
+    <InternalRail
+      types={internalTypes}
+      counts={internalCounts}
+      onToggleType={toggleType}
+      onSelectAllTypes={selectAllTypes}
+      deadline={deadline}
+      onDeadlineChange={setDeadline}
+    />
+  )
+  const railForScope = isExternal ? externalRail : internalRail
+  const railToggle = (
+    <button
+      type="button"
+      onClick={toggleRail}
+      title={railCollapsed ? "Show sidebar" : "Hide sidebar"}
+      aria-label={railCollapsed ? "Show sidebar" : "Hide sidebar"}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+    >
+      {railCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+    </button>
+  )
+
+  const emptyHint = isExternal
+    ? mentionedOnly
+      ? "No tickets mention you right now."
+      : identityChannels.length === 0
+        ? "No channels connected — add them in Account settings."
+        : "No tickets on this channel in this view."
+    : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -261,82 +553,93 @@ export function InboxShell({
         <PageHeader
           title="Inbox"
           actions={
-            <Button size="sm" onClick={() => openComposer("task")}>
+            <Button size="sm" onClick={() => openComposer(isExternal ? "task" : "update")}>
               <Plus className="h-4 w-4" /> New
             </Button>
           }
         />
       )}
 
-      {/* Horizontal channel strip: always below xl, and always in locked mode
-          (the client tab is too narrow for a 3rd column). */}
-      <div className={cn(locked ? "block" : "xl:hidden")}>
-        <ChannelRail
-          orientation="horizontal"
-          selected={selected}
-          counts={counts}
-          onToggle={toggleChannel}
-          onSelectAll={selectAll}
-          hidden={hiddenChannels}
-        />
+      <div className="flex items-center gap-2">
+        {railToggle}
+        {(!locked || canViewComms) && (
+          <SegmentedTabs items={scopeItems} value={scope} onChange={setScope} />
+        )}
       </div>
 
-      <div
-        className={cn(
-          "grid gap-4",
-          containerH,
-          locked
-            ? "grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr]"
-            : "grid-cols-1 lg:grid-cols-[minmax(340px,420px)_1fr] xl:grid-cols-[210px_minmax(340px,420px)_1fr]",
-        )}
-      >
-        {/* Vertical rail: xl+ global only */}
-        {!locked && (
-          <aside className="hidden min-h-0 overflow-y-auto xl:block">
-            <ChannelRail
-              orientation="vertical"
-              selected={selected}
-              counts={counts}
-              onToggle={toggleChannel}
-              onSelectAll={selectAll}
-              hidden={hiddenChannels}
+      {/* Rail above the feed below xl (and always in locked mode). Hidden when
+          the user collapses the sidebar. */}
+      {!railCollapsed && (
+        <div className={cn(locked ? "block" : "xl:hidden")}>
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60 p-2">{railForScope}</div>
+        </div>
+      )}
+
+      {isExternal ? (
+        <div
+          className={cn(
+            "grid gap-4",
+            containerH,
+            locked
+              ? "grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr]"
+              : railCollapsed
+                ? "grid-cols-1 lg:grid-cols-[minmax(340px,420px)_1fr]"
+                : "grid-cols-1 lg:grid-cols-[minmax(340px,420px)_1fr] xl:grid-cols-[230px_minmax(340px,420px)_1fr]",
+          )}
+        >
+          {!locked && !railCollapsed && (
+            <aside className="hidden min-h-0 overflow-y-auto xl:block">{externalRail}</aside>
+          )}
+          <div className="min-h-0">
+            <UnifiedFeed
+              rows={visibleExternalRows}
+              loading={externalLoading}
+              activeId={openRow?.id ?? null}
+              showClient={!locked}
+              filterTabs={extFilterTabs}
+              filterValue={effectiveState}
+              onFilterChange={setExtState}
+              onOpen={openItem}
+              onAction={handleRowAction}
+              onCloseRow={mentionedOnly ? closeMention : closeThread}
+              closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
+              users={users}
+              emptyHint={emptyHint}
             />
-          </aside>
-        )}
-
-        {/* Feed */}
-        <div className="min-h-0">
-          <UnifiedFeed
-            rows={feedRows}
-            loading={loading}
-            activeId={openRow?.id ?? null}
-            showClient={showClient}
-            filter={filter}
-            onFilterChange={setFilter}
-            onOpen={openItem}
-            onAction={handleRowAction}
-            users={users}
-            emptyHint={emptyHint}
-          />
+          </div>
+          <div className="hidden min-h-0 lg:block">
+            <DetailPane
+              row={openRow}
+              currentUser={currentUser}
+              users={users}
+              onClose={() => setOpenRow(null)}
+              onChanged={refreshItems}
+              onReplied={onReplied}
+              onMakeTaskFromMessage={openComposerFromChat}
+              onMarkThread={markThread}
+            />
+          </div>
         </div>
-
-        {/* Detail: inline on lg+ */}
-        <div className="hidden min-h-0 lg:block">
-          <DetailPane
-            row={openRow}
-            currentUser={currentUser}
-            users={users}
-            onClose={() => setOpenRow(null)}
-            onChanged={refreshItems}
-            onReplied={onReplied}
-            onMakeTaskFromMessage={openComposerFromChat}
-            onMarkThread={markThread}
-          />
+      ) : (
+        <div className={cn("grid gap-4", containerH, railCollapsed ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-[230px_1fr]")}>
+          {!locked && !railCollapsed && (
+            <aside className="hidden min-h-0 overflow-y-auto xl:block">{internalRail}</aside>
+          )}
+          <div className="w-full min-h-0 max-w-3xl">
+            <UpdateFeed
+              items={items}
+              currentUserId={currentUser.id}
+              types={internalTypes}
+              deadline={deadline}
+              loading={internalLoading}
+              onChanged={refreshItems}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Detail overlay: below lg */}
-      {openRow && (
+      {/* External detail overlay below lg */}
+      {isExternal && openRow && (
         <div className="fixed inset-0 z-50 bg-background p-3 lg:hidden">
           <div className="h-full">
             <DetailPane

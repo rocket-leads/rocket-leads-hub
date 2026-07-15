@@ -144,10 +144,14 @@ function parseFormPayload(body: string): NormalizedPayload | null {
     channelId,
     channelType: null,
     authorKind,
-    // For INBOUND we know the author IS the contact; for OUTBOUND/NOTE the
-    // form payload doesn't include the user's name, so fall back to "Team".
+    // For INBOUND the author IS the contact. For OUTBOUND/NOTE the form payload
+    // DOES carry the sending agent in `user_name` (Roy 2026-07-15: it was
+    // wrongly assumed absent, so every outbound message showed as "Team" / the
+    // system account instead of the real teammate). Use it; fall back to "Team".
     authorName:
-      authorKind === "client" ? (contactName ?? "Unknown") : "Team",
+      authorKind === "client"
+        ? (contactName ?? "Unknown")
+        : (get("user_name").replace(/\+/g, " ") || "Team"),
     authorExternal: authorKind === "client" ? get("contact_id") : "",
     createdAtSrc,
     attachments: null,
@@ -418,6 +422,12 @@ export async function POST(req: NextRequest) {
   // (separate kind=update rows, independent of this status).
   const status = payload.authorKind === "client" ? "unread" : "read"
   const priority = null
+  // Trengo internal notes (NOTE / INTERNAL_* events) - @mentions to teammates
+  // and externally-posted [AI Summary] blocks. Flagged so the chat pane renders
+  // them as internal notes (yellow) and the thread rollup excludes them from
+  // the client-facing preview / title / pending metrics.
+  const isInternalNote =
+    payload.eventType === "NOTE" || payload.eventType.includes("INTERNAL")
 
   const titlePreview =
     messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
@@ -487,6 +497,7 @@ export async function POST(req: NextRequest) {
       classify_method: "ai",
       created_at_src: payload.createdAtSrc,
       trengo_channel_id: payload.channelId,
+      is_internal: isInternalNote,
       source_ref: sourceRef,
       raw: payload.raw,
       attachments: payload.attachments,

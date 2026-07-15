@@ -96,9 +96,13 @@ export function threadToFeedRow(thread: ChatThreadSummary): FeedRow | null {
     channel,
     kind: "chat",
     sortAt: thread.latestAt,
-    unread: thread.unreadCount > 0,
-    unreadCount: thread.unreadCount,
-    title: thread.latestSubject ?? thread.primaryName,
+    // "Unread" here means "awaiting our reply" - client messages since our last
+    // send (Roy 2026-07-15), not the raw unread-status count.
+    unread: thread.pendingCount > 0,
+    unreadCount: thread.pendingCount,
+    // The row headlines the Trengo contact name (Roy's simplified row: icon +
+    // name + date + preview, nothing else).
+    title: thread.primaryName,
     preview: thread.latestPreview,
     clientName: thread.clientName,
     thread,

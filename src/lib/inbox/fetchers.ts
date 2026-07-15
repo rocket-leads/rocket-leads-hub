@@ -754,7 +754,13 @@ const CHAT_SELECT = `
 
 function rowAuthorName(row: RawChatRow): string {
   if (row.author_kind === "rl_team") {
-    return row.author?.name ?? row.author?.email ?? row.author_name_cached ?? "Team"
+    // Prefer the Trengo-cached name (the ACTUAL sending agent) over the
+    // FK-joined author - the FK points at the ingest-owner system account
+    // ("Roy Vosters"), not who really sent it. Only fall back to the join when
+    // the cache is missing or the generic "Team" placeholder.
+    const cached = row.author_name_cached?.trim()
+    if (cached && cached !== "Team") return cached
+    return row.author?.name ?? row.author?.email ?? cached ?? "Team"
   }
   return row.author_name_cached ?? "Unknown"
 }
@@ -946,11 +952,14 @@ export async function listChatThreads(
 async function groupAndDecorateChatRows(
   rows: RawChatRow[],
 ): Promise<ChatThreadSummary[]> {
-  // Group by thread_key. Newest event wins for the summary fields since
-  // rows are already ordered by created_at DESC.
+  // Group by thread_key, but scope Trengo threads PER CHANNEL so each line's
+  // conversation is its own thread (Roy 2026-07-15). Slack / non-Trengo stay
+  // keyed by their base thread_key. Newest event wins for the summary fields
+  // since rows are already ordered by created_at DESC.
   const byThread = new Map<string, { rows: RawChatRow[] }>()
   for (const row of rows) {
-    const key = row.thread_key as string
+    const base = row.thread_key as string
+    const key = row.source === "trengo" ? chatThreadKey(base, row.trengo_channel_id) : base
     let entry = byThread.get(key)
     if (!entry) {
       entry = { rows: [] }
@@ -978,8 +987,16 @@ async function groupAndDecorateChatRows(
   const threads: ChatThreadSummary[] = []
   for (const [threadKey, { rows: threadRows }] of byThread) {
     if (threadRows.length === 0) continue
-    const latest = threadRows[0]
-    const externalAuthor = threadRows.find(
+    // Internal notes (@mentions, externally-posted [AI Summary] blocks) are
+    // annotations, not client conversation: they must not drive the preview /
+    // title / status, and a thread that is ONLY notes isn't a real ticket.
+    // Client-facing rows (is_internal !== true) own every summary metric below;
+    // the full row set (incl. notes) still renders in the thread, yellow.
+    const clientRows = threadRows.filter((r) => r.is_internal !== true)
+    if (clientRows.length === 0) continue
+    const latest = clientRows[0]
+    const latestAny = threadRows[0]
+    const externalAuthor = clientRows.find(
       (r) => r.author_kind && r.author_kind !== "rl_team",
     )
     const fallbackName =
@@ -993,7 +1010,7 @@ async function groupAndDecorateChatRows(
     // most-recently-sent greeting wins on the off-chance there are
     // multiple outbound openings. Roy: no more "Team / Team / Team" rows.
     if (isGenericThreadName(primaryName)) {
-      for (const r of threadRows) {
+      for (const r of clientRows) {
         const candidate = extractRecipientFromGreeting(r.body)
         if (candidate) {
           primaryName = candidate
@@ -1011,19 +1028,19 @@ async function groupAndDecorateChatRows(
     // row can headline it. Walk newest-first since `threadRows` is
     // already DESC by created_at; the first non-empty subject wins.
     let latestSubject: string | null = null
-    for (const r of threadRows) {
+    for (const r of clientRows) {
       const s = r.email_subject?.trim()
       if (s) {
         latestSubject = s
         break
       }
     }
-    const unreadCount = threadRows.filter((r) => r.status === "unread").length
+    const unreadCount = clientRows.filter((r) => r.status === "unread").length
     // Triage flags rolled up across the thread. isArchived follows the
     // freshest row so a new inbound un-archives the thread naturally
     // ("klant heeft op je archive geantwoord → back in inbox").
     const isStarred = threadRows.some((r) => r.starred === true)
-    const isArchived = latest.archived_at != null
+    const isArchived = latestAny.archived_at != null
     // Every distinct Trengo channel this thread has rows on (for the "any row
     // on channel X" per-channel filter).
     const channelIds = Array.from(
@@ -1033,18 +1050,20 @@ async function groupAndDecorateChatRows(
           .filter((x): x is number => x != null),
       ),
     )
-    // Any outbound/team message → the ticket has been picked up ("Opgepakt").
-    const hasTeamReply = threadRows.some((r) => r.author_kind === "rl_team")
-    // Pending = client messages after our last reply. threadRows is DESC by
-    // created_at, so the first rl_team row is our most recent send.
+    // Any real outbound reply → the ticket has been picked up ("Opgepakt").
+    // Internal notes are excluded (clientRows), so posting a note doesn't
+    // falsely flip a ticket to Assigned.
+    const hasTeamReply = clientRows.some((r) => r.author_kind === "rl_team")
+    // Pending = client messages after our last real reply. clientRows is DESC
+    // by created_at, so the first rl_team row is our most recent send.
     let lastTeamAt: string | null = null
-    for (const r of threadRows) {
+    for (const r of clientRows) {
       if (r.author_kind === "rl_team") {
         lastTeamAt = r.created_at
         break
       }
     }
-    const pendingCount = threadRows.filter((r) => {
+    const pendingCount = clientRows.filter((r) => {
       const inbound = r.author_kind === "client" || r.author_kind === "external"
       if (!inbound) return false
       return lastTeamAt == null || r.created_at > lastTeamAt
@@ -1154,6 +1173,43 @@ async function groupAndDecorateChatRows(
  * Returns the number of rows updated. Idempotent: calling it again on a
  * thread with no unread events is a fast no-op.
  */
+/**
+ * Trengo threads are scoped per channel (Roy 2026-07-15): each line's
+ * conversation is its own thread, so a contact you have on both WhatsApp and
+ * email shows as two threads, and an internal note posted on another line can't
+ * drag a conversation into that line's inbox. Encoded as a suffix on the
+ * existing per-contact key: "<base>|ch:<channelId>" (or "|ch:none" for the rare
+ * channel-less row). Slack / legacy keys carry no suffix.
+ */
+export function chatThreadKey(base: string, channelId: number | null): string {
+  return `${base}|ch:${channelId ?? "none"}`
+}
+function parseChatThreadKey(threadKey: string): { base: string; channel: "all" | "none" | number } {
+  const i = threadKey.indexOf("|ch:")
+  if (i === -1) return { base: threadKey, channel: "all" }
+  const raw = threadKey.slice(i + 4)
+  const base = threadKey.slice(0, i)
+  if (raw === "none") return { base, channel: "none" }
+  const n = Number(raw)
+  return { base, channel: Number.isFinite(n) ? n : "all" }
+}
+/** Narrow a query to a composite thread key: base thread_key + the encoded
+ *  channel scope. Chainable - returns the same builder so callers keep adding
+ *  filters after it. The Supabase builder type is huge, so we cast to a tiny
+ *  local filterable shape internally rather than constrain the generic (which
+ *  triggers "excessively deep type instantiation"). */
+function scopeThreadKey<Q>(query: Q, threadKey: string): Q {
+  type Filterable = {
+    eq(column: string, value: string | number): Filterable
+    is(column: string, value: null): Filterable
+  }
+  const { base, channel } = parseChatThreadKey(threadKey)
+  let q = (query as Filterable).eq("thread_key", base)
+  if (channel === "none") q = q.is("trengo_channel_id", null)
+  else if (channel !== "all") q = q.eq("trengo_channel_id", channel)
+  return q as Q
+}
+
 export async function markChatThreadRead(
   threadKey: string,
   userId: string,
@@ -1163,21 +1219,20 @@ export async function markChatThreadRead(
 
   // If the thread is currently claimed in Trengo, the user shouldn't be able
   // to mark it read - they shouldn't even be seeing it. Cheap guard.
-  const { data: claimedRow } = await supabase
-    .from("inbox_events")
-    .select("id")
-    .eq("thread_key", threadKey)
+  const { data: claimedRow } = await scopeThreadKey(
+    supabase.from("inbox_events").select("id"),
+    threadKey,
+  )
     .eq("source", "trengo")
     .not("trengo_assignee_user_id", "is", null)
     .limit(1)
     .maybeSingle()
   if (claimedRow) return { updated: 0 }
 
-  let query = supabase
-    .from("inbox_events")
-    .select("id")
-    .eq("thread_key", threadKey)
-    .eq("status", "unread")
+  let query = scopeThreadKey(
+    supabase.from("inbox_events").select("id"),
+    threadKey,
+  ).eq("status", "unread")
 
   const channelIds = await getUserTrengoChannelIds(userId)
   if (channelIds.length > 0) {
@@ -1235,20 +1290,20 @@ export async function markChatThreadUnread(
 
   // Same claimed-ticket gate as markChatThreadRead - a Trengo-claimed thread
   // shouldn't be mutable from the Hub.
-  const { data: claimedRow } = await supabase
-    .from("inbox_events")
-    .select("id")
-    .eq("thread_key", threadKey)
+  const { data: claimedRow } = await scopeThreadKey(
+    supabase.from("inbox_events").select("id"),
+    threadKey,
+  )
     .eq("source", "trengo")
     .not("trengo_assignee_user_id", "is", null)
     .limit(1)
     .maybeSingle()
   if (claimedRow) return { updated: 0 }
 
-  let query = supabase
-    .from("inbox_events")
-    .select("id, status")
-    .eq("thread_key", threadKey)
+  let query = scopeThreadKey(
+    supabase.from("inbox_events").select("id, status"),
+    threadKey,
+  )
     .order("created_at", { ascending: false })
     .limit(1)
 
@@ -1300,10 +1355,10 @@ async function visibleThreadEventIds(
   userId: string,
   role: Role,
 ): Promise<string[]> {
-  let query = supabase
-    .from("inbox_events")
-    .select("id")
-    .eq("thread_key", threadKey)
+  let query = scopeThreadKey(
+    supabase.from("inbox_events").select("id"),
+    threadKey,
+  )
 
   const channelIds = await getUserTrengoChannelIds(userId)
   if (channelIds.length > 0) {
@@ -1405,21 +1460,20 @@ export async function getChatThreadMessages(
 
   // Hide message history once the Trengo ticket has been claimed by anyone.
   // Same reasoning as listChatThreads - the Hub doesn't show owned tickets.
-  const { data: claimedRow } = await supabase
-    .from("inbox_events")
-    .select("id")
-    .eq("thread_key", threadKey)
+  const { data: claimedRow } = await scopeThreadKey(
+    supabase.from("inbox_events").select("id"),
+    threadKey,
+  )
     .eq("source", "trengo")
     .not("trengo_assignee_user_id", "is", null)
     .limit(1)
     .maybeSingle()
   if (claimedRow) return []
 
-  let query = supabase
-    .from("inbox_events")
-    .select(CHAT_SELECT)
-    .eq("thread_key", threadKey)
-    .order("created_at", { ascending: true })
+  let query = scopeThreadKey(
+    supabase.from("inbox_events").select(CHAT_SELECT),
+    threadKey,
+  ).order("created_at", { ascending: true })
 
   // Mirror listChatThreads: Trengo channel subscriptions narrow the chat
   // substrate even for admins. Without this, opening a thread surfaced via
