@@ -64,7 +64,7 @@ function baseThreadKey(key: string): string {
 type TicketState = "open" | "assigned" | "closed"
 function threadState(t: ChatThreadSummary): TicketState {
   if (t.isArchived) return "closed"
-  return t.hasTeamReply ? "assigned" : "open"
+  return t.isAssigned ? "assigned" : "open"
 }
 
 /**
@@ -443,11 +443,23 @@ export function InboxShell({
     queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
     if (openRow?.thread) {
       queryClient.invalidateQueries({ queryKey: ["inbox-thread", openRow.thread.threadKey] })
+      // Auto pick-up: replying to an untouched (Open) ticket moves it to
+      // Assigned. Leaves already-assigned / closed tickets alone.
+      if (!openRow.thread.isArchived && !openRow.thread.isAssigned) {
+        markThread(openRow.thread, "assign")
+      }
     }
-  }, [queryClient, openRow])
+  }, [queryClient, openRow, markThread])
 
-  // Close/reopen a ticket = archive/unarchive. The Open->Assigned move is
-  // automatic (hasTeamReply); Closed is the only explicit lifecycle action.
+  // Explicit 3-state transitions (Open / Assigned / Closed) for the ticket
+  // header buttons - the user always sees the two states it's NOT in.
+  const setThreadState = useCallback(
+    (thread: ChatThreadSummary, target: TicketState) => {
+      markThread(thread, target === "closed" ? "archive" : target === "assigned" ? "assign" : "open")
+    },
+    [markThread],
+  )
+
   const closeThread = useCallback(
     (row: FeedRow) => {
       if (!row.thread) return
@@ -716,7 +728,8 @@ export function InboxShell({
               onChanged={refreshItems}
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
-              onMarkThread={markThread}
+              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
+              onSetState={(t) => openRow?.thread && setThreadState(openRow.thread, t)}
             />
           </div>
         </div>
@@ -750,7 +763,9 @@ export function InboxShell({
               onChanged={refreshItems}
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
-              onMarkThread={markThread}
+              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
+              onSetState={(t) => openRow?.thread && setThreadState(openRow.thread, t)}
+              showDismiss
             />
           </div>
         </div>
