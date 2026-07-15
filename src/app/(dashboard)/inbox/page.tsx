@@ -22,7 +22,7 @@ function InboxLoading() {
   )
 }
 
-async function InboxData({ v2 }: { v2: boolean }) {
+async function InboxData({ legacy }: { legacy: boolean }) {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
@@ -66,9 +66,9 @@ async function InboxData({ v2 }: { v2: boolean }) {
     isLive: mondayStatusToHub(c.campaignStatus, c.boardType) === "live",
   }))
 
-  // ?v2 opts into the new 3-pane unified inbox shell while the legacy
-  // InboxView stays the default. Cut over once the shell is validated.
-  const Component = v2 ? InboxShell : InboxView
+  // The 3-pane unified inbox (InboxShell) is now the default. `?legacy` is a
+  // temporary safety escape to the old InboxView if a regression turns up.
+  const Component = legacy ? InboxView : InboxShell
   return (
     <Component
       currentUser={currentUser}
@@ -83,13 +83,13 @@ async function InboxData({ v2 }: { v2: boolean }) {
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ v2?: string }>
+  searchParams: Promise<{ legacy?: string }>
 }) {
-  const { v2 } = await searchParams
+  const { legacy } = await searchParams
   return (
     <div>
       <Suspense fallback={<InboxLoading />}>
-        <InboxData v2={v2 !== undefined} />
+        <InboxData legacy={legacy !== undefined} />
       </Suspense>
     </div>
   )
