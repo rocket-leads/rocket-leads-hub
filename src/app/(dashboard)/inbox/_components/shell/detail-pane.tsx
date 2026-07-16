@@ -120,14 +120,13 @@ export function DetailPane({
 
   if (row.thread) {
     const current = ticketState ?? "open"
-    // Mentioned view is a Trengo-style To-do/Done toggle: one button that
-    // flips Open ⇄ Gesloten. Everywhere else keeps the 3-state Open/
-    // Assigned/Closed controls (show the two states it's NOT in).
-    const targets: readonly TicketState[] = mentioned
-      ? current === "closed"
-        ? (["open"] as const)
-        : (["closed"] as const)
-      : (["open", "assigned", "closed"] as const).filter((s) => s !== current)
+    // The conversation detail is IDENTICAL everywhere - the Mentioned view opens
+    // the very same ticket with the same Open/Assigned/Closed controls (Roy
+    // 2026-07-16). The mention's own To-do/Done state is handled separately by
+    // the per-note checkbox + the list tabs, and doesn't touch the ticket state.
+    const targets: readonly TicketState[] = (["open", "assigned", "closed"] as const).filter(
+      (s) => s !== current,
+    )
     return (
       <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">

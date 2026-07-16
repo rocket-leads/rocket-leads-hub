@@ -844,24 +844,9 @@ export function InboxShell({
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
               noteMentions={noteMentions}
-              ticketState={
-                openRow
-                  ? mentionedOnly
-                    ? mentionDone(openRow.id)
-                      ? "closed"
-                      : "open"
-                    : openRow.thread
-                      ? threadState(openRow.thread)
-                      : undefined
-                  : undefined
-              }
+              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
               onSetState={(t) => {
-                if (!openRow) return
-                if (mentionedOnly) {
-                  closeMention(openRow)
-                  return
-                }
-                if (openRow.thread) setThreadState(openRow.thread, t)
+                if (openRow?.thread) setThreadState(openRow.thread, t)
               }}
             />
           </div>
@@ -898,24 +883,9 @@ export function InboxShell({
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
               noteMentions={noteMentions}
-              ticketState={
-                openRow
-                  ? mentionedOnly
-                    ? mentionDone(openRow.id)
-                      ? "closed"
-                      : "open"
-                    : openRow.thread
-                      ? threadState(openRow.thread)
-                      : undefined
-                  : undefined
-              }
+              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
               onSetState={(t) => {
-                if (!openRow) return
-                if (mentionedOnly) {
-                  closeMention(openRow)
-                  return
-                }
-                if (openRow.thread) setThreadState(openRow.thread, t)
+                if (openRow?.thread) setThreadState(openRow.thread, t)
               }}
               showDismiss
             />
