@@ -1152,6 +1152,11 @@ function PedroDraftButton({
   )
 }
 
+/** Per-note mention state: which internal notes (by Trengo message id) carry a
+ *  mention for me, whether each is ticked off, and the toggle. Drives the
+ *  on-note "done" checkbox in the Mentioned view. */
+type NoteMentions = { done: Record<string, boolean>; toggle: (noteMsgId: string) => void }
+
 /** Renders the selected thread's messages + composer in a self-contained
  *  card. Pass `thread=null` to show the "Select a conversation" placeholder.
  *  `mergedLeftEdge` drops the left border-radius so this panel can sit
@@ -1165,6 +1170,7 @@ export function ThreadView({
   inboxZero,
   mergedLeftEdge,
   mentioned,
+  noteMentions,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
@@ -1183,6 +1189,8 @@ export function ThreadView({
    *  channel-subscription filter) so the user sees every message + note around
    *  the mention, even on a line they don't subscribe to. */
   mentioned?: boolean
+  /** Per-note mention state for the on-note "done" checkbox (Mentioned view). */
+  noteMentions?: NoteMentions
 }) {
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
@@ -1206,7 +1214,7 @@ export function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -1250,6 +1258,7 @@ function ThreadMessages({
   onMarkThread,
   mergedLeftEdge,
   mentioned,
+  noteMentions,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
@@ -1258,6 +1267,7 @@ function ThreadMessages({
   onMarkThread?: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
   mergedLeftEdge?: boolean
   mentioned?: boolean
+  noteMentions?: NoteMentions
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1928,6 +1938,7 @@ function ThreadMessages({
               isEmailThread={isEmail}
               clientId={thread.clientId}
               mentionNames={mentionNames}
+              noteMentions={noteMentions}
               onMakeTaskFromMessage={onMakeTaskFromMessage}
             />
           )}
@@ -3063,6 +3074,7 @@ function ThreadMessagesList({
   isEmailThread,
   clientId,
   mentionNames = [],
+  noteMentions,
   onMakeTaskFromMessage,
 }: {
   messages: ChatMessage[]
@@ -3070,6 +3082,7 @@ function ThreadMessagesList({
   clientId: string | null
   /** Hub user display names, so @-mentions in message bodies render blue. */
   mentionNames?: string[]
+  noteMentions?: NoteMentions
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }) {
   const [middleExpanded, setMiddleExpanded] = useState(false)
@@ -3107,6 +3120,7 @@ function ThreadMessagesList({
             msg={msg}
             isEmailThread={isEmailThread}
             mentionNames={mentionNames}
+            noteMentions={noteMentions}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3130,6 +3144,7 @@ function ThreadMessagesList({
         msg={first}
         isEmailThread={isEmailThread}
         mentionNames={mentionNames}
+        noteMentions={noteMentions}
         onMakeTask={makeTask(first)}
       />
       {!middleExpanded && collapsedMiddle.length > 0 && (
@@ -3150,6 +3165,7 @@ function ThreadMessagesList({
             msg={msg}
             isEmailThread={isEmailThread}
             mentionNames={mentionNames}
+            noteMentions={noteMentions}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3160,6 +3176,7 @@ function ThreadMessagesList({
             msg={msg}
             isEmailThread={isEmailThread}
             mentionNames={mentionNames}
+            noteMentions={noteMentions}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3169,6 +3186,7 @@ function ThreadMessagesList({
           msg={msg}
           isEmailThread={isEmailThread}
           mentionNames={mentionNames}
+          noteMentions={noteMentions}
           onMakeTask={makeTask(msg)}
         />
       ))}
@@ -3222,10 +3240,12 @@ function MessageBubble({
   msg,
   isEmailThread,
   mentionNames = [],
+  noteMentions,
   onMakeTask,
 }: {
   msg: ChatMessage
   mentionNames?: string[]
+  noteMentions?: NoteMentions
   /** When the parent thread is an email channel, every message renders
    *  in the Gmail-style EmailMessageCard layout (full-width card,
    *  prominent sender header, iframe body if HTML is available, paragraph-
@@ -3269,29 +3289,61 @@ function MessageBubble({
   // (Roy 2026-07-16).
   if (isInternal) {
     const isBotNote = /^(AI Summary|AI Note|Trengo)$/i.test(msg.authorName.trim())
+    // Does this note carry an @-mention for the current user? If so it gets a
+    // prominent on-note checkbox to tick off just this notification (never the
+    // ticket). Keyed by the note's Trengo message id. Roy 2026-07-16.
+    const noteMsgId = msg.sourceMsgId?.match(/^trengo:msg:(\d+)$/)?.[1] ?? null
+    const hasMention =
+      noteMsgId != null && noteMentions != null && noteMsgId in noteMentions.done
+    const mentionDone = hasMention ? noteMentions!.done[noteMsgId!] : false
     return (
-      <div className="group flex items-start gap-2.5">
+      <div className="group flex items-start gap-3">
         {isBotNote ? (
-          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
-            <Sparkles className="h-3.5 w-3.5" />
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/25 text-amber-600 dark:text-amber-400">
+            <Sparkles className="h-4 w-4" />
           </div>
         ) : (
           <UserAvatar
             name={msg.authorName}
             avatarUrl={msg.authorAvatarUrl}
-            size="sm"
             className="mt-0.5 shrink-0"
           />
         )}
-        <div className="min-w-0 max-w-[80%] rounded-2xl rounded-tl-sm border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-foreground">
-          <div className="mb-0.5 flex items-baseline gap-2">
-            <span className="text-xs font-semibold">{msg.authorName}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-              Internal
+        {/* Full-width amber card with a left accent bar so an internal note
+            never gets lost between big email cards - Roy 2026-07-16: "maak hem
+            groter en opvallender." */}
+        <div
+          className={cn(
+            "min-w-0 flex-1 rounded-xl border border-amber-400/50 border-l-4 border-l-amber-500 bg-amber-400/[0.18] px-4 py-3 text-foreground shadow-sm transition-opacity",
+            mentionDone && "opacity-60",
+          )}
+        >
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="text-sm font-semibold">{msg.authorName}</span>
+            <span className="rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              Internal note
             </span>
-            <span className="text-[10px] tabular-nums text-muted-foreground/70">
+            <span className="text-[11px] tabular-nums text-muted-foreground/70">
               {fmtTime(msg.at)}
             </span>
+            {hasMention && (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={mentionDone}
+                onClick={() => noteMentions!.toggle(noteMsgId!)}
+                title={mentionDone ? "Markeer notificatie als niet-afgehandeld" : "Vink deze mention af"}
+                aria-label={mentionDone ? "Mention afgehandeld - klik om terug te zetten" : "Vink deze mention af"}
+                className={cn(
+                  "ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-colors",
+                  mentionDone
+                    ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
+                    : "border-amber-500/60 bg-card text-transparent hover:border-emerald-500 hover:text-emerald-500/50",
+                )}
+              >
+                <Check className="h-4 w-4" strokeWidth={3} />
+              </button>
+            )}
           </div>
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
             {renderMentions(msg.body, mentionNames)}

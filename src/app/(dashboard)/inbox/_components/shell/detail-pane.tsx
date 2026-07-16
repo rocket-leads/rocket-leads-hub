@@ -66,6 +66,10 @@ type Props = {
    *  (Open ⇄ Gesloten) instead of the 3-state Open/Assigned/Closed buttons.
    *  Marking done flips only MY mention rows, never the shared thread. */
   mentioned?: boolean
+  /** Per-note mention state: `done[noteMsgId]` tells the conversation which
+   *  internal notes carry a mention for me (so it can draw a checkbox on the
+   *  note itself) and whether it's ticked; `toggle` flips it. */
+  noteMentions?: { done: Record<string, boolean>; toggle: (noteMsgId: string) => void }
   /** Show the dismiss (X) button - only on the mobile overlay, where it's the
    *  way back to the list. The docked pane omits it (auto-open reselects). */
   showDismiss?: boolean
@@ -82,6 +86,7 @@ export function DetailPane({
   ticketState,
   onSetState,
   mentioned,
+  noteMentions,
   showDismiss,
 }: Props) {
   if (!row) {
@@ -138,6 +143,7 @@ export function DetailPane({
             onMakeTaskFromMessage={onMakeTaskFromMessage}
             onReplied={onReplied}
             mentioned={mentioned}
+            noteMentions={noteMentions}
           />
         </div>
       </div>

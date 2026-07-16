@@ -50,6 +50,9 @@ export type InboxItem = {
   /** Trengo channel medium when source==='trengo'. Null otherwise. */
   channelKind: InboxChannelKind
   sourceRef: Record<string, unknown> | null
+  /** Source message id (e.g. `trengo:mention:<noteMsgId>:<hubId>` for a mention
+   *  update). Lets the Mentioned view tie a mention back to the note it's on. */
+  sourceMsgId: string | null
   mondayUpdateId: string | null
   /** True when the event came from an external source (Trengo) but isn't tied
    *  to any Hub client yet - the contact id wasn't found in `clients.trengo_contact_ids`.

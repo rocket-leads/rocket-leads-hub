@@ -40,6 +40,7 @@ type RawInboxRow = {
   snoozed_until: string | null
   source: InboxSource
   source_ref: Record<string, unknown> | null
+  source_msg_id: string | null
   monday_update_id: string | null
   trengo_channel_id: number | null
   /** Trengo agent currently assigned to the ticket. Null = unassigned and
@@ -199,6 +200,7 @@ function rowToItem(
     source: row.source,
     channelKind,
     sourceRef: row.source_ref,
+    sourceMsgId: row.source_msg_id ?? null,
     mondayUpdateId: row.monday_update_id,
     isUnlinked,
     snoozedUntil: row.snoozed_until,
@@ -211,7 +213,7 @@ function rowToItem(
 
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
-  due_date, scheduled_at, snoozed_until, source, source_ref, monday_update_id, trengo_channel_id,
+  due_date, scheduled_at, snoozed_until, source, source_ref, source_msg_id, monday_update_id, trengo_channel_id,
   trengo_assignee_user_id,
   author_name_cached, author_external,
   created_at, updated_at, completed_at,
@@ -734,6 +736,10 @@ export type ChatMessage = {
    *  bubble in the thread so the AM can tell at a glance what's customer-
    *  visible vs. team chatter. False for all client/external messages. */
   isInternal: boolean
+  /** Source message id (e.g. `trengo:msg:<id>`). Lets the Mentioned view match
+   *  an internal note to the current user's mention row so it can render a
+   *  per-note "done" checkbox on the note itself. Null for rows without one. */
+  sourceMsgId: string | null
 }
 
 type RawChatRow = {
@@ -762,6 +768,7 @@ type RawChatRow = {
   trengo_channel_id: number | null
   trengo_assignee_user_id: number | null
   is_internal: boolean | null
+  source_msg_id: string | null
   author: { id: string; name: string | null; email: string } | null
   assignee: { id: string; name: string | null; email: string } | null
 }
@@ -770,7 +777,7 @@ const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, body_html,
   email_subject, email_from, status, starred, archived_at, assigned_at, snoozed_until,
-  created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
+  created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal, source_msg_id,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
@@ -1628,6 +1635,7 @@ export async function getChatThreadMessages(
       source: r.source,
       status: r.status,
       isInternal: r.is_internal === true,
+      sourceMsgId: r.source_msg_id ?? null,
     }
   })
 }

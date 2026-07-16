@@ -401,6 +401,38 @@ export function InboxShell({
     [mentionedRows, mentionDone],
   )
 
+  // Per-NOTE mention state: maps a Trengo note message id → my mention row on
+  // that note, so the conversation view can render a checkbox on the internal
+  // note itself (Trengo-style) that ticks off just that notification, not the
+  // ticket. Keyed off the mention update's source_msg_id
+  // (`trengo:mention:<noteMsgId>:<hubId>`). Roy 2026-07-16.
+  const mentionByNoteMsgId = useMemo(() => {
+    const m = new Map<string, InboxItem>()
+    for (const u of mentionItems) {
+      const mm = (u.sourceMsgId ?? "").match(/^trengo:mention:(\d+):/)
+      if (mm) m.set(mm[1], u)
+    }
+    return m
+  }, [mentionItems])
+  const toggleNoteMention = useCallback(
+    (noteMsgId: string) => {
+      const u = mentionByNoteMsgId.get(noteMsgId)
+      if (!u) return
+      const status = u.status === "read" ? "unread" : "read"
+      fetch(`/api/inbox/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      }).then(refreshItems)
+    },
+    [mentionByNoteMsgId, refreshItems],
+  )
+  const noteMentions = useMemo(() => {
+    const done: Record<string, boolean> = {}
+    for (const [noteMsgId, u] of mentionByNoteMsgId) done[noteMsgId] = u.status === "read"
+    return { done, toggle: toggleNoteMention }
+  }, [mentionByNoteMsgId, toggleNoteMention])
+
   const onSelectChannel = useCallback((id: number) => {
     setViewMode("channel")
     setSelectedChannelId(id)
@@ -811,6 +843,7 @@ export function InboxShell({
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
+              noteMentions={noteMentions}
               ticketState={
                 openRow
                   ? mentionedOnly
@@ -864,6 +897,7 @@ export function InboxShell({
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
+              noteMentions={noteMentions}
               ticketState={
                 openRow
                   ? mentionedOnly

@@ -306,6 +306,7 @@ async function fetchMyInbox(
               ? null
               : "other",
         sourceRef: { threadKey: t.threadKey, scope: t.scope },
+        sourceMsgId: null,
         mondayUpdateId: null,
         isUnlinked: false,
         snoozedUntil: null,
