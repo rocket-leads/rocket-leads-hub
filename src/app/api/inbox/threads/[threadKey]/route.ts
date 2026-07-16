@@ -21,7 +21,7 @@ import {
  * "trengo:contact:42" or "slack:dm:U023BECGF".
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ threadKey: string }> },
 ) {
   const session = await auth()
@@ -35,11 +35,31 @@ export async function GET(
     return NextResponse.json({ error: "threadKey required" }, { status: 400 })
   }
 
+  // `?mentioned=1`: the caller opened this thread from their Mentioned view.
+  // We let them see the full conversation regardless of channel subscription -
+  // but only after verifying they actually own an @-mention on this thread, so
+  // it can't be used to read arbitrary conversations. Roy 2026-07-16.
+  let bypassChannelFilter = false
+  if (req.nextUrl.searchParams.get("mentioned") === "1") {
+    const { createAdminClient } = await import("@/lib/supabase/server")
+    const supabase = await createAdminClient()
+    const { data: owned } = await supabase
+      .from("inbox_events")
+      .select("id")
+      .eq("kind", "update")
+      .eq("assignee_id", session.user.id)
+      .eq("source_ref->>trengo_mention_in_thread_key", threadKey)
+      .limit(1)
+      .maybeSingle()
+    bypassChannelFilter = !!owned
+  }
+
   try {
     const messages = await getChatThreadMessages(
       threadKey,
       session.user.id,
       session.user.role ?? "member",
+      { bypassChannelFilter },
     )
     return NextResponse.json({ threadKey, messages })
   } catch (e) {

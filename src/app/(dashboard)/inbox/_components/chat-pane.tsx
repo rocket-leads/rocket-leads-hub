@@ -1164,6 +1164,7 @@ export function ThreadView({
   onMarkThread,
   inboxZero,
   mergedLeftEdge,
+  mentioned,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
@@ -1178,6 +1179,10 @@ export function ThreadView({
    *  conversation" placeholder for a celebratory all-caught-up state. */
   inboxZero?: boolean
   mergedLeftEdge?: boolean
+  /** Opened from the Mentioned view - load the FULL conversation (bypass the
+   *  channel-subscription filter) so the user sees every message + note around
+   *  the mention, even on a line they don't subscribe to. */
+  mentioned?: boolean
 }) {
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
@@ -1201,7 +1206,7 @@ export function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -1244,6 +1249,7 @@ function ThreadMessages({
   onMakeTaskFromMessage,
   onMarkThread,
   mergedLeftEdge,
+  mentioned,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
@@ -1251,6 +1257,7 @@ function ThreadMessages({
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   onMarkThread?: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
   mergedLeftEdge?: boolean
+  mentioned?: boolean
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1306,11 +1313,11 @@ function ThreadMessages({
   const [mentionHighlight, setMentionHighlight] = useState(0)
 
   const messagesQuery = useQuery<{ messages: ChatMessage[] }>({
-    queryKey: ["inbox-thread", thread.threadKey],
+    queryKey: ["inbox-thread", thread.threadKey, mentioned ? "mentioned" : "normal"],
     queryFn: () =>
-      fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`).then((r) =>
-        r.json(),
-      ),
+      fetch(
+        `/api/inbox/threads/${encodeURIComponent(thread.threadKey)}${mentioned ? "?mentioned=1" : ""}`,
+      ).then((r) => r.json()),
     // Mirror the thread-list polling cadence so an open thread also picks up
     // newly-delivered Trengo messages without needing a manual refresh.
     staleTime: 5 * 1000,

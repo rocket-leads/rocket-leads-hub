@@ -137,6 +137,7 @@ export function DetailPane({
             users={users}
             onMakeTaskFromMessage={onMakeTaskFromMessage}
             onReplied={onReplied}
+            mentioned={mentioned}
           />
         </div>
       </div>

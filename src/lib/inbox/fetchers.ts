@@ -1545,6 +1545,7 @@ export async function getChatThreadMessages(
   threadKey: string,
   userId: string,
   role: Role,
+  opts: { bypassChannelFilter?: boolean } = {},
 ): Promise<ChatMessage[]> {
   const supabase = await createAdminClient()
 
@@ -1569,14 +1570,20 @@ export async function getChatThreadMessages(
   // substrate even for admins. Without this, opening a thread surfaced via
   // the list filter would still show messages from non-subscribed channels
   // for the same contact.
-  const channelIds = await getUserTrengoChannelIds(userId)
+  //
+  // bypassChannelFilter: the Mentioned view opens a conversation the user was
+  // explicitly @-mentioned in — they must see the FULL context (all messages +
+  // notes) even on a line they don't subscribe to, and even when the ticket's
+  // notes were mis-filed onto a different channel than its body. The caller has
+  // already verified the user owns a mention on this thread. Roy 2026-07-16.
+  const channelIds = opts.bypassChannelFilter ? [] : await getUserTrengoChannelIds(userId)
   if (channelIds.length > 0) {
     query = query.or(
       `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
     )
   }
 
-  if (role !== "admin") {
+  if (role !== "admin" && !opts.bypassChannelFilter) {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
       const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
