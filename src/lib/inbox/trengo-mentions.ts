@@ -91,6 +91,48 @@ export function rewriteMentionHandles(
   })
 }
 
+/** Trengo's mention handle for a user: first name (letters only, lowercased)
+ *  immediately followed by their numeric id — e.g. Roy Vosters #430594 →
+ *  `roy430594`. Posting an internal note whose body contains `@roy430594`
+ *  makes Trengo create a REAL mention (+ notification) for that user
+ *  (verified 2026-07-16). */
+export function trengoMentionHandle(u: {
+  id: number
+  name: string | null
+  first_name: string | null
+}): string {
+  const first = (u.first_name ?? (u.name ?? "").split(/\s+/)[0] ?? "")
+    .toLowerCase()
+    .replace(/[^a-zà-öø-ÿ]/g, "")
+  return `${first}${u.id}`
+}
+
+/**
+ * Convert human `@Full Name` mentions in an outbound internal-note body into
+ * Trengo mention handles (`@roy430594`) so Trengo recognises them and pings the
+ * user. The Hub keeps the readable `@Full Name` version; only the copy POSTed
+ * to Trengo carries handles. Longest names first so `@Roy Vosters` wins over a
+ * hypothetical `@Roy`. Best-effort: on a Trengo outage the body is posted as-is.
+ */
+export async function convertMentionNamesToHandles(body: string): Promise<string> {
+  if (!body || !body.includes("@")) return body
+  let users: TrengoUser[] = []
+  try {
+    users = await fetchTrengoUsers()
+  } catch {
+    return body
+  }
+  const named = users
+    .filter((u): u is TrengoUser & { name: string } => !!u.name)
+    .sort((a, b) => b.name.length - a.name.length)
+  let out = body
+  for (const u of named) {
+    const re = new RegExp(`@${u.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
+    out = out.replace(re, `@${trengoMentionHandle(u)}`)
+  }
+  return out
+}
+
 /**
  * Resolve the Hub user ids @-mentioned in a note. Prefers the structured
  * `mentions` array (authoritative), falling back to parsing `@<first><id>`

@@ -1426,12 +1426,33 @@ function ThreadMessages({
   const supportsInternalNote = thread.source === "trengo"
   const isInternal = composerMode === "internal"
 
+  // Trengo workspace users for the @-mention picker. Loaded only in internal-
+  // note mode. Picking one inserts `@Full Name`; the send path rewrites that to
+  // the Trengo handle so it becomes a real Trengo mention (+ notification). Roy
+  // 2026-07-16: "als ik @ doe wil ik trengo users kunnen inladen". Falls back
+  // to Hub users if the Trengo list is unavailable.
+  const trengoUsersQuery = useQuery<{
+    users: Array<{ id: number; name: string | null; email: string | null }>
+  }>({
+    queryKey: ["inbox-trengo-users"],
+    queryFn: () => fetch("/api/inbox/trengo-users").then((r) => r.json()),
+    enabled: supportsInternalNote,
+    staleTime: 5 * 60 * 1000,
+  })
+  const mentionSource: Array<{ id: string; name: string | null; email: string }> = (() => {
+    const t = trengoUsersQuery.data?.users
+    if (t && t.length > 0) {
+      return t.map((u) => ({ id: `trengo:${u.id}`, name: u.name, email: u.email ?? "" }))
+    }
+    return (users ?? []).map((u) => ({ id: u.id, name: u.name, email: u.email }))
+  })()
+
   // Filter the team list by the current @-mention query, excluding nobody
   // by default (the chat-pane doesn't know who the actor is in this scope).
   const mentionMatches = (() => {
-    if (!users || mentionStart == null) return []
+    if (mentionStart == null) return []
     const q = mentionQuery.trim().toLowerCase()
-    return users
+    return mentionSource
       .filter((u) => {
         if (!q) return true
         const haystack = `${u.name ?? ""} ${u.email}`.toLowerCase()
@@ -1476,7 +1497,7 @@ function ThreadMessages({
     setMentionQuery("")
   }
 
-  function applyMention(user: InboxUser) {
+  function applyMention(user: { name: string | null; email: string }) {
     if (mentionStart == null) return
     const ta = textareaRef.current
     if (!ta) return

@@ -2,6 +2,7 @@ import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/notifications/push"
 import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/trengo"
+import { convertMentionNamesToHandles } from "@/lib/inbox/trengo-mentions"
 
 /**
  * Outbound reply path - sends a Hub reply back to the source platform AS the
@@ -661,10 +662,17 @@ export async function replyToInboxEvent(
       mirrorBody =
         renderTemplatePreview(sanitisedForMirror) || `[Template: ${template.name}]`
     } else {
+      // For internal notes, rewrite `@Full Name` mentions to Trengo handles
+      // (`@roy430594`) so Trengo creates a REAL mention + notification for the
+      // tagged teammate. The Hub keeps the readable name version (mirrorBody /
+      // fan-out below both use `trimmed`). Roy 2026-07-16.
+      const trengoBody = internalNote
+        ? await convertMentionNamesToHandles(trimmed)
+        : trimmed
       const r = await sendTrengoReplyAsUser(
         userId,
         ticketId,
-        trimmed,
+        trengoBody,
         internalNote,
         attachmentIds,
         options.email,
