@@ -44,14 +44,31 @@ export async function getTrengoMentionContext(
     .not("name", "is", null)
   const hubByName = new Map<string, string>()
   const hubByEmail = new Map<string, string>()
+  // First-name → Hub id, but only kept when that first name is UNAMBIGUOUS
+  // (exactly one Hub user has it). Bridges spelling drift between Trengo and
+  // the Hub ("Stefan vd Wijdeven" vs "Stefan van de Wijdeven") without risking
+  // a wrong match when two teammates share a first name.
+  const firstNameCounts = new Map<string, number>()
+  const hubByFirstName = new Map<string, string>()
   for (const h of (hubUsers ?? []) as Array<{ id: string; name: string | null; email: string | null }>) {
-    if (h.name) hubByName.set(normName(h.name), h.id)
+    if (h.name) {
+      hubByName.set(normName(h.name), h.id)
+      const first = normName(h.name).split(" ")[0]
+      if (first) {
+        firstNameCounts.set(first, (firstNameCounts.get(first) ?? 0) + 1)
+        hubByFirstName.set(first, h.id)
+      }
+    }
     if (h.email) hubByEmail.set(h.email.trim().toLowerCase(), h.id)
   }
   for (const u of trengoUsers) {
+    const firstName = normName(u.name).split(" ")[0]
     const hubId =
       hubByName.get(normName(u.name)) ??
-      (u.email ? hubByEmail.get(u.email.trim().toLowerCase()) : undefined)
+      (u.email ? hubByEmail.get(u.email.trim().toLowerCase()) : undefined) ??
+      (firstName && firstNameCounts.get(firstName) === 1
+        ? hubByFirstName.get(firstName)
+        : undefined)
     if (hubId) hubIdByTrengoId.set(u.id, hubId)
   }
   return { trengoById, hubIdByTrengoId }
