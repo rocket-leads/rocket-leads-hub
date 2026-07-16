@@ -1548,6 +1548,33 @@ export async function setChatThreadSnoozedUntil(
   return { updated: ids.length }
 }
 
+/** Ticket triage state for a chat thread, mirroring the rollup in
+ *  listChatThreads (isArchived = latest row archived; isAssigned = any row
+ *  assigned). Lets the conversation header show the right Open/Assigned/Closed
+ *  state even when the thread isn't in the caller's loaded list (e.g. a mention
+ *  on a channel they don't subscribe to). Roy 2026-07-16. */
+export async function getChatThreadState(
+  threadKey: string,
+): Promise<{ isArchived: boolean; isAssigned: boolean }> {
+  const supabase = await createAdminClient()
+  const { data } = await scopeThreadKey(
+    supabase
+      .from("inbox_events")
+      .select("archived_at, assigned_at, created_at")
+      .order("created_at", { ascending: false }),
+    threadKey,
+  )
+  const rows = (data ?? []) as Array<{
+    archived_at: string | null
+    assigned_at: string | null
+    created_at: string
+  }>
+  return {
+    isArchived: rows[0]?.archived_at != null,
+    isAssigned: rows.some((r) => r.assigned_at != null),
+  }
+}
+
 export async function getChatThreadMessages(
   threadKey: string,
   userId: string,

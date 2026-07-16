@@ -1,14 +1,17 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Inbox as InboxIcon, Circle, User, Check } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { cn } from "@/lib/utils"
 import { ItemDetailDialog } from "../item-detail-dialog"
 import { ThreadView } from "../chat-pane"
+import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
 import type { CurrentUser, InboxUser, FeedRow } from "./types"
 
 type TicketState = "open" | "assigned" | "closed"
+type NoteMentions = { done: Record<string, boolean>; toggle: (noteMsgId: string) => void }
 
 /** The header state buttons: each ticket shows the two states it's NOT in, so
  *  you can always move it either direction (Roy 2026-07-15). */
@@ -119,35 +122,86 @@ export function DetailPane({
   }
 
   if (row.thread) {
-    const current = ticketState ?? "open"
-    // The conversation detail is IDENTICAL everywhere - the Mentioned view opens
-    // the very same ticket with the same Open/Assigned/Closed controls (Roy
-    // 2026-07-16). The mention's own To-do/Done state is handled separately by
-    // the per-note checkbox + the list tabs, and doesn't touch the ticket state.
-    const targets: readonly TicketState[] = (["open", "assigned", "closed"] as const).filter(
-      (s) => s !== current,
-    )
     return (
-      <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-          {targets.map((t) => (
-            <StateButton key={t} target={t} onClick={() => onSetState?.(t)} />
-          ))}
-          {showDismiss && <DismissButton onClick={onClose} />}
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ThreadView
-            thread={row.thread}
-            users={users}
-            onMakeTaskFromMessage={onMakeTaskFromMessage}
-            onReplied={onReplied}
-            mentioned={mentioned}
-            noteMentions={noteMentions}
-          />
-        </div>
-      </div>
+      <ChatDetail
+        thread={row.thread}
+        users={users}
+        onReplied={onReplied}
+        onMakeTaskFromMessage={onMakeTaskFromMessage}
+        ticketState={ticketState}
+        onSetState={onSetState}
+        mentioned={mentioned}
+        noteMentions={noteMentions}
+        showDismiss={showDismiss}
+        onClose={onClose}
+      />
     )
   }
 
   return null
+}
+
+/** The chat/conversation detail. Its own component so it can hold the freshly-
+ *  loaded ticket state as hook state without violating rules-of-hooks (DetailPane
+ *  has early returns above). The header shows the SAME Open/Assigned/Closed
+ *  controls everywhere - the Mentioned view is the same ticket. */
+function ChatDetail({
+  thread,
+  users,
+  onReplied,
+  onMakeTaskFromMessage,
+  ticketState,
+  onSetState,
+  mentioned,
+  noteMentions,
+  showDismiss,
+  onClose,
+}: {
+  thread: ChatThreadSummary
+  users: InboxUser[]
+  onReplied: () => void
+  onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  ticketState?: TicketState
+  onSetState?: (target: TicketState) => void
+  mentioned?: boolean
+  noteMentions?: NoteMentions
+  showDismiss?: boolean
+  onClose: () => void
+}) {
+  // The row's ticketState comes from the list, which is a stub for mentions on
+  // channels we don't subscribe to. Once the thread loads it reports its real
+  // triage state; prefer that so the header is accurate. Reset on thread switch.
+  const [resolved, setResolved] = useState<{ isArchived: boolean; isAssigned: boolean } | null>(null)
+  useEffect(() => setResolved(null), [thread.threadKey])
+  const current: TicketState = resolved
+    ? resolved.isArchived
+      ? "closed"
+      : resolved.isAssigned
+        ? "assigned"
+        : "open"
+    : ticketState ?? "open"
+  const targets: readonly TicketState[] = (["open", "assigned", "closed"] as const).filter(
+    (s) => s !== current,
+  )
+  return (
+    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        {targets.map((t) => (
+          <StateButton key={t} target={t} onClick={() => onSetState?.(t)} />
+        ))}
+        {showDismiss && <DismissButton onClick={onClose} />}
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ThreadView
+          thread={thread}
+          users={users}
+          onMakeTaskFromMessage={onMakeTaskFromMessage}
+          onReplied={onReplied}
+          mentioned={mentioned}
+          noteMentions={noteMentions}
+          onResolvedState={setResolved}
+        />
+      </div>
+    </div>
+  )
 }

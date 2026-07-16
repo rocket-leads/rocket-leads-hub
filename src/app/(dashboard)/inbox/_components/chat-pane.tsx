@@ -1171,6 +1171,7 @@ export function ThreadView({
   mergedLeftEdge,
   mentioned,
   noteMentions,
+  onResolvedState,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
@@ -1191,6 +1192,9 @@ export function ThreadView({
   mentioned?: boolean
   /** Per-note mention state for the on-note "done" checkbox (Mentioned view). */
   noteMentions?: NoteMentions
+  /** Reports the freshly-loaded ticket triage state so the header can show the
+   *  accurate Open/Assigned/Closed even for stub (unsubscribed-channel) rows. */
+  onResolvedState?: (state: { isArchived: boolean; isAssigned: boolean }) => void
 }) {
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
@@ -1214,7 +1218,7 @@ export function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} onResolvedState={onResolvedState} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -1259,6 +1263,7 @@ function ThreadMessages({
   mergedLeftEdge,
   mentioned,
   noteMentions,
+  onResolvedState,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
@@ -1268,6 +1273,7 @@ function ThreadMessages({
   mergedLeftEdge?: boolean
   mentioned?: boolean
   noteMentions?: NoteMentions
+  onResolvedState?: (state: { isArchived: boolean; isAssigned: boolean }) => void
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1322,7 +1328,10 @@ function ThreadMessages({
   const [mentionQuery, setMentionQuery] = useState("")
   const [mentionHighlight, setMentionHighlight] = useState(0)
 
-  const messagesQuery = useQuery<{ messages: ChatMessage[] }>({
+  const messagesQuery = useQuery<{
+    messages: ChatMessage[]
+    state?: { isArchived: boolean; isAssigned: boolean }
+  }>({
     queryKey: ["inbox-thread", thread.threadKey, mentioned ? "mentioned" : "normal"],
     queryFn: () =>
       fetch(
@@ -1333,6 +1342,13 @@ function ThreadMessages({
     staleTime: 5 * 1000,
     refetchInterval: 5 * 1000,
   })
+  // Report the freshly-loaded ticket triage state up so the header shows the
+  // right Open/Assigned/Closed even when the row came from a stub (a mention on
+  // a channel we don't subscribe to). Roy 2026-07-16.
+  const resolvedState = messagesQuery.data?.state
+  useEffect(() => {
+    if (resolvedState) onResolvedState?.(resolvedState)
+  }, [resolvedState?.isArchived, resolvedState?.isAssigned, onResolvedState])
 
   const messages = useMemo(
     () => messagesQuery.data?.messages ?? [],

@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import {
   getChatThreadMessages,
+  getChatThreadState,
   markChatThreadRead,
   markChatThreadUnread,
   setChatThreadArchived,
@@ -55,13 +56,16 @@ export async function GET(
   }
 
   try {
-    const messages = await getChatThreadMessages(
-      threadKey,
-      session.user.id,
-      session.user.role ?? "member",
-      { bypassChannelFilter },
-    )
-    return NextResponse.json({ threadKey, messages })
+    const [messages, state] = await Promise.all([
+      getChatThreadMessages(
+        threadKey,
+        session.user.id,
+        session.user.role ?? "member",
+        { bypassChannelFilter },
+      ),
+      getChatThreadState(threadKey),
+    ])
+    return NextResponse.json({ threadKey, messages, state })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load thread messages" },
