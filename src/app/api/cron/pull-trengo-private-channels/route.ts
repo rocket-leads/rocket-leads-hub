@@ -282,6 +282,12 @@ type ExistingRowState = {
    *  `rl_team`) and its `status='read'` is a side-effect of that bug,
    *  NOT a user gesture. Reset to derived status. */
   authorKind: string | null
+  /** author_id currently on the row. A Hub-sent outbound (internal note /
+   *  reply) mirror carries the real Hub user id here; the polling cron stamps
+   *  the shared system id. Lets us leave Hub-authored rows untouched so the
+   *  re-ingest never clobbers "Roy Vosters + avatar" with the Trengo agent
+   *  name. Roy 2026-07-16. */
+  authorId: string | null
 }
 
 /**
@@ -301,7 +307,7 @@ async function findExistingRows(
   if (sourceMsgIds.length === 0) return out
   const { data } = await supabase
     .from("inbox_events")
-    .select("source_msg_id, raw, status, author_kind")
+    .select("source_msg_id, raw, status, author_kind, author_id")
     .eq("source", "trengo")
     .in("source_msg_id", sourceMsgIds)
   for (const r of data ?? []) {
@@ -309,6 +315,7 @@ async function findExistingRows(
       isWebhook: r.raw != null,
       status: (r.status as string) ?? "unread",
       authorKind: (r.author_kind as string | null) ?? null,
+      authorId: (r.author_id as string | null) ?? null,
     })
   }
   return out
@@ -585,9 +592,21 @@ export async function GET(req: NextRequest) {
           // flow through the upsert with the status-preservation rules
           // applied inside insertEvents.
           totalDeduped += Array.from(existing.values()).filter((e) => e.isWebhook).length
-          const toInsert = candidates.filter(
-            (c) => !existing.get(c.sourceMsgId)?.isWebhook,
-          )
+          const toInsert = candidates.filter((c) => {
+            const ex = existing.get(c.sourceMsgId)
+            if (!ex) return true
+            // Webhook rows are authoritative - never re-ingest.
+            if (ex.isWebhook) return false
+            // Hub-sent outbound (internal note / reply) mirror carries the real
+            // Hub author + name + avatar. The polling cron would re-derive the
+            // author from Trengo and clobber it, so leave those rows untouched.
+            // Identified by author_id pointing at a real Hub user, not the
+            // shared system id the cron itself stamps. Roy 2026-07-16.
+            if (ex.authorKind === "rl_team" && ex.authorId && ex.authorId !== hq.id) {
+              return false
+            }
+            return true
+          })
           const result = await insertEvents(supabase, hq.id, toInsert, existing)
           totalEventsInserted += result.inserted
           if (result.lastError) lastInsertError = result.lastError

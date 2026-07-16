@@ -3256,7 +3256,7 @@ function MessageBubble({
             </span>
           </div>
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
-            {msg.body}
+            {renderMentions(msg.body, mentionNames)}
           </p>
         </div>
         {onMakeTask && <MakeTaskInlineButton onClick={onMakeTask} />}
