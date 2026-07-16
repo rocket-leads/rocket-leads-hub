@@ -126,6 +126,31 @@ export type TrengoMessage = {
     cc?: string | null
     html?: string | null
   } | null
+  /** Author id for team-authored messages (OUTBOUND / NOTE). Trengo puts the
+   *  agent's numeric user id here; `agent` carries the full object. */
+  user_id?: number | null
+  /** Full author object on team messages (name, email, profile_image). More
+   *  reliable than the legacy `author` field, which is null on notes. */
+  agent?: {
+    id: number
+    name?: string | null
+    first_name?: string | null
+    email?: string | null
+    profile_image?: string | null
+  } | null
+  /** Structured @-mentions on a note — authoritative list of mentioned Trengo
+   *  user ids, so we don't have to regex the body. */
+  mentions?: Array<{ user_id: number }> | null
+}
+
+/** A Trengo workspace user (agent). Used to resolve note authors + @-mention
+ *  targets to their display name, and to map them onto Hub users by name. */
+export type TrengoUser = {
+  id: number
+  name: string | null
+  first_name: string | null
+  email: string | null
+  profile_image: string | null
 }
 
 type TicketPage = {
@@ -519,6 +544,17 @@ export async function createEmailMessageForContact(args: {
 export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
   const data = await trengoFetch<{ data: TrengoChannel[] }>(`/channels`)
   return [...data.data].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+}
+
+/**
+ * List all Trengo workspace users (agents). Used to resolve note authors and
+ * @-mention targets (Trengo stores mentions as `@<firstname><userId>` handles
+ * + a structured `mentions` array) to display names, and to map them onto Hub
+ * users by name. Cached 5 min by trengoFetch. Small workspace → one page.
+ */
+export async function fetchTrengoUsers(): Promise<TrengoUser[]> {
+  const data = await trengoFetch<{ data: TrengoUser[] }>(`/users`)
+  return data.data
 }
 
 /**

@@ -10,6 +10,12 @@ import {
   type TrengoConversation,
   type TrengoMessage,
 } from "@/lib/integrations/trengo"
+import {
+  getTrengoMentionContext,
+  rewriteMentionHandles,
+  resolveMentionedHubIds,
+  type TrengoMentionContext,
+} from "@/lib/inbox/trengo-mentions"
 
 /**
  * Per-user polling backfill for Trengo private/personal inboxes.
@@ -122,6 +128,10 @@ type EventToInsert = {
   isInternal: boolean
   authorName: string
   createdAtSrc: string
+  /** Hub user ids @-mentioned in this note (resolved from Trengo's structured
+   *  mentions / inline handles). Drives the mention fan-out so the tagged
+   *  teammate sees it in their Mentioned inbox. Empty for non-notes. */
+  mentionedHubUserIds: string[]
 }
 
 /** Trengo's parseable timestamp format is "YYYY-MM-DD HH:mm:ss" in UTC.
@@ -171,6 +181,7 @@ function eventsFromMessageList(
   ticket: TrengoConversation,
   messages: TrengoMessage[],
   cutoffMs: number,
+  ctx: TrengoMentionContext,
 ): EventToInsert[] {
   const out: EventToInsert[] = []
   // `realChannelId` is resolved by the caller as the ticket's OWN channel
@@ -197,7 +208,7 @@ function eventsFromMessageList(
     // whitespace-pre-wrap rendering otherwise dumps "<p><span ...>"
     // literally. The webhook already strips at write time (since
     // 2026-05-05); polling cron now matches.
-    const body = stripHtml(raw).trim()
+    let body = stripHtml(raw).trim()
     if (!body) continue
     const contact = ticket.contact
     const contactId = String(contact?.id ?? "")
@@ -239,11 +250,33 @@ function eventsFromMessageList(
     //     Trengo's `author` field points at the assigned agent. Without
     //     this, the chat row showed "Roy Vosters" for emails from
     //     external senders like La Plage Casanis (Roy 2026-06-13).
-    //   - OUTBOUND (rl_team): the sender is the agent.
+    //   - OUTBOUND / NOTE (rl_team): the sender is the agent. Trengo puts
+    //     the real author in `m.agent` / `m.user_id` — `m.author` is null on
+    //     notes, which used to fall through to the contact name ("TikTok
+    //     Finance Team" instead of "Mike Sauer"). Roy 2026-07-16.
+    const teamAuthorName =
+      m.agent?.name ??
+      (m.user_id != null ? ctx.trengoById.get(m.user_id)?.name : undefined) ??
+      m.author?.name ??
+      contact?.name ??
+      "Unknown"
     const authorName =
       authorKind === "client"
         ? contact?.name ?? m.author?.name ?? "Unknown"
-        : m.author?.name ?? contact?.name ?? "Unknown"
+        : teamAuthorName
+    // Internal note @-mentions: resolve the tagged Hub users (structured
+    // `mentions` array first, inline `@handle` fallback), and rewrite the
+    // stored body's `@<first><id>` handles to `@Full Name` so it reads
+    // naturally and the Hub's mention colouring lights it up.
+    let mentionedHubUserIds: string[] = []
+    if (isInternal) {
+      mentionedHubUserIds = resolveMentionedHubIds(ctx, {
+        structuredMentionUserIds: (m.mentions ?? []).map((x) => x.user_id),
+        body: raw,
+        authorTrengoUserId: m.user_id ?? null,
+      })
+      body = rewriteMentionHandles(body, ctx.trengoById)
+    }
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
       channelId: realChannelId,
@@ -258,6 +291,7 @@ function eventsFromMessageList(
       isInternal,
       authorName,
       createdAtSrc: m.created_at,
+      mentionedHubUserIds,
     })
   }
   return out
@@ -429,6 +463,71 @@ async function insertEvents(
   return { inserted, lastError }
 }
 
+/**
+ * Fan out @-mentions from internal notes: one `kind: "update"` row per tagged
+ * Hub user so the mention lands in their Mentioned inbox (source_ref carries
+ * the thread key the Mentioned view keys on). Deduped across cron cycles via a
+ * deterministic source_msg_id `trengo:mention:<noteMsgId>:<hubUserId>`, upserted
+ * on (source, source_msg_id). Mirrors the webhook's fan-out for notes that only
+ * ever arrive through the polling path (personal channels). Roy 2026-07-16.
+ */
+async function insertMentionUpdates(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  systemAuthorId: string,
+  candidates: EventToInsert[],
+): Promise<number> {
+  const withMentions = candidates.filter((c) => c.mentionedHubUserIds.length > 0)
+  if (withMentions.length === 0) return 0
+
+  // Resolve client per contact so the mention lands under the right client.
+  const contactIds = Array.from(new Set(withMentions.map((c) => c.contactId)))
+  const clientByContact = new Map<string, string>()
+  for (const contactId of contactIds) {
+    const { data: clientRow } = await supabase
+      .from("clients")
+      .select("monday_item_id")
+      .contains("trengo_contact_ids", [contactId])
+      .maybeSingle()
+    if (clientRow) clientByContact.set(contactId, (clientRow as { monday_item_id: string }).monday_item_id)
+  }
+
+  const rows: Record<string, unknown>[] = []
+  for (const c of withMentions) {
+    const noteMsgId = c.sourceMsgId.replace(/^trengo:msg:/, "")
+    const label = c.contactName ?? "conversation"
+    const preview = c.body.length > 240 ? c.body.slice(0, 237) + "…" : c.body
+    for (const hubId of c.mentionedHubUserIds) {
+      rows.push({
+        kind: "update",
+        client_id: clientByContact.get(c.contactId) ?? "",
+        author_id: systemAuthorId,
+        assignee_id: hubId,
+        title: `${c.authorName} mentioned you in ${label}`,
+        body: preview,
+        status: "unread",
+        source: "trengo",
+        source_msg_id: `trengo:mention:${noteMsgId}:${hubId}`,
+        source_ref: {
+          trengo_mention_in_thread_key: `trengo:contact:${c.contactId}`,
+        },
+        author_kind: "rl_team",
+        author_name_cached: c.authorName,
+        classify_method: "manual",
+        created_at_src: c.createdAtSrc,
+      })
+    }
+  }
+  if (rows.length === 0) return 0
+  const { error } = await supabase
+    .from("inbox_events")
+    .upsert(rows, { onConflict: "source,source_msg_id" })
+  if (error) {
+    console.error("[pull-trengo-private-channels] mention fan-out failed:", error.message)
+    return 0
+  }
+  return rows.length
+}
+
 export async function GET(req: NextRequest) {
   const authz = await authorizeCronOrAdmin(req)
   if (!authz.ok) {
@@ -464,6 +563,11 @@ export async function GET(req: NextRequest) {
     if (!hq?.id) {
       throw new Error("System author user (rocketleadshq@gmail.com) not found")
     }
+
+    // Trengo user directory (id → name/avatar) + Trengo→Hub user map, built
+    // once per run and reused across every note so @-mention fan-out + author
+    // resolution don't re-fetch the /users list per ticket.
+    const mentionCtx = await getTrengoMentionContext(supabase)
 
     const users = await loadUsersToScan(supabase)
     let totalChannelsScanned = 0
@@ -560,7 +664,7 @@ export async function GET(req: NextRequest) {
                 continue
               }
               candidates.push(
-                ...eventsFromMessageList(realChannelId, ticket, messages, cutoffMs),
+                ...eventsFromMessageList(realChannelId, ticket, messages, cutoffMs, mentionCtx),
               )
             } catch (e) {
               console.error(
@@ -610,6 +714,11 @@ export async function GET(req: NextRequest) {
           const result = await insertEvents(supabase, hq.id, toInsert, existing)
           totalEventsInserted += result.inserted
           if (result.lastError) lastInsertError = result.lastError
+          // Fan out @-mentions in the notes we just ingested so tagged
+          // teammates see them in their Mentioned inbox. Idempotent across
+          // cycles (deterministic source_msg_id). Runs on `toInsert` so it
+          // skips webhook / Hub-authored rows (those fan out elsewhere).
+          await insertMentionUpdates(supabase, hq.id, toInsert)
         } catch (e) {
           perUserErrors.push({
             userId: user.id,

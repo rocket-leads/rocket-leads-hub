@@ -5,6 +5,11 @@ import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
+import {
+  getTrengoMentionContext,
+  rewriteMentionHandles,
+  resolveMentionedHubIds,
+} from "@/lib/inbox/trengo-mentions"
 
 export const maxDuration = 60
 
@@ -390,14 +395,27 @@ export async function POST(req: NextRequest) {
   // assigned to the client AM - no reassignment, no separate "Mentions"
   // tab. Roy: "doe maar gewoon bij de updates, want de meeste mentions
   // zijn updates."
+  // Trengo user directory (only needed for notes) → resolves both name-based
+  // (`@Roy`) and handle-based (`@roy430594`) mentions, and rewrites the stored
+  // body's handles to `@Full Name` so it reads naturally. Roy 2026-07-16.
+  const mentionCtx =
+    payload.eventType === "NOTE" ? await getTrengoMentionContext(supabase) : null
   const mentionedUserIds =
-    payload.eventType === "NOTE"
-      ? await resolveMentionedHubUserIds(
-          supabase,
-          payload.messageBody,
-          payload.authorName,
+    payload.eventType === "NOTE" && mentionCtx
+      ? Array.from(
+          new Set([
+            ...(await resolveMentionedHubUserIds(
+              supabase,
+              payload.messageBody,
+              payload.authorName,
+            )),
+            ...resolveMentionedHubIds(mentionCtx, { body: payload.messageBody }),
+          ]),
         )
       : []
+  const displayBody = mentionCtx
+    ? rewriteMentionHandles(messageBody, mentionCtx.trengoById)
+    : messageBody
 
   // Classify with AI. Defaults to chat on uncertainty.
   const classification = await classifyInboxMessage({
@@ -430,8 +448,8 @@ export async function POST(req: NextRequest) {
     payload.eventType === "NOTE" || payload.eventType.includes("INTERNAL")
 
   const titlePreview =
-    messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
-  const bodyFull = messageBody.length > 100 ? messageBody : null
+    displayBody.length > 100 ? displayBody.slice(0, 100) + "…" : displayBody
+  const bodyFull = displayBody.length > 100 ? displayBody : null
 
   // Smart-inbox: pre-draft a Dutch reply on classified tasks so the AM can
   // review-and-send straight from the detail dialog. Skipped on short tasks
@@ -519,7 +537,7 @@ export async function POST(req: NextRequest) {
   // tank the webhook response.
   if (mentionedUserIds.length > 0 && inserted?.id) {
     const titlePrefix = `${payload.authorName} mentioned you`
-    const noteTextPlain = payload.messageBody
+    const noteTextPlain = displayBody
       .replace(/<\/?[^>]+>/g, " ")
       .replace(/&nbsp;/gi, " ")
       .replace(/&amp;/g, "&")
