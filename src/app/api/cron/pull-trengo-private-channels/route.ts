@@ -254,16 +254,29 @@ function eventsFromMessageList(
     //     the real author in `m.agent` / `m.user_id` — `m.author` is null on
     //     notes, which used to fall through to the contact name ("TikTok
     //     Finance Team" instead of "Mike Sauer"). Roy 2026-07-16.
+    // Bot/automation notes (Trengo AI Summary + AI Notes) carry no agent /
+    // user_id. They must NOT be attributed to the contact (Roy 2026-07-16: an
+    // [AI Summary] note showed "esther koelewijn | misi" + her avatar as if she
+    // wrote it). Trengo renders these as a system "T" author — mirror that with
+    // a system label so the yellow note reads as automated, not customer-said.
+    const isBotNote = isInternal && m.user_id == null && !m.agent
+    const botLabel = /^\s*\[?\s*ai\s+summary/i.test(body)
+      ? "AI Summary"
+      : /^\s*\[?\s*ai\s+note/i.test(body)
+        ? "AI Note"
+        : "Trengo"
     const teamAuthorName =
       m.agent?.name ??
       (m.user_id != null ? ctx.trengoById.get(m.user_id)?.name : undefined) ??
       m.author?.name ??
-      contact?.name ??
+      (isBotNote ? botLabel : contact?.name) ??
       "Unknown"
     const authorName =
       authorKind === "client"
         ? contact?.name ?? m.author?.name ?? "Unknown"
-        : teamAuthorName
+        : isBotNote
+          ? botLabel
+          : teamAuthorName
     // Internal note @-mentions: resolve the tagged Hub users (structured
     // `mentions` array first, inline `@handle` fallback), and rewrite the
     // stored body's `@<first><id>` handles to `@Full Name` so it reads
