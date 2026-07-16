@@ -1276,6 +1276,14 @@ function ThreadMessages({
   const [uploadingCount, setUploadingCount] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  // Hub user display names → @-mentions in message bodies render blue.
+  const mentionNames = useMemo(
+    () =>
+      (users ?? [])
+        .map((u) => u.name)
+        .filter((n): n is string => typeof n === "string" && n.trim().length > 0),
+    [users],
+  )
   // WhatsApp composer state: only active when channelKind === "whatsapp".
   // Stored as user PREFERENCE - initial default is "default" (free text).
   // Window-closed → render-time override forces Template (Meta requirement);
@@ -1891,6 +1899,7 @@ function ThreadMessages({
               messages={messages}
               isEmailThread={isEmail}
               clientId={thread.clientId}
+              mentionNames={mentionNames}
               onMakeTaskFromMessage={onMakeTaskFromMessage}
             />
           )}
@@ -3025,11 +3034,14 @@ function ThreadMessagesList({
   messages,
   isEmailThread,
   clientId,
+  mentionNames = [],
   onMakeTaskFromMessage,
 }: {
   messages: ChatMessage[]
   isEmailThread: boolean
   clientId: string | null
+  /** Hub user display names, so @-mentions in message bodies render blue. */
+  mentionNames?: string[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }) {
   const [middleExpanded, setMiddleExpanded] = useState(false)
@@ -3066,6 +3078,7 @@ function ThreadMessagesList({
             key={msg.id}
             msg={msg}
             isEmailThread={isEmailThread}
+            mentionNames={mentionNames}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3088,6 +3101,7 @@ function ThreadMessagesList({
       <MessageBubble
         msg={first}
         isEmailThread={isEmailThread}
+        mentionNames={mentionNames}
         onMakeTask={makeTask(first)}
       />
       {!middleExpanded && collapsedMiddle.length > 0 && (
@@ -3107,6 +3121,7 @@ function ThreadMessagesList({
             key={msg.id}
             msg={msg}
             isEmailThread={isEmailThread}
+            mentionNames={mentionNames}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3116,6 +3131,7 @@ function ThreadMessagesList({
             key={msg.id}
             msg={msg}
             isEmailThread={isEmailThread}
+            mentionNames={mentionNames}
             onMakeTask={makeTask(msg)}
           />
         ))}
@@ -3124,6 +3140,7 @@ function ThreadMessagesList({
           key={msg.id}
           msg={msg}
           isEmailThread={isEmailThread}
+          mentionNames={mentionNames}
           onMakeTask={makeTask(msg)}
         />
       ))}
@@ -3131,12 +3148,56 @@ function ThreadMessagesList({
   )
 }
 
+/** Render a message body with @-mentions coloured blue (incl. the "@"),
+ *  Trengo-style. Matches known Hub user names precisely so "@Roy Vosters"
+ *  lights up as one token without eating the words that follow it; falls
+ *  back to a leading "@Name" heuristic when no name list is available. */
+function renderMentions(text: string, names: string[]): React.ReactNode {
+  if (!text) return text
+  const cls = "font-medium text-blue-500 dark:text-blue-400"
+  const known = names.filter((n) => n && n.trim().length > 0)
+  if (known.length > 0) {
+    const escaped = known
+      .map((n) => n.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .sort((a, b) => b.length - a.length)
+    const re = new RegExp(`@(?:${escaped.join("|")})`, "g")
+    const out: React.ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    let i = 0
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push(text.slice(last, m.index))
+      out.push(
+        <span key={i++} className={cls}>
+          {m[0]}
+        </span>,
+      )
+      last = m.index + m[0].length
+    }
+    if (out.length === 0) return text
+    if (last < text.length) out.push(text.slice(last))
+    return out
+  }
+  // No name list: colour a leading "@FirstName [LastName]" (1-2 capitalised
+  // words) so mentions still read as mentions.
+  const m = text.match(/^@[\p{Lu}][\p{L}'’-]*(?:\s[\p{Lu}][\p{L}'’-]*)?/u)
+  if (!m) return text
+  return [
+    <span key="m" className={cls}>
+      {m[0]}
+    </span>,
+    text.slice(m[0].length),
+  ]
+}
+
 function MessageBubble({
   msg,
   isEmailThread,
+  mentionNames = [],
   onMakeTask,
 }: {
   msg: ChatMessage
+  mentionNames?: string[]
   /** When the parent thread is an email channel, every message renders
    *  in the Gmail-style EmailMessageCard layout (full-width card,
    *  prominent sender header, iframe body if HTML is available, paragraph-
@@ -3171,9 +3232,39 @@ function MessageBubble({
       </div>
     )
   }
-  // Internal notes get a distinct yellow tint regardless of author -
-  // signals "team-only annotation, not part of the customer-visible
-  // conversation." Same convention Trengo uses on their own UI.
+  // Internal team notes: Monday-style attributed row. The creator's photo
+  // sits on the LEFT so anyone reading the thread sees at a glance "this is
+  // a team note Roy made" - the whole point of an internal note is who
+  // flagged what. Amber tint keeps the team-only signal.
+  if (isInternal) {
+    return (
+      <div className="group flex items-start gap-2.5">
+        <UserAvatar
+          name={msg.authorName}
+          avatarUrl={msg.authorAvatarUrl}
+          size="sm"
+          className="mt-0.5 shrink-0"
+        />
+        <div className="min-w-0 max-w-[80%] rounded-2xl rounded-tl-sm border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-foreground">
+          <div className="mb-0.5 flex items-baseline gap-2">
+            <span className="text-xs font-semibold">{msg.authorName}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+              Internal
+            </span>
+            <span className="text-[10px] tabular-nums text-muted-foreground/70">
+              {fmtTime(msg.at)}
+            </span>
+          </div>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
+            {msg.body}
+          </p>
+        </div>
+        {onMakeTask && <MakeTaskInlineButton onClick={onMakeTask} />}
+      </div>
+    )
+  }
+
+  // Regular WhatsApp / Slack chat bubbles (customer-visible).
   return (
     <div className={cn("group flex items-center gap-2", isUs ? "justify-end" : "justify-start")}>
       {/* On outgoing bubbles the make-task button sits on the LEFT of the
@@ -3211,7 +3302,7 @@ function MessageBubble({
             {fmtTime(msg.at)}
           </span>
         </div>
-        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">{msg.body}</p>
+        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">{renderMentions(msg.body, mentionNames)}</p>
       </div>
       {!isUs && onMakeTask && (
         <MakeTaskInlineButton onClick={onMakeTask} />

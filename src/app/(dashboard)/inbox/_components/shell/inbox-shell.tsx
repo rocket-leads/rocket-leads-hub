@@ -728,8 +728,26 @@ export function InboxShell({
               onChanged={refreshItems}
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
-              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
-              onSetState={(t) => openRow?.thread && setThreadState(openRow.thread, t)}
+              mentioned={mentionedOnly}
+              ticketState={
+                openRow
+                  ? mentionedOnly
+                    ? mentionDone(openRow.id)
+                      ? "closed"
+                      : "open"
+                    : openRow.thread
+                      ? threadState(openRow.thread)
+                      : undefined
+                  : undefined
+              }
+              onSetState={(t) => {
+                if (!openRow) return
+                if (mentionedOnly) {
+                  closeMention(openRow)
+                  return
+                }
+                if (openRow.thread) setThreadState(openRow.thread, t)
+              }}
             />
           </div>
         </div>
@@ -763,8 +781,26 @@ export function InboxShell({
               onChanged={refreshItems}
               onReplied={onReplied}
               onMakeTaskFromMessage={openComposerFromChat}
-              ticketState={openRow?.thread ? threadState(openRow.thread) : undefined}
-              onSetState={(t) => openRow?.thread && setThreadState(openRow.thread, t)}
+              mentioned={mentionedOnly}
+              ticketState={
+                openRow
+                  ? mentionedOnly
+                    ? mentionDone(openRow.id)
+                      ? "closed"
+                      : "open"
+                    : openRow.thread
+                      ? threadState(openRow.thread)
+                      : undefined
+                  : undefined
+              }
+              onSetState={(t) => {
+                if (!openRow) return
+                if (mentionedOnly) {
+                  closeMention(openRow)
+                  return
+                }
+                if (openRow.thread) setThreadState(openRow.thread, t)
+              }}
               showDismiss
             />
           </div>

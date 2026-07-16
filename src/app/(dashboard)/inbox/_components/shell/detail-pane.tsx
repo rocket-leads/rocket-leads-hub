@@ -62,6 +62,10 @@ type Props = {
   /** Current ticket state + setter for the 3-state header buttons. */
   ticketState?: TicketState
   onSetState?: (target: TicketState) => void
+  /** Mentioned view: the header is a single Trengo-style To-do/Done toggle
+   *  (Open ⇄ Gesloten) instead of the 3-state Open/Assigned/Closed buttons.
+   *  Marking done flips only MY mention rows, never the shared thread. */
+  mentioned?: boolean
   /** Show the dismiss (X) button - only on the mobile overlay, where it's the
    *  way back to the list. The docked pane omits it (auto-open reselects). */
   showDismiss?: boolean
@@ -77,6 +81,7 @@ export function DetailPane({
   onMakeTaskFromMessage,
   ticketState,
   onSetState,
+  mentioned,
   showDismiss,
 }: Props) {
   if (!row) {
@@ -110,7 +115,14 @@ export function DetailPane({
 
   if (row.thread) {
     const current = ticketState ?? "open"
-    const targets = (["open", "assigned", "closed"] as const).filter((s) => s !== current)
+    // Mentioned view is a Trengo-style To-do/Done toggle: one button that
+    // flips Open ⇄ Gesloten. Everywhere else keeps the 3-state Open/
+    // Assigned/Closed controls (show the two states it's NOT in).
+    const targets: readonly TicketState[] = mentioned
+      ? current === "closed"
+        ? (["open"] as const)
+        : (["closed"] as const)
+      : (["open", "assigned", "closed"] as const).filter((s) => s !== current)
     return (
       <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
