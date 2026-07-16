@@ -17,6 +17,9 @@ import { fetchTrengoUsers, type TrengoUser } from "@/lib/integrations/trengo"
 export type TrengoMentionContext = {
   trengoById: Map<number, TrengoUser>
   hubIdByTrengoId: Map<number, string>
+  /** Reverse of hubIdByTrengoId: Hub user id → their Trengo user id. Used by the
+   *  seen-state sync to find a Hub user's mention in a Trengo message. */
+  trengoIdByHubId: Map<string, number>
 }
 
 function normName(s: string | null | undefined): string {
@@ -28,13 +31,14 @@ export async function getTrengoMentionContext(
 ): Promise<TrengoMentionContext> {
   const trengoById = new Map<number, TrengoUser>()
   const hubIdByTrengoId = new Map<number, string>()
+  const trengoIdByHubId = new Map<string, number>()
   let trengoUsers: TrengoUser[] = []
   try {
     trengoUsers = await fetchTrengoUsers()
   } catch {
     // Trengo briefly unreachable → return empty maps; callers degrade to
     // leaving handles as-is and skipping fan-out (no crash).
-    return { trengoById, hubIdByTrengoId }
+    return { trengoById, hubIdByTrengoId, trengoIdByHubId }
   }
   for (const u of trengoUsers) trengoById.set(u.id, u)
 
@@ -69,9 +73,12 @@ export async function getTrengoMentionContext(
       (firstName && firstNameCounts.get(firstName) === 1
         ? hubByFirstName.get(firstName)
         : undefined)
-    if (hubId) hubIdByTrengoId.set(u.id, hubId)
+    if (hubId) {
+      hubIdByTrengoId.set(u.id, hubId)
+      if (!trengoIdByHubId.has(hubId)) trengoIdByHubId.set(hubId, u.id)
+    }
   }
-  return { trengoById, hubIdByTrengoId }
+  return { trengoById, hubIdByTrengoId, trengoIdByHubId }
 }
 
 /**

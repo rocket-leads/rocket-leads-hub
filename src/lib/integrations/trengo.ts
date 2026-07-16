@@ -139,8 +139,9 @@ export type TrengoMessage = {
     profile_image?: string | null
   } | null
   /** Structured @-mentions on a note — authoritative list of mentioned Trengo
-   *  user ids, so we don't have to regex the body. */
-  mentions?: Array<{ user_id: number }> | null
+   *  user ids (+ per-user `seen` state), so we don't have to regex the body and
+   *  can mirror Trengo's To-do/Done state into the Hub. */
+  mentions?: Array<{ user_id: number; seen?: number }> | null
 }
 
 /** A Trengo workspace user (agent). Used to resolve note authors + @-mention
