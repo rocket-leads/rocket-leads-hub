@@ -134,13 +134,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const supabase = await createAdminClient()
         const { data } = await supabase
           .from("users")
-          .select("id, role")
+          .select("id, role, avatar_url")
           .eq("email", session.user.email)
           .single()
 
         if (data) {
           session.user.id = data.id
           session.user.role = data.role
+          // Uploaded profile photo (Settings → Me). Surfaced app-wide via
+          // session.user.image so the sidebar + any server component gets it
+          // for free. Undefined = no photo → UI falls back to initials.
+          session.user.image = data.avatar_url ?? undefined
 
           // Detect the finance role from user_column_mappings - orthogonal to
           // the access role, so a finance person can still be a member or an

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, CornerDownRight, Loader2, Send, ChevronDown, ChevronRight, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { UserAvatar } from "@/components/ui/user-avatar"
 import { fmtRelative } from "../chat-pane"
 import { ReactionBar } from "./reaction-bar"
 import type { ReactionSummary } from "@/lib/inbox/reactions"
@@ -12,11 +13,6 @@ import type { InboxItem, InboxComment } from "@/types/inbox"
 const KIND_COLOR: Record<"task" | "update", { rail: string; dot: string; label: string }> = {
   task: { rail: "bg-violet-500", dot: "bg-violet-500", label: "Task" },
   update: { rail: "bg-sky-500", dot: "bg-sky-500", label: "Update" },
-}
-
-/** Initial for the (photo-less) avatar circle. Photos come later. */
-function initialOf(name: string): string {
-  return (name.trim()[0] ?? "?").toUpperCase()
 }
 
 /** Highlight @Name mentions inline without a full parser - good enough for the
@@ -113,15 +109,22 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
 
       {/* Header: who → for whom · client · time, complete checkbox on the right */}
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-          {initialOf(item.authorName)}
-        </div>
+        <UserAvatar
+          name={item.authorName}
+          avatarUrl={item.authorAvatarUrl}
+          className="shrink-0"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
             <span className="font-semibold text-foreground">{item.authorName}</span>
             {item.assigneeName && item.assigneeId !== item.authorId && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <ArrowRight className="h-3 w-3" />
+                <UserAvatar
+                  name={item.assigneeName}
+                  avatarUrl={item.assigneeAvatarUrl}
+                  size="sm"
+                />
                 {item.assigneeName}
               </span>
             )}
@@ -198,9 +201,12 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
                   const mine = c.authorId === currentUserId
                   return (
                     <div key={c.id} className="flex items-start gap-2">
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                        {initialOf(c.authorName)}
-                      </div>
+                      <UserAvatar
+                        name={c.authorName}
+                        avatarUrl={c.authorAvatarUrl}
+                        size="sm"
+                        className="shrink-0"
+                      />
                       <div
                         className={cn(
                           "min-w-0 flex-1 rounded-2xl px-3 py-1.5",

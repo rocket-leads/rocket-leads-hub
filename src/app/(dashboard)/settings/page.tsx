@@ -44,19 +44,22 @@ export default async function SettingsPage({
     getUserTrengoChannelIds(session.user.id),
     meSupabase
       .from("users")
-      .select("google_calendar_email, google_refresh_token")
+      .select("google_calendar_email, google_refresh_token, avatar_url")
       .eq("id", session.user.id)
       .maybeSingle<{
         google_calendar_email: string | null
         google_refresh_token: string | null
+        avatar_url: string | null
       }>(),
   ])
   const meConnectionMap = Object.fromEntries(meConnections.map((c) => [c.platform, c]))
   const calendarEmail = googleCalendarRow.data?.google_calendar_email ?? null
   const calendarConnected = !!googleCalendarRow.data?.google_refresh_token
   const meTab = {
+    userId: session.user.id,
     userName: session.user.name ?? session.user.email,
     userEmail: session.user.email,
+    avatarUrl: googleCalendarRow.data?.avatar_url ?? null,
     slack: meConnectionMap.slack ?? null,
     trengo: meConnectionMap.trengo ?? null,
     monday: meConnectionMap.monday ?? null,

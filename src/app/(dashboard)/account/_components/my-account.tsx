@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import {
   MessageSquare,
   LayoutGrid,
@@ -14,18 +14,26 @@ import {
   BellOff,
   Calendar as CalendarIcon,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Camera, Trash2 } from "lucide-react"
 import {
   connectMyPlatform,
   disconnectMyPlatform,
   saveMyTrengoChannels,
+  updateMyAvatar,
+  removeMyAvatar,
 } from "../actions"
 import { Button } from "@/components/ui/button"
+import { UserAvatar } from "@/components/ui/user-avatar"
+import { resizeImageToSquareJpeg } from "@/lib/image-resize"
 import type { UserPlatformConnection, Platform } from "@/lib/inbox/user-platform-tokens"
 import type { GoogleCalendarConnection } from "@/app/(dashboard)/settings/_components/me-tab"
 
 type Props = {
+  userId: string
   userName: string
   userEmail: string
+  avatarUrl: string | null
   slack: UserPlatformConnection | null
   trengo: UserPlatformConnection | null
   monday: UserPlatformConnection | null
@@ -37,6 +45,7 @@ type Props = {
 export function MyAccount({
   userName,
   userEmail,
+  avatarUrl,
   slack,
   trengo,
   monday,
@@ -48,8 +57,13 @@ export function MyAccount({
     <div className="space-y-6 max-w-3xl">
       <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Signed in as</p>
-        <p className="text-sm font-medium mt-0.5">{userName}</p>
-        <p className="text-[11px] text-muted-foreground/60">{userEmail}</p>
+        <div className="mt-2 flex items-center gap-4">
+          <AvatarEditor userName={userName} avatarUrl={avatarUrl} />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{userName}</p>
+            <p className="text-[11px] text-muted-foreground/60">{userEmail}</p>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -73,6 +87,110 @@ export function MyAccount({
       <div>
         <h2 className="text-sm font-medium mb-3">Inbox subscriptions</h2>
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
+      </div>
+    </div>
+  )
+}
+
+// --- Profile photo ---
+
+function AvatarEditor({
+  userName,
+  avatarUrl,
+}: {
+  userName: string
+  avatarUrl: string | null
+}) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  // Optimistic preview so the new photo shows instantly after picking one.
+  const [preview, setPreview] = useState<string | null>(avatarUrl)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = "" // allow re-picking the same file
+    if (!file) return
+    setError(null)
+    try {
+      // Downscale/crop to a 256px square JPEG in the browser - keeps the
+      // stored file tiny and square without any server image library.
+      const blob = await resizeImageToSquareJpeg(file, 256)
+      const localUrl = URL.createObjectURL(blob)
+      setPreview(localUrl)
+      const formData = new FormData()
+      formData.append("avatar", blob, "avatar.jpg")
+      startTransition(async () => {
+        try {
+          await updateMyAvatar(formData)
+          router.refresh()
+        } catch (err) {
+          setPreview(avatarUrl)
+          setError(err instanceof Error ? err.message : "Upload failed")
+        }
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't read that image")
+    }
+  }
+
+  function onRemove() {
+    setError(null)
+    setPreview(null)
+    startTransition(async () => {
+      try {
+        await removeMyAvatar()
+        router.refresh()
+      } catch (err) {
+        setPreview(avatarUrl)
+        setError(err instanceof Error ? err.message : "Remove failed")
+      }
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative">
+        <UserAvatar name={userName} avatarUrl={preview} className="size-14" />
+        {pending && (
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/60">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={onPick}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => inputRef.current?.click()}
+            disabled={pending}
+          >
+            <Camera className="size-3.5" />
+            {preview ? "Change photo" : "Upload photo"}
+          </Button>
+          {preview && (
+            <Button variant="ghost" size="sm" onClick={onRemove} disabled={pending}>
+              <Trash2 className="size-3.5" />
+              Remove
+            </Button>
+          )}
+        </div>
+        {error ? (
+          <p className="text-[11px] text-destructive">{error}</p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground/60">
+            PNG, JPEG or WebP. Shown next to your updates, tasks and messages.
+          </p>
+        )}
       </div>
     </div>
   )

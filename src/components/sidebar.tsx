@@ -296,6 +296,7 @@ export async function Sidebar() {
               session?.user.email?.[0]?.toUpperCase() ??
               "?"
             }
+            avatarUrl={session?.user.image}
             missingPlatforms={missingPlatforms}
             accountTitle={accountTitle}
           />

@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
+import type { CSSProperties } from "react"
 import { cookies } from "next/headers"
 import { Inter } from "next/font/google"
 import localFont from "next/font/local"
 import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/types"
+import { UI_SCALE_COOKIE, normalizeScale } from "@/lib/ui-scale"
 import "./globals.css"
 
 const inter = Inter({
@@ -62,6 +64,15 @@ export default async function RootLayout({
   const localeCookie = cookieStore.get("locale")?.value
   const lang = isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE
 
+  // Per-user UI density. When the cookie is set, paint the chosen scale as an
+  // inline `--ui-scale` on <html> so the first server render is already the
+  // right size (no resize flash). Absent → globals.css `:root` default (0.8)
+  // applies. The client picker (UserMenu) overrides this live + rewrites the
+  // cookie.
+  const uiScale = normalizeScale(cookieStore.get(UI_SCALE_COOKIE)?.value)
+  const htmlStyle =
+    uiScale != null ? ({ "--ui-scale": String(uiScale) } as CSSProperties) : undefined
+
   // html intentionally has no fixed height - pinning it to `h-full` locks it
   // at exactly viewport height, which causes intermittent page-scroll bugs
   // when the body content overflows (browser falls back to body-scroll, which
@@ -71,6 +82,7 @@ export default async function RootLayout({
     <html
       lang={lang}
       className={`${inter.variable} ${clashGrotesk.variable} antialiased${isDark ? " dark" : ""}`}
+      style={htmlStyle}
       suppressHydrationWarning
     >
       <head>

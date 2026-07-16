@@ -21,8 +21,10 @@ export type GoogleCalendarConnection = {
 }
 
 export type MeTabData = {
+  userId: string
   userName: string
   userEmail: string
+  avatarUrl: string | null
   slack: UserPlatformConnection | null
   trengo: UserPlatformConnection | null
   monday: UserPlatformConnection | null
@@ -34,8 +36,10 @@ export type MeTabData = {
 export function MeTab({ data }: { data: MeTabData }) {
   return (
     <MyAccount
+      userId={data.userId}
       userName={data.userName}
       userEmail={data.userEmail}
+      avatarUrl={data.avatarUrl}
       slack={data.slack}
       trengo={data.trengo}
       monday={data.monday}

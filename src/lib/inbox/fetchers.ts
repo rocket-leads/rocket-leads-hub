@@ -57,8 +57,8 @@ type RawInboxRow = {
   created_at: string
   updated_at: string
   completed_at: string | null
-  author: { id: string; name: string | null; email: string } | null
-  assignee: { id: string; name: string | null; email: string } | null
+  author: { id: string; name: string | null; email: string; avatar_url: string | null } | null
+  assignee: { id: string; name: string | null; email: string; avatar_url: string | null } | null
   inbox_comments: Array<{ count: number }> | null
 }
 
@@ -183,9 +183,11 @@ function rowToItem(
     clientName: linkedClientName ?? (isUnlinked ? "" : "(unknown)"),
     authorId: row.author_id,
     authorName,
+    authorAvatarUrl: row.author?.avatar_url ?? null,
     authorExternal: row.author_external,
     assigneeId: row.assignee_id,
     assigneeName: row.assignee?.name ?? row.assignee?.email ?? "Unknown",
+    assigneeAvatarUrl: row.assignee?.avatar_url ?? null,
     title: cleanTitle,
     body: cleanBody,
     status: row.status as UpdateStatus | TaskStatus,
@@ -211,8 +213,8 @@ const ITEM_SELECT = `
   trengo_assignee_user_id,
   author_name_cached, author_external,
   created_at, updated_at, completed_at,
-  author:users!inbox_items_author_id_fkey(id, name, email),
-  assignee:users!inbox_items_assignee_id_fkey(id, name, email),
+  author:users!inbox_items_author_id_fkey(id, name, email, avatar_url),
+  assignee:users!inbox_items_assignee_id_fkey(id, name, email, avatar_url),
   inbox_comments(count)
 `
 
@@ -395,7 +397,7 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
     .from("inbox_comments")
     .select(`
       id, item_id, author_id, body, monday_update_id, created_at,
-      author:users!inbox_comments_author_id_fkey(id, name, email)
+      author:users!inbox_comments_author_id_fkey(id, name, email, avatar_url)
     `)
     .eq("item_id", itemId)
     .order("created_at", { ascending: true })
@@ -409,7 +411,7 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
     body: string
     monday_update_id: string | null
     created_at: string
-    author: { name: string | null; email: string } | null
+    author: { name: string | null; email: string; avatar_url: string | null } | null
   }
 
   return ((data ?? []) as unknown as Row[]).map((r) => ({
@@ -417,6 +419,7 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
     itemId: r.item_id,
     authorId: r.author_id,
     authorName: r.author?.name ?? r.author?.email ?? "Unknown",
+    authorAvatarUrl: r.author?.avatar_url ?? null,
     body: r.body,
     mondayUpdateId: r.monday_update_id,
     createdAt: r.created_at,
@@ -692,6 +695,11 @@ export type ChatMessage = {
   id: string
   authorKind: "rl_team" | "client" | "external" | null
   authorName: string
+  /** Profile photo of the sending Hub teammate, for our own (rl_team)
+   *  messages. Resolved by matching the display name against Hub users, so
+   *  a mail you sent shows your face. Null for client/external senders and
+   *  when no name match / no uploaded photo. */
+  authorAvatarUrl: string | null
   authorExternal: string | null
   body: string
   /** Original HTML body for email messages, when the ingest path
@@ -756,6 +764,25 @@ const CHAT_SELECT = `
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
+
+/** Map of lowercased Hub-user display name → uploaded avatar URL. Used to put
+ *  a teammate's face on the messages they sent - chat rows carry the Trengo
+ *  agent *name* (author_name_cached), not a Hub user id, so name is the only
+ *  join key we have. Only names with a photo are included. */
+async function getHubAvatarByName(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const { data } = await supabase
+    .from("users")
+    .select("name, avatar_url")
+    .not("avatar_url", "is", null)
+  for (const u of (data ?? []) as Array<{ name: string | null; avatar_url: string | null }>) {
+    const name = u.name?.trim().toLowerCase()
+    if (name && u.avatar_url) map.set(name, u.avatar_url)
+  }
+  return map
+}
 
 function rowAuthorName(row: RawChatRow): string {
   if (row.author_kind === "rl_team") {
@@ -1554,8 +1581,11 @@ export async function getChatThreadMessages(
   const { data, error } = await query
   if (error) throw new Error(`Failed to load thread: ${error.message}`)
 
+  const avatarByName = await getHubAvatarByName(supabase)
+
   return ((data ?? []) as unknown as RawChatRow[]).map((r) => {
     const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
+    const authorName = rowAuthorName(r)
     // Defensive HTML strip: ingest paths (webhook, polling cron) should
     // already strip at write time, but legacy rows + email tickets
     // (where the body is raw HTML with signature blocks + tracking
@@ -1567,7 +1597,11 @@ export async function getChatThreadMessages(
     return {
       id: r.id,
       authorKind,
-      authorName: rowAuthorName(r),
+      authorName,
+      authorAvatarUrl:
+        authorKind === "rl_team"
+          ? (avatarByName.get(authorName.trim().toLowerCase()) ?? null)
+          : null,
       authorExternal: r.author_external ?? null,
       body,
       bodyHtml: r.body_html ?? null,

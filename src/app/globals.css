@@ -60,6 +60,22 @@
  * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar
  * stays one shade lighter than the page so the rail visually separates
  * without a heavy border. */
+
+/* Global UI density — the whole Hub renders as if at ~80% browser zoom so
+ * more content fits on screen and wide tables need less horizontal
+ * scrolling. We scale the root font-size (rem) rather than using `zoom`
+ * on purpose: the inbox + chat panes are laid out with calc(100vh - …),
+ * and `zoom` would break those height calculations (leaving gaps). Every
+ * Tailwind spacing/text/width utility is rem-based, so this shrinks the
+ * whole UI proportionally while the vh-based full-height layouts stay
+ * correct. Bump --ui-scale toward 1 for a larger UI, down for denser.
+ * Roy 2026-07. */
+:root {
+  --ui-scale: 0.8;
+}
+html {
+  font-size: calc(100% * var(--ui-scale));
+}
 :root {
   /* Collapsible sidebar width — toggled by SidebarCollapseToggle. The
    * 240px / 64px values are the only two we use today; transitions on

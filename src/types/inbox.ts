@@ -27,12 +27,16 @@ export type InboxItem = {
   clientName: string
   authorId: string
   authorName: string
+  /** Uploaded profile photo of the author (Hub user). Null → initials. */
+  authorAvatarUrl: string | null
   /** External author identifier - for Trengo, this is the contact id, used by
    *  the "Link to client" affordance to know which contact to attach. Null for
    *  manual / automation / Monday sources where there's no external author. */
   authorExternal: string | null
   assigneeId: string
   assigneeName: string
+  /** Uploaded profile photo of the assignee (Hub user). Null → initials. */
+  assigneeAvatarUrl: string | null
   title: string
   body: string | null
   status: UpdateStatus | TaskStatus
@@ -66,6 +70,8 @@ export type InboxComment = {
   itemId: string
   authorId: string
   authorName: string
+  /** Uploaded profile photo of the comment author (Hub user). Null → initials. */
+  authorAvatarUrl: string | null
   body: string
   mondayUpdateId: string | null
   createdAt: string

@@ -3298,12 +3298,6 @@ function EmailMessageCard({
     }
   }
 
-  // Avatar - circle with the first letter of the sender's name. Color
-  // varies by author kind so RL outgoing mails read as ours and
-  // inbound as the customer's. Same convention Gmail uses when the
-  // sender has no Gravatar.
-  const avatarInitial = (msg.authorName ?? "?").trim().charAt(0).toUpperCase() || "?"
-
   // Wrap the email body in a minimal document shell so emails that
   // expect viewport-rules / image-max-width behave reasonably inside
   // the constrained iframe. Inline styles cap images at 100% width and
@@ -3349,16 +3343,19 @@ function EmailMessageCard({
           "geen WhatsApp-bubble-uitlijning". Avatar circle + author block
           on the left, timestamp on the right. */}
       <div className="flex items-start gap-3 px-4 py-3 border-b border-border/40 bg-muted/20">
-        <div
-          className={cn(
-            "h-9 w-9 shrink-0 rounded-full inline-flex items-center justify-center text-sm font-semibold",
+        {/* Photo of the sender (your face on mails you sent) with a
+            colour-coded initial fallback: ours = purple, customer = green. */}
+        <UserAvatar
+          name={msg.authorName}
+          avatarUrl={msg.authorAvatarUrl}
+          className="size-9 shrink-0"
+          fallbackClassName={cn(
+            "text-sm font-semibold",
             isUs
               ? "bg-primary/15 text-primary"
               : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
           )}
-        >
-          {avatarInitial}
-        </div>
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold text-foreground truncate">
