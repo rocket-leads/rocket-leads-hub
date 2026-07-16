@@ -33,6 +33,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
+import { UserAvatar } from "@/components/ui/user-avatar"
 import { cn } from "@/lib/utils"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
@@ -1876,7 +1877,7 @@ function ThreadMessages({
           wide monitors instead of stretching edge-to-edge - Roy 2026-07-15
           "chat box ineens heel erg breed". */}
       <div className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-3 bg-background/40">
-        <div className="mx-auto w-full min-w-0 max-w-4xl space-y-3">
+        <div className={cn("mx-auto w-full min-w-0 space-y-3", isEmail ? "max-w-3xl" : "max-w-4xl")}>
           {messagesQuery.isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

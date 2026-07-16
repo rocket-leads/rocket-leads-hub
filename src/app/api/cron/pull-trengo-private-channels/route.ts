@@ -167,20 +167,19 @@ async function lookupTicketWebhookChannel(
 }
 
 function eventsFromMessageList(
-  channelId: number,
+  realChannelId: number,
   ticket: TrengoConversation,
   messages: TrengoMessage[],
   cutoffMs: number,
 ): EventToInsert[] {
   const out: EventToInsert[] = []
-  // Use the ticket's OWN channel, not the channel we happened to fetch FOR.
-  // Trengo's `/tickets?channel_id=X` filter is unreliable for personal tokens
-  // (it returns the user's tickets across channels), so stamping the loop's
-  // `channelId` on every row cross-contaminated the per-channel inbox
-  // (Roy 2026-07-15: Roel's channel showed Shanna's / other lines' tickets).
-  // The webhook already reads `ticket.channel.id`; match it here. Falls back to
-  // the fetched channelId only when the list response omits the channel object.
-  const realChannelId = ticket.channel?.id ?? channelId
+  // `realChannelId` is resolved by the caller as the ticket's OWN channel
+  // (never the polled channelId). Roy 2026-07-16: strict per-channel — a
+  // ticket must always live under its true line, so email tickets that leak
+  // into a WhatsApp-channel poll (Trengo's `?channel_id=` filter returns a
+  // personal token's tickets across ALL channels) are never stamped with the
+  // WhatsApp channel. That mis-stamping filed hundreds of monday-notification
+  // and other emails under "Danny WhatsApp" / "Roy Vosters" WA channels.
   for (const m of messages) {
     // Same timestamp normalization as the ticket-level check - Trengo's
     // "YYYY-MM-DD HH:mm:ss" doesn't parse uniformly without coercing
@@ -534,17 +533,27 @@ export async function GET(req: NextRequest) {
                 userToken: token,
                 ticketId: ticket.id,
               })
-              // Trengo's `?channel_id=` filter is unreliable for personal
-              // tokens - it returns a contact's tickets across lines - and the
-              // list omits `ticket.channel`. So the fetched channelId is NOT a
-              // trustworthy channel for a gap-filled message. The webhook IS
-              // authoritative, so if this ticket already has a webhook row,
-              // inherit its channel instead of stamping the fetched one (Roy
-              // 2026-07-15: a single poll-ingested message landed under the
-              // wrong line, fragmenting the conversation).
+              // Resolve the ticket's TRUE channel and NEVER fall back to the
+              // polled channelId. Trengo's `?channel_id=X` filter leaks a
+              // personal token's tickets across all their channels, so the
+              // polled channel is not a safe guess. Priority:
+              //   1) `ticket.channel.id` from the list response (present +
+              //      authoritative — verified 2026-07-16 the list DOES carry it)
+              //   2) an existing webhook row's channel for this ticket
+              // If neither resolves, SKIP the ticket rather than mis-file it
+              // under the WhatsApp line we happened to be polling. Roy
+              // 2026-07-16: strict per-channel, never mix WhatsApp with email.
               const webhookCh = await lookupTicketWebhookChannel(supabase, ticket.id)
+              const realChannelId = ticket.channel?.id ?? webhookCh ?? null
+              if (realChannelId == null) {
+                console.warn(
+                  `[pull-trengo-private-channels] ticket ${ticket.id} has no resolvable channel (polled ${channelId}) - skipping to avoid mis-filing`,
+                )
+                await new Promise((r) => setTimeout(r, 200))
+                continue
+              }
               candidates.push(
-                ...eventsFromMessageList(webhookCh ?? channelId, ticket, messages, cutoffMs),
+                ...eventsFromMessageList(realChannelId, ticket, messages, cutoffMs),
               )
             } catch (e) {
               console.error(
