@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
     snoozedRaw === "active" || snoozedRaw === "snoozed" || snoozedRaw === "all"
       ? snoozedRaw
       : undefined
+  const mentionsOnly = sp.get("mentions") === "1"
 
   try {
     const items = await listInboxItems(session.user.id, session.user.role, {
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
       assignedToMe,
       statuses,
       snoozed,
+      mentionsOnly,
     })
     return NextResponse.json({ items })
   } catch (e) {

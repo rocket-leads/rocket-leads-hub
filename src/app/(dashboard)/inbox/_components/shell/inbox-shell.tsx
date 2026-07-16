@@ -67,6 +67,60 @@ function threadState(t: ChatThreadSummary): TicketState {
   return t.isAssigned ? "assigned" : "open"
 }
 
+/** Build a Mentioned-view feed row from a mention UPDATE. Prefers the fully
+ *  loaded thread (rich preview / channel / triage state) when it's in the
+ *  active thread list; otherwise synthesizes a stub so the mention still shows
+ *  even when its conversation isn't loaded (e.g. a CLOSED Trengo ticket that
+ *  the active list doesn't include). Roy 2026-07-16: every Trengo mention must
+ *  appear here 1:1, closed or not. Opening the row fetches the thread by key. */
+function mentionUpdateToFeedRow(
+  u: InboxItem,
+  loaded: ChatThreadSummary | undefined,
+): FeedRow | null {
+  const baseKey = mentionThreadKey(u)
+  if (!baseKey) return null
+  if (loaded) return threadToFeedRow(loaded)
+  const m = u.title.match(/^(.*?)\s+mentioned you(?:\s+in\s+(.*))?$/i)
+  const contactName = (m?.[2] ?? u.clientName ?? "Conversation").trim() || "Conversation"
+  const channelKind = (u.channelKind ?? null) as ChatThreadSummary["channelKind"]
+  const stub: ChatThreadSummary = {
+    threadKey: baseKey,
+    scope: "external",
+    source: "trengo",
+    primaryName: contactName,
+    clientName: u.clientName && u.clientName !== "(unknown)" ? u.clientName : null,
+    clientId: null,
+    channelKind,
+    channelName: null,
+    trengoChannelId: null,
+    channelIds: [],
+    latestPreview: u.body ?? "",
+    latestSubject: null,
+    latestAt: u.createdAt,
+    latestEventId: u.id,
+    totalCount: 0,
+    unreadCount: 0,
+    isStarred: false,
+    isArchived: false,
+    isAssigned: false,
+    snoozedUntil: null,
+    hasTeamReply: false,
+    pendingCount: 0,
+  }
+  return {
+    id: baseKey,
+    channel: channelKind === "email" ? "email" : "whatsapp",
+    kind: "chat",
+    sortAt: u.createdAt,
+    unread: u.status !== "read",
+    unreadCount: 0,
+    title: contactName,
+    preview: u.body,
+    clientName: stub.clientName,
+    thread: stub,
+  }
+}
+
 /**
  * The unified inbox split into Internal (a Monday-style feed of tasks + updates
  * with inline replies + reactions) and External (client communication grouped
@@ -164,9 +218,22 @@ export function InboxShell({
     enabled: canViewComms,
     staleTime: 5 * 60 * 1000,
   })
+  // Mentions get their own query spanning BOTH statuses (unread=To-do +
+  // read=Done) so the Mentioned view shows every mention and can move one to
+  // Done without it vanishing. The regular updates query is unread-only (drives
+  // the Internal feed) so it can't back the Done tab. Roy 2026-07-16.
+  const mentionsQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["shell-mentions", locked?.id ?? "me"],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=update${clientQ}&mentions=1&statuses=unread,read`).then((r) => r.json()),
+    staleTime: REFETCH_MS,
+    refetchInterval: REFETCH_MS,
+    refetchIntervalInBackground: false,
+  })
 
   const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items])
   const updates = useMemo(() => updatesQuery.data?.items ?? [], [updatesQuery.data?.items])
+  const mentionItems = useMemo(() => mentionsQuery.data?.items ?? [], [mentionsQuery.data?.items])
   const items = useMemo(() => [...tasks, ...updates], [tasks, updates])
   const threads = useMemo(() => {
     const all = threadsQuery.data?.threads ?? []
@@ -176,6 +243,7 @@ export function InboxShell({
   const refreshItems = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["shell-tasks", locked?.id ?? "me"] })
     queryClient.invalidateQueries({ queryKey: ["shell-updates", locked?.id ?? "me"] })
+    queryClient.invalidateQueries({ queryKey: ["shell-mentions", locked?.id ?? "me"] })
   }, [queryClient, locked?.id])
 
   // --- Internal scope --------------------------------------------------------
@@ -259,22 +327,26 @@ export function InboxShell({
           ? "email"
           : null
 
-  const mentionedThreadKeys = useMemo(() => {
-    const s = new Set<string>()
-    for (const u of updates) {
-      const key = mentionThreadKey(u)
-      if (key) s.add(key)
-    }
-    return s
-  }, [updates])
+  // The Mentioned feed is driven by the mention UPDATE rows (one per teammate
+  // per note), NOT by intersecting with the loaded thread list - otherwise a
+  // mention on a CLOSED/unloaded Trengo ticket silently vanished (Roy 2026-07-16
+  // saw only 1 of many). We show one row per mentioned conversation, using the
+  // rich loaded thread when present and a stub otherwise.
   const mentionedRows = useMemo(() => {
-    const rows = threads
-      .filter((t) => mentionedThreadKeys.has(baseThreadKey(t.threadKey)))
-      .map(threadToFeedRow)
-      .filter((r): r is FeedRow => r !== null)
+    const threadByBase = new Map<string, ChatThreadSummary>()
+    for (const t of threads) threadByBase.set(baseThreadKey(t.threadKey), t)
+    const seen = new Set<string>()
+    const rows: FeedRow[] = []
+    for (const u of mentionItems) {
+      const key = mentionThreadKey(u)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      const row = mentionUpdateToFeedRow(u, threadByBase.get(key))
+      if (row) rows.push(row)
+    }
     rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
     return rows
-  }, [threads, mentionedThreadKeys])
+  }, [threads, mentionItems])
 
   // Single channel in focus → only that channel's threads, AND only the medium
   // the channel represents (so a WhatsApp line never shows the emails a
@@ -298,7 +370,7 @@ export function InboxShell({
   // they point at. Marking a mention done ≠ archiving the thread for everyone.
   const mentionUpdatesByThread = useMemo(() => {
     const m = new Map<string, InboxItem[]>()
-    for (const u of updates) {
+    for (const u of mentionItems) {
       const key = mentionThreadKey(u)
       if (!key) continue
       const list = m.get(key) ?? []
@@ -306,7 +378,7 @@ export function InboxShell({
       m.set(key, list)
     }
     return m
-  }, [updates])
+  }, [mentionItems])
   const mentionDone = useCallback(
     (threadKey: string): boolean => {
       const list = mentionUpdatesByThread.get(baseThreadKey(threadKey))

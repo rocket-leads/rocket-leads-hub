@@ -79,6 +79,8 @@ type ListFilters = {
    *  - 'all'     - return both, ignoring snooze state
    */
   snoozed?: "active" | "snoozed" | "all"
+  /** Only @-mention update rows (source_ref.trengo_mention_in_thread_key set). */
+  mentionsOnly?: boolean
 }
 
 /**
@@ -262,6 +264,14 @@ export async function listInboxItems(
   // thread-less task; the original chat event stays in the thread).
   if (filters.kind === "task" || filters.kind === "update") {
     query = query.is("thread_key", null)
+  }
+
+  // Mentions-only: just the @-mention update rows (they carry a
+  // `trengo_mention_in_thread_key` in source_ref). Lets the Mentioned view load
+  // ALL mentions across both statuses (To-do + Done) without dragging in every
+  // other read update. Roy 2026-07-16.
+  if (filters.mentionsOnly) {
+    query = query.not("source_ref->>trengo_mention_in_thread_key", "is", null)
   }
 
   if (filters.statuses) {
