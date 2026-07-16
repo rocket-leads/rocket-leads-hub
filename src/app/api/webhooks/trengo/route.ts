@@ -561,6 +561,7 @@ export async function POST(req: NextRequest) {
           source_ref: {
             trengo_mention_in_chat_event_id: inserted.id,
             trengo_mention_in_thread_key: `trengo:contact:${payload.contactId}`,
+            trengo_mention_contact_name: conversationLabel,
           },
           author_kind: "rl_team",
           author_name_cached: payload.authorName,

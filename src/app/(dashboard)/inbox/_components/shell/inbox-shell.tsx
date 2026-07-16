@@ -80,8 +80,18 @@ function mentionUpdateToFeedRow(
   const baseKey = mentionThreadKey(u)
   if (!baseKey) return null
   if (loaded) return threadToFeedRow(loaded)
-  const m = u.title.match(/^(.*?)\s+mentioned you(?:\s+in\s+(.*))?$/i)
-  const contactName = (m?.[2] ?? u.clientName ?? "Conversation").trim() || "Conversation"
+  // Prefer the conversation name stored on the mention (fan-out records it),
+  // then parse it out of the "X mentioned you in Y" title, then the client.
+  const storedName =
+    u.sourceRef && typeof u.sourceRef === "object"
+      ? (u.sourceRef as Record<string, unknown>).trengo_mention_contact_name
+      : null
+  const parsed = u.title.match(/^(.*?)\s+mentioned you(?:\s+in\s+(.*))?$/i)?.[2]
+  const contactName =
+    (typeof storedName === "string" && storedName.trim()) ||
+    (parsed && parsed.trim()) ||
+    (u.clientName && u.clientName !== "(unknown)" ? u.clientName : "") ||
+    "Conversation"
   const channelKind = (u.channelKind ?? null) as ChatThreadSummary["channelKind"]
   const stub: ChatThreadSummary = {
     threadKey: baseKey,

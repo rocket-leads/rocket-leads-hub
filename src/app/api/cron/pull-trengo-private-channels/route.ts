@@ -522,6 +522,7 @@ async function insertMentionUpdates(
         source_msg_id: `trengo:mention:${noteMsgId}:${hubId}`,
         source_ref: {
           trengo_mention_in_thread_key: `trengo:contact:${c.contactId}`,
+          trengo_mention_contact_name: c.contactName,
         },
         author_kind: "rl_team",
         author_name_cached: c.authorName,
