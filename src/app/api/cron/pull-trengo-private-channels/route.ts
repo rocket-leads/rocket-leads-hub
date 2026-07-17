@@ -4,6 +4,7 @@ import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
+import { resolveClientAssignee } from "@/lib/inbox/assignee"
 import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
@@ -384,13 +385,25 @@ async function insertEvents(
   // the right client when one exists.
   const contactIds = Array.from(new Set(events.map((e) => e.contactId)))
   const clientByContact = new Map<string, { monday_item_id: string }>()
+  // Route each contact's rows to the responsible AM, exactly like the webhook
+  // (webhooks/trengo/route.ts). Without this the poll dumped every private-
+  // channel message on the HQ system user instead of the client's AM. Roy
+  // 2026-07-17. Cached per client so we resolve each AM once per batch.
+  const assigneeByClient = new Map<string, string>()
+  const assigneeByContact = new Map<string, string>()
   for (const contactId of contactIds) {
     const { data: clientRow } = await supabase
       .from("clients")
       .select("monday_item_id")
       .contains("trengo_contact_ids", [contactId])
       .maybeSingle()
-    if (clientRow) clientByContact.set(contactId, clientRow as { monday_item_id: string })
+    if (!clientRow) continue
+    const mondayId = (clientRow as { monday_item_id: string }).monday_item_id
+    clientByContact.set(contactId, { monday_item_id: mondayId })
+    if (!assigneeByClient.has(mondayId)) {
+      assigneeByClient.set(mondayId, (await resolveClientAssignee(mondayId)) ?? systemAuthorId)
+    }
+    assigneeByContact.set(contactId, assigneeByClient.get(mondayId)!)
   }
 
   const rows = events.map((e) => {
@@ -420,7 +433,7 @@ async function insertEvents(
       kind: "chat" as const,
       client_id: clientByContact.get(e.contactId)?.monday_item_id ?? "",
       author_id: systemAuthorId,
-      assignee_id: systemAuthorId,
+      assignee_id: assigneeByContact.get(e.contactId) ?? systemAuthorId,
       title: titlePreview || `Message from ${e.authorName}`,
       body: bodyFull,
       body_html: e.bodyHtml,
