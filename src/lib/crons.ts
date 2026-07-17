@@ -36,5 +36,7 @@ export const EXPECTED_CRONS: ReadonlyArray<ExpectedCron> = [
   { name: "slack-daily-watchlist", description: "Personal watchlist Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
   { name: "slack-team-sales", description: "Team sales Slack post", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
   { name: "slack-personal-sales", description: "Personal sales Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
-  { name: "pull-trengo-private-channels", description: "Per-user pull of Trengo private/personal inboxes (webhook doesn't fire for those)", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 15 },
+  { name: "pull-trengo-private-channels", description: "Per-user pull of Trengo private/personal inboxes (webhook doesn't fire for those) - runs every minute for near-real-time", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 3 },
+  { name: "sync-trengo-mention-seen", description: "Mirror Trengo mention seen-state into the Hub Mentioned view (Trengo->Hub)", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 15 },
+  { name: "trengo-status-reconcile", description: "Archive Hub threads whose Trengo ticket was closed (status sync Trengo->Hub)", cadenceKey: "settings.health.cadence.hourly", cadenceMinutes: 60 },
 ] as const

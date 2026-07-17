@@ -68,7 +68,7 @@ export async function GET(req: Request) {
     .eq("role", "admin")
   const slackTargets = (admins ?? []).filter((a) => a.slack_user_id)
 
-  const alerts: Array<{ cron: string; kind: "failed" | "stuck"; text: string; started_at: string | null }> = []
+  const alerts: Array<{ cron: string; kind: "failed" | "stuck" | "partial"; text: string; started_at: string | null }> = []
 
   for (const expected of EXPECTED_CRONS) {
     const last = latestByCron.get(expected.name)
@@ -89,6 +89,22 @@ export async function GET(req: Request) {
           kind: "failed",
           started_at: last.started_at,
           text: `🚨 *Cron failed* - \`${expected.name}\`\n${expected.description}\nError: ${last.error_message ?? "(no message)"}`,
+        })
+      }
+      continue
+    }
+
+    // Partial success - the cron ran but some units failed (e.g. the Trengo
+    // poll hit 429 on some users' tokens, so their messages didn't sync).
+    if (last.status === "partial") {
+      const alreadyAlerted =
+        state?.last_started_at === last.started_at && state?.last_alert_kind === "partial"
+      if (!alreadyAlerted) {
+        alerts.push({
+          cron: expected.name,
+          kind: "partial",
+          started_at: last.started_at,
+          text: `⚠️ *Cron partial* - \`${expected.name}\` ran with failures.\n${expected.description}\n${last.error_message ?? ""}`,
         })
       }
       continue
