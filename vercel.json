@@ -42,7 +42,7 @@
     },
     {
       "path": "/api/cron/pull-trengo-private-channels",
-      "schedule": "12,27,42,57 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/sync-trengo-mention-seen",

@@ -56,14 +56,14 @@ import {
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-/** How far back to look at message timestamps. 8× the cron cadence
- *  (15 min) so several missed cycles in a row (Vercel hiccup, rate
- *  limit, downtime) still catch up automatically on the next
- *  successful run. Roy 2026-06-13: 60-min window meant a 6-hour-old
- *  Vueling email never made it in after the polling cron got stuck
- *  on a 429 cascade. 120 min is a safer baseline; the dedupe path
- *  makes re-seeing the same row free. */
-const LOOKBACK_MINUTES = 120
+/** How far back to look at message timestamps. The cron now runs EVERY MINUTE
+ *  (Roy 2026-07-17: private-channel WhatsApp/email must arrive near-real-time -
+ *  Trengo's INBOUND webhook doesn't fire for private channels, so this poll is
+ *  the only path). A 20-min window still absorbs ~20 missed cycles (Vercel
+ *  hiccup, 429 backoff) while keeping the per-run message re-fetch bounded so
+ *  minute-cadence polling doesn't hammer Trengo's rate limit. Use `?since=` for
+ *  a wider one-shot catch-up. */
+const LOOKBACK_MINUTES = 20
 
 type UserToScan = {
   id: string

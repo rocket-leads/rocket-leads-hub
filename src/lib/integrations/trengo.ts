@@ -548,6 +548,34 @@ export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
 }
 
 /**
+ * Close or reopen a Trengo ticket. Mirrors a Hub-side status change back to
+ * Trengo so the two stay in sync (unlike mentions, tickets ARE writable via the
+ * v2 API — `POST /tickets/{id}/close|reopen`). Best-effort: a 422 (already in
+ * that state) is treated as success. Roy 2026-07-17.
+ */
+export async function setTrengoTicketState(
+  ticketId: number | string,
+  action: "close" | "reopen",
+): Promise<void> {
+  const token = (await getTrengoToken()).trim()
+  const res = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/${action}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    },
+  )
+  if (!res.ok && res.status !== 422) {
+    throw new Error(`Trengo ticket ${action} failed (${res.status})`)
+  }
+}
+
+/**
  * List all Trengo workspace users (agents). Used to resolve note authors and
  * @-mention targets (Trengo stores mentions as `@<firstname><userId>` handles
  * + a structured `mentions` array) to display names, and to map them onto Hub

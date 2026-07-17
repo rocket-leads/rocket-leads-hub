@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   getChatThreadMessages,
   getChatThreadState,
+  getChatThreadTicketIds,
   markChatThreadRead,
   markChatThreadUnread,
   setChatThreadArchived,
@@ -11,6 +12,7 @@ import {
   setChatThreadSnoozedUntil,
   setChatThreadStarred,
 } from "@/lib/inbox/fetchers"
+import { setTrengoTicketState } from "@/lib/integrations/trengo"
 
 /**
  * GET /api/inbox/threads/{threadKey}
@@ -178,6 +180,22 @@ export async function PATCH(
       case "unsnooze":
         result = await setChatThreadSnoozedUntil(threadKey, userId, role, null)
         break
+    }
+
+    // Mirror a Hub close/reopen back to the underlying Trengo ticket(s) so the
+    // two stay in sync directly (Roy 2026-07-17: "direct syncen als ik een
+    // ticket sluit"). Best-effort - a Trengo hiccup mustn't fail the Hub action.
+    if (action === "archive" || action === "unarchive") {
+      const trengoAction = action === "archive" ? "close" : "reopen"
+      try {
+        const ticketIds = await getChatThreadTicketIds(threadKey)
+        await Promise.all(ticketIds.map((id) => setTrengoTicketState(id, trengoAction)))
+      } catch (e) {
+        console.error(
+          `[threads] Trengo ${trengoAction} sync failed for ${threadKey}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
     }
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {

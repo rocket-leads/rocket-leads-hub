@@ -1575,6 +1575,26 @@ export async function getChatThreadState(
   }
 }
 
+/** Distinct Trengo ticket ids backing a chat thread, so a Hub status change can
+ *  be mirrored to the underlying Trengo ticket(s). */
+export async function getChatThreadTicketIds(threadKey: string): Promise<string[]> {
+  const supabase = await createAdminClient()
+  const { data } = await scopeThreadKey(
+    supabase
+      .from("inbox_events")
+      .select("source_thread")
+      .eq("source", "trengo")
+      .not("source_thread", "is", null),
+    threadKey,
+  )
+  const ids = new Set<string>()
+  for (const r of (data ?? []) as Array<{ source_thread: string | null }>) {
+    const id = r.source_thread?.replace(/^trengo:ticket:/, "")
+    if (id) ids.add(id)
+  }
+  return Array.from(ids)
+}
+
 export async function getChatThreadMessages(
   threadKey: string,
   userId: string,
