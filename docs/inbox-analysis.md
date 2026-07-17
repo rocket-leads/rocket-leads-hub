@@ -108,10 +108,12 @@ behoudt je Hub-naam + profielfoto.
 
 ## Bekende beperkingen / open punten
 
-1. **Mention-sync is één-richting (Trengo → Hub).** Afvinken in Trengo → weg uit
-   Hub To-do. Afvinken in de Hub → lokaal Done, maar Trengo weet dat niet:
-   Trengo's `/mentions` API geeft HTML terug (geen bruikbare mark-seen mutatie).
-   Reverse sync vergt een niet-gedocumenteerd endpoint — nog uit te zoeken.
+1. **Mention-sync is één-richting (Trengo → Hub) — bewust zo (Roy 2026-07-17).**
+   Afvinken in Trengo → weg uit Hub To-do (sync-cron, 15 min). Afvinken in de Hub
+   → lokaal Done; Trengo blijft ongemoeid. **Reverse sync is niet mogelijk:** de
+   Trengo v2 API is read-only voor mentions — `POST/PUT/PATCH/DELETE /mentions/{id}`
+   geeft `405 | Allow: GET, HEAD` (uitgebreid getest). Er is geen mark-seen
+   endpoint; Trengo zet `seen` alleen via de web-UI. Besluit: zo laten.
 
 2. **Backfill-restjes.** ~43 historische mentions konden niet geresolved worden
    (note-bericht stond niet op pagina 1 van het ticket) → mogelijk verkeerde
