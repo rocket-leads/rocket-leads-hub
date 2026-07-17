@@ -548,6 +548,16 @@ export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
 }
 
 /**
+ * Fetch one page of tickets by query params (e.g. `status=CLOSED&page=1`).
+ * Used by the status-reconcile cron; goes through the cached system-token
+ * `trengoFetch`. Trengo's default sort is newest-activity first.
+ */
+export async function fetchTrengoTickets(params: string): Promise<TrengoConversation[]> {
+  const data = await trengoFetch<{ data: TrengoConversation[] }>(`/tickets?${params}`)
+  return data.data
+}
+
+/**
  * Close or reopen a Trengo ticket. Mirrors a Hub-side status change back to
  * Trengo so the two stay in sync (unlike mentions, tickets ARE writable via the
  * v2 API — `POST /tickets/{id}/close|reopen`). Best-effort: a 422 (already in

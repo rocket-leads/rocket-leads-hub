@@ -49,6 +49,10 @@
       "schedule": "14,29,44,59 * * * *"
     },
     {
+      "path": "/api/cron/trengo-status-reconcile",
+      "schedule": "37 * * * *"
+    },
+    {
       "path": "/api/cron/refresh-watchlist-context",
       "schedule": "55 */2 * * *"
     },
