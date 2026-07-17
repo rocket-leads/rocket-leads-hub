@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
+import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
 import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
@@ -488,6 +489,7 @@ async function insertMentionUpdates(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   systemAuthorId: string,
   candidates: EventToInsert[],
+  channelLookup: Map<number, { kind: string | null; name: string }>,
 ): Promise<number> {
   const withMentions = candidates.filter((c) => c.mentionedHubUserIds.length > 0)
   if (withMentions.length === 0) return 0
@@ -509,6 +511,10 @@ async function insertMentionUpdates(
     const noteMsgId = c.sourceMsgId.replace(/^trengo:msg:/, "")
     const label = c.contactName ?? "conversation"
     const preview = c.body.length > 240 ? c.body.slice(0, 237) + "…" : c.body
+    const chan = channelLookup.get(c.channelId)
+    // Point the mention at the PER-CHANNEL ticket (`...|ch:<channel>`), not the
+    // bare contact, so opening it lands on the exact same ticket as in the
+    // channel view - identical layout, notes + messages fused. Roy 2026-07-17.
     for (const hubId of c.mentionedHubUserIds) {
       rows.push({
         kind: "update",
@@ -521,8 +527,10 @@ async function insertMentionUpdates(
         source: "trengo",
         source_msg_id: `trengo:mention:${noteMsgId}:${hubId}`,
         source_ref: {
-          trengo_mention_in_thread_key: `trengo:contact:${c.contactId}`,
+          trengo_mention_in_thread_key: `trengo:contact:${c.contactId}|ch:${c.channelId}`,
           trengo_mention_contact_name: c.contactName,
+          trengo_mention_channel_name: chan?.name ?? null,
+          trengo_mention_channel_kind: chan?.kind ?? null,
         },
         author_kind: "rl_team",
         author_name_cached: c.authorName,
@@ -582,6 +590,7 @@ export async function GET(req: NextRequest) {
     // once per run and reused across every note so @-mention fan-out + author
     // resolution don't re-fetch the /users list per ticket.
     const mentionCtx = await getTrengoMentionContext(supabase)
+    const channelLookup = await getTrengoChannelLookup()
 
     const users = await loadUsersToScan(supabase)
     let totalChannelsScanned = 0
@@ -732,7 +741,7 @@ export async function GET(req: NextRequest) {
           // teammates see them in their Mentioned inbox. Idempotent across
           // cycles (deterministic source_msg_id). Runs on `toInsert` so it
           // skips webhook / Hub-authored rows (those fan out elsewhere).
-          await insertMentionUpdates(supabase, hq.id, toInsert)
+          await insertMentionUpdates(supabase, hq.id, toInsert, channelLookup)
         } catch (e) {
           perUserErrors.push({
             userId: user.id,

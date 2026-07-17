@@ -10,6 +10,7 @@ import {
   rewriteMentionHandles,
   resolveMentionedHubIds,
 } from "@/lib/inbox/trengo-mentions"
+import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
 
 export const maxDuration = 60
 
@@ -400,6 +401,10 @@ export async function POST(req: NextRequest) {
   // body's handles to `@Full Name` so it reads naturally. Roy 2026-07-16.
   const mentionCtx =
     payload.eventType === "NOTE" ? await getTrengoMentionContext(supabase) : null
+  const channelLookup =
+    payload.eventType === "NOTE" ? await getTrengoChannelLookup() : null
+  const mentionChan =
+    payload.channelId != null ? channelLookup?.get(payload.channelId) : undefined
   const mentionedUserIds =
     payload.eventType === "NOTE" && mentionCtx
       ? Array.from(
@@ -560,8 +565,10 @@ export async function POST(req: NextRequest) {
           source: "trengo",
           source_ref: {
             trengo_mention_in_chat_event_id: inserted.id,
-            trengo_mention_in_thread_key: `trengo:contact:${payload.contactId}`,
+            trengo_mention_in_thread_key: `trengo:contact:${payload.contactId}|ch:${payload.channelId}`,
             trengo_mention_contact_name: conversationLabel,
+            trengo_mention_channel_name: mentionChan?.name ?? null,
+            trengo_mention_channel_kind: mentionChan?.kind ?? null,
           },
           author_kind: "rl_team",
           author_name_cached: payload.authorName,

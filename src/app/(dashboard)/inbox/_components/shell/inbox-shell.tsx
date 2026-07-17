@@ -48,13 +48,6 @@ function mentionThreadKey(item: InboxItem): string | null {
   return typeof key === "string" ? key : null
 }
 
-/** Strip the per-channel suffix ("<base>|ch:<id>") from a thread key. Mentions
- *  are recorded against the base contact key, so mention lookups compare bases. */
-function baseThreadKey(key: string): string {
-  const i = key.indexOf("|ch:")
-  return i === -1 ? key : key.slice(0, i)
-}
-
 /** External ticket lifecycle:
  *   Open     - a fresh ticket, nothing done yet (no team reply, not closed)
  *   Assigned - we've replied (hasTeamReply), still active
@@ -77,31 +70,35 @@ function mentionUpdateToFeedRow(
   u: InboxItem,
   loaded: ChatThreadSummary | undefined,
 ): FeedRow | null {
-  const baseKey = mentionThreadKey(u)
-  if (!baseKey) return null
+  const threadKey = mentionThreadKey(u)
+  if (!threadKey) return null
   if (loaded) return threadToFeedRow(loaded)
-  // Prefer the conversation name stored on the mention (fan-out records it),
-  // then parse it out of the "X mentioned you in Y" title, then the client.
-  const storedName =
-    u.sourceRef && typeof u.sourceRef === "object"
-      ? (u.sourceRef as Record<string, unknown>).trengo_mention_contact_name
-      : null
+  // Read the conversation name + channel the fan-out recorded on the mention so
+  // the row/detail look identical to the channel view even when the thread
+  // isn't loaded (unsubscribed channel). Fall back to parsing the title.
+  const ref = (u.sourceRef ?? {}) as Record<string, unknown>
+  const storedName = ref.trengo_mention_contact_name
+  const storedChannelName = ref.trengo_mention_channel_name
+  const storedChannelKind = ref.trengo_mention_channel_kind
   const parsed = u.title.match(/^(.*?)\s+mentioned you(?:\s+in\s+(.*))?$/i)?.[2]
   const contactName =
     (typeof storedName === "string" && storedName.trim()) ||
     (parsed && parsed.trim()) ||
     (u.clientName && u.clientName !== "(unknown)" ? u.clientName : "") ||
     "Conversation"
-  const channelKind = (u.channelKind ?? null) as ChatThreadSummary["channelKind"]
+  const channelKind = (typeof storedChannelKind === "string"
+    ? storedChannelKind
+    : u.channelKind ?? null) as ChatThreadSummary["channelKind"]
+  const channelName = typeof storedChannelName === "string" ? storedChannelName : null
   const stub: ChatThreadSummary = {
-    threadKey: baseKey,
+    threadKey,
     scope: "external",
     source: "trengo",
     primaryName: contactName,
     clientName: u.clientName && u.clientName !== "(unknown)" ? u.clientName : null,
     clientId: null,
     channelKind,
-    channelName: null,
+    channelName,
     trengoChannelId: null,
     channelIds: [],
     latestPreview: u.body ?? "",
@@ -118,7 +115,7 @@ function mentionUpdateToFeedRow(
     pendingCount: 0,
   }
   return {
-    id: baseKey,
+    id: threadKey,
     channel: channelKind === "email" ? "email" : "whatsapp",
     kind: "chat",
     sortAt: u.createdAt,
@@ -343,15 +340,18 @@ export function InboxShell({
   // saw only 1 of many). We show one row per mentioned conversation, using the
   // rich loaded thread when present and a stub otherwise.
   const mentionedRows = useMemo(() => {
-    const threadByBase = new Map<string, ChatThreadSummary>()
-    for (const t of threads) threadByBase.set(baseThreadKey(t.threadKey), t)
+    // Mentions now key on the PER-CHANNEL thread (`...|ch:<channel>`), so match
+    // the loaded thread by its full key - that IS the same ticket as in the
+    // channel view (Roy 2026-07-17). Fall back to a stub when unsubscribed.
+    const threadByKey = new Map<string, ChatThreadSummary>()
+    for (const t of threads) threadByKey.set(t.threadKey, t)
     const seen = new Set<string>()
     const rows: FeedRow[] = []
     for (const u of mentionItems) {
       const key = mentionThreadKey(u)
       if (!key || seen.has(key)) continue
       seen.add(key)
-      const row = mentionUpdateToFeedRow(u, threadByBase.get(key))
+      const row = mentionUpdateToFeedRow(u, threadByKey.get(key))
       if (row) rows.push(row)
     }
     rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
@@ -391,7 +391,7 @@ export function InboxShell({
   }, [mentionItems])
   const mentionDone = useCallback(
     (threadKey: string): boolean => {
-      const list = mentionUpdatesByThread.get(baseThreadKey(threadKey))
+      const list = mentionUpdatesByThread.get(threadKey)
       return !!list && list.length > 0 && list.every((u) => u.status === "read")
     },
     [mentionUpdatesByThread],
@@ -586,7 +586,7 @@ export function InboxShell({
   // for that thread (per-user; doesn't touch the shared thread).
   const closeMention = useCallback(
     (row: FeedRow) => {
-      const list = mentionUpdatesByThread.get(baseThreadKey(row.id)) ?? []
+      const list = mentionUpdatesByThread.get(row.id) ?? []
       if (list.length === 0) return
       const done = list.every((u) => u.status === "read")
       const status = done ? "unread" : "read"

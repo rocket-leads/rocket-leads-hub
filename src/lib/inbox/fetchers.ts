@@ -822,7 +822,7 @@ function rowDisplayAt(row: RawChatRow): string {
  *  human-readable label. Result is small (< 100 channels) and the underlying
  *  Trengo fetch is itself cached for 5 minutes via the integrations layer,
  *  so calling this on every chat-pane poll is cheap. */
-async function getTrengoChannelLookup(): Promise<
+export async function getTrengoChannelLookup(): Promise<
   Map<number, { kind: ChatChannelKind; name: string }>
 > {
   const map = new Map<number, { kind: ChatChannelKind; name: string }>()
