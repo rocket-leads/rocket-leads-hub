@@ -12,7 +12,7 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
 import type { InboxKind, InboxPriority } from "@/types/inbox"
-import type { InboxUser, InboxClientOption } from "./inbox-view"
+import type { InboxUser, InboxClientOption } from "./shell/types"
 
 type Props = {
   open: boolean

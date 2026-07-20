@@ -66,6 +66,9 @@ type Props<T extends string> = {
   /** Optional content rendered on the right (refresh, settings cog, etc.). */
   rightContent?: React.ReactNode
   className?: string
+  /** Tight padding + no icons, for narrow columns (e.g. the compact inbox
+   *  ticket-list where Open/Opgepakt/Gesloten must fit a ~270px strip). */
+  compact?: boolean
 }
 
 /**
@@ -79,10 +82,11 @@ export function TopTabs<T extends string>({
   onChange,
   rightContent,
   className,
+  compact,
 }: Props<T>) {
   return (
     <div className={cn("flex items-center justify-between border-b border-border/40", className)}>
-      <div className="flex items-center gap-0">
+      <div className={cn("flex items-center", compact ? "gap-0.5" : "gap-0")}>
         {tabs.map(({ id, label, icon: Icon, count, dot, accent, done }) => {
           const active = value === id
           const palette = ACCENT_CLASSES[accent ?? "primary"]
@@ -92,11 +96,12 @@ export function TopTabs<T extends string>({
               type="button"
               onClick={() => onChange(id)}
               className={cn(
-                "relative flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-150",
+                "relative flex items-center font-medium transition-all duration-150",
+                compact ? "gap-1.5 px-2.5 py-2 text-[13px]" : "gap-2 px-5 py-3 text-sm",
                 active ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
               )}
             >
-              {Icon && (
+              {Icon && !compact && (
                 <span className="relative">
                   <Icon
                     className={cn(
@@ -129,7 +134,8 @@ export function TopTabs<T extends string>({
               {typeof count === "number" && (
                 <span
                   className={cn(
-                    "ml-1 text-xs tabular-nums font-medium",
+                    "text-xs tabular-nums font-medium",
+                    compact ? "ml-0.5" : "ml-1",
                     active ? palette.count : "text-muted-foreground/70",
                   )}
                 >

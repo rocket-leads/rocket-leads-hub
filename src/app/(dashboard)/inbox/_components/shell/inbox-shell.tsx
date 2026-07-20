@@ -757,14 +757,15 @@ export function InboxShell({
           <div
             className={cn(
               "flex w-full min-w-0 flex-col gap-3",
-              // Ticket-list column deliberately narrow (Roy 2026-07-20: "de
-              // helft") so the reading/chat pane on the right gets the space.
-              // xl = channels rail (210px) + a compact ticket feed (~220px).
+              // Ticket-list column kept as narrow as the Open/Opgepakt/Gesloten
+              // tab strip allows (Roy 2026-07-20) so the reading/chat pane on
+              // the right gets the space. xl = channels rail (200px) + a
+              // compact ticket feed (~285px, the floor for the 3 Dutch tabs).
               locked
                 ? "lg:w-[380px]"
                 : railCollapsed
-                  ? "lg:w-[340px]"
-                  : "lg:w-[360px] xl:w-[460px]",
+                  ? "lg:w-[360px]"
+                  : "lg:w-[380px] xl:w-[500px]",
             )}
           >
             <div className="relative shrink-0">
@@ -816,7 +817,7 @@ export function InboxShell({
             )}
             <div className="flex min-h-0 flex-1 gap-4">
               {!locked && !railCollapsed && (
-                <aside className="hidden w-[210px] shrink-0 overflow-y-auto xl:block">{externalRail}</aside>
+                <aside className="hidden w-[200px] shrink-0 overflow-y-auto xl:block">{externalRail}</aside>
               )}
               <div className="min-h-0 min-w-0 flex-1">
                 <UnifiedFeed

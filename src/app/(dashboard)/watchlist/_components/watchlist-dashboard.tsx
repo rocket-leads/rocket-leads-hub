@@ -24,7 +24,7 @@ import { categorize as sharedCategorize, severityScore as sharedSeverityScore, t
 import { buildSignature, suggestAiAdjustment } from "@/lib/watchlist/learning"
 import type { RecentOverridesResponse } from "@/app/api/watchlist/recent-overrides/route"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
-import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { formatCurrency } from "@/lib/i18n/format"

@@ -8,7 +8,6 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { Skeleton } from "@/components/ui/skeleton"
-import { InboxView } from "./_components/inbox-view"
 import { InboxShell } from "./_components/shell/inbox-shell"
 
 function InboxLoading() {
@@ -22,7 +21,7 @@ function InboxLoading() {
   )
 }
 
-async function InboxData({ legacy }: { legacy: boolean }) {
+async function InboxData() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
@@ -66,11 +65,10 @@ async function InboxData({ legacy }: { legacy: boolean }) {
     isLive: mondayStatusToHub(c.campaignStatus, c.boardType) === "live",
   }))
 
-  // The 3-pane unified inbox (InboxShell) is now the default. `?legacy` is a
-  // temporary safety escape to the old InboxView if a regression turns up.
-  const Component = legacy ? InboxView : InboxShell
+  // The 3-pane unified inbox (InboxShell) is the only inbox now - the legacy
+  // InboxView monolith was retired 2026-07-20.
   return (
-    <Component
+    <InboxShell
       currentUser={currentUser}
       initialUpdates={updates}
       initialTasks={tasks}
@@ -80,16 +78,11 @@ async function InboxData({ legacy }: { legacy: boolean }) {
   )
 }
 
-export default async function InboxPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ legacy?: string }>
-}) {
-  const { legacy } = await searchParams
+export default async function InboxPage() {
   return (
     <div>
       <Suspense fallback={<InboxLoading />}>
-        <InboxData legacy={legacy !== undefined} />
+        <InboxData />
       </Suspense>
     </div>
   )

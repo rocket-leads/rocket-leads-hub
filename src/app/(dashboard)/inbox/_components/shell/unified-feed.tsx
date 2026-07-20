@@ -62,7 +62,7 @@ export function UnifiedFeed<T extends string>({
   const locale = useLocale()
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <TopTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} />
+      <TopTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} compact />
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {loading && rows.length === 0 ? (

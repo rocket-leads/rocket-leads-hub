@@ -3,7 +3,7 @@
 import { useCallback } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
-import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 
 /**
  * Global mount for the client slide-over so opening a client from the

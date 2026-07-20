@@ -13,7 +13,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
 import type { LastClientUpdatesResponse } from "@/app/api/clients/last-client-updates/route"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
-import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 

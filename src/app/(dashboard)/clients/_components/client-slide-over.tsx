@@ -15,7 +15,7 @@ import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
-import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 import { cn } from "@/lib/utils"
 
 /**
