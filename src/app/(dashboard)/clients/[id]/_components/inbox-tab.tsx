@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { Skeleton } from "@/components/ui/skeleton"
-import { InboxView } from "@/app/(dashboard)/inbox/_components/inbox-view"
-import type { CurrentUser, InboxUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import { InboxShell } from "@/app/(dashboard)/inbox/_components/shell/inbox-shell"
+import type { CurrentUser, InboxUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 
 type Props = {
   mondayItemId: string
@@ -36,7 +36,7 @@ export function InboxTab({
   }
 
   return (
-    <InboxView
+    <InboxShell
       currentUser={currentUser}
       initialUpdates={[]}
       initialTasks={[]}

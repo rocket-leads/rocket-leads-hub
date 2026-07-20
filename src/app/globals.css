@@ -61,7 +61,7 @@
  * stays one shade lighter than the page so the rail visually separates
  * without a heavy border. */
 
-/* Global UI density — the whole Hub renders as if at ~80% browser zoom so
+/* Global UI density — the whole Hub renders as if at ~76% browser zoom so
  * more content fits on screen and wide tables need less horizontal
  * scrolling. We scale the root font-size (rem) rather than using `zoom`
  * on purpose: the inbox + chat panes are laid out with calc(100vh - …),
@@ -71,7 +71,7 @@
  * correct. Bump --ui-scale toward 1 for a larger UI, down for denser.
  * Roy 2026-07. */
 :root {
-  --ui-scale: 0.8;
+  --ui-scale: 0.76;
 }
 html {
   font-size: calc(100% * var(--ui-scale));

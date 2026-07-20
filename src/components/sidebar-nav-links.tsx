@@ -146,8 +146,8 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
   // highlight would be just an 18px square sitting on the left instead of
   // a centered 40px-wide rounded box.
   const baseClasses =
-    "group w-full flex items-center gap-3 rounded-lg text-[15px] transition-colors duration-150"
-  const sizing = indent ? "pl-9 pr-3 py-1.5 text-[14px]" : "px-3 py-2"
+    "group w-full flex items-center gap-3 rounded-lg text-sm transition-colors duration-150"
+  const sizing = indent ? "pl-9 pr-3 py-1.5 text-[13px]" : "px-3 py-2"
   const stateClasses = active
     ? "bg-primary/10 text-primary font-medium"
     : isParentSection

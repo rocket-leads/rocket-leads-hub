@@ -757,11 +757,14 @@ export function InboxShell({
           <div
             className={cn(
               "flex w-full min-w-0 flex-col gap-3",
+              // Ticket-list column deliberately narrow (Roy 2026-07-20: "de
+              // helft") so the reading/chat pane on the right gets the space.
+              // xl = channels rail (210px) + a compact ticket feed (~220px).
               locked
                 ? "lg:w-[380px]"
                 : railCollapsed
-                  ? "lg:w-[400px]"
-                  : "lg:w-[400px] xl:w-[640px]",
+                  ? "lg:w-[340px]"
+                  : "lg:w-[360px] xl:w-[460px]",
             )}
           >
             <div className="relative shrink-0">

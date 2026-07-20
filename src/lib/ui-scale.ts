@@ -7,13 +7,14 @@
 // rather than using CSS `zoom` so the inbox/chat panes laid out with
 // `calc(100vh - …)` keep their heights (zoom would break those).
 //
-// 0.8 is the house default and reads as "100%" in the picker — the density
-// Roy dialled in — and users nudge up/down from there. Persisted in the
-// `ui-scale` cookie so the server can paint the right size on first render
+// 0.76 is the house default and reads as "100%" in the picker — the density
+// Roy dialled in (2026-07-20: a touch more zoomed-out than the old 0.8 so
+// more fits on one screen) — and users nudge up/down from there. Persisted in
+// the `ui-scale` cookie so the server can paint the right size on first render
 // (no flash) and the choice survives reloads.
 
 export const UI_SCALE_COOKIE = "ui-scale"
-export const UI_SCALE_BASE = 0.8 // shown as 100% in the picker
+export const UI_SCALE_BASE = 0.76 // shown as 100% in the picker
 export const UI_SCALE_STEP = 0.08 // one click = 10%
 export const UI_SCALE_MIN = 0.56 // 70%
 export const UI_SCALE_MAX = 1.28 // 160%
