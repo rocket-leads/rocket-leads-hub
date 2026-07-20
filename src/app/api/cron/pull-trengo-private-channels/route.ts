@@ -134,6 +134,11 @@ type EventToInsert = {
    *  mentions / inline handles). Drives the mention fan-out so the tagged
    *  teammate sees it in their Mentioned inbox. Empty for non-notes. */
   mentionedHubUserIds: string[]
+  /** Trengo user id currently assigned to this ticket (resolved from
+   *  `ticket.assignee.name` via the mention context). Non-null → the Hub shows
+   *  the thread as "Opgepakt"; null → unassigned, which clears the Opgepakt
+   *  reflection on the next message. Roy 2026-07-20. */
+  trengoAssigneeUserId: number | null
 }
 
 /** Trengo's parseable timestamp format is "YYYY-MM-DD HH:mm:ss" in UTC.
@@ -186,6 +191,20 @@ function eventsFromMessageList(
   ctx: TrengoMentionContext,
 ): EventToInsert[] {
   const out: EventToInsert[] = []
+  // Resolve the ticket's current assignee once per ticket. Trengo's /tickets
+  // payload only carries the assignee's display NAME, so we map it back to a
+  // Trengo user id via the mention context (id→user). Null when unassigned —
+  // every message re-stamps the current state, so an unassign self-clears.
+  const assigneeName = ticket.assignee?.name?.trim().toLowerCase() || null
+  let trengoAssigneeUserId: number | null = null
+  if (assigneeName) {
+    for (const [id, u] of ctx.trengoById) {
+      if ((u.name ?? "").trim().toLowerCase() === assigneeName) {
+        trengoAssigneeUserId = id
+        break
+      }
+    }
+  }
   // `realChannelId` is resolved by the caller as the ticket's OWN channel
   // (never the polled channelId). Roy 2026-07-16: strict per-channel — a
   // ticket must always live under its true line, so email tickets that leak
@@ -307,6 +326,7 @@ function eventsFromMessageList(
       authorName,
       createdAtSrc: m.created_at,
       mentionedHubUserIds,
+      trengoAssigneeUserId,
     })
   }
   return out
@@ -455,6 +475,7 @@ async function insertEvents(
       created_at_src: e.createdAtSrc,
       trengo_channel_id: e.channelId,
       is_internal: e.isInternal,
+      trengo_assignee_user_id: e.trengoAssigneeUserId,
     }
   })
 

@@ -337,12 +337,9 @@ export async function listInboxItems(
     }
   }
 
-  // Unassigned-only Trengo filter - applies to admins and non-admins alike.
-  // Tickets claimed by anyone in Trengo are owned by Trengo's UI, not the
-  // Hub. Non-Trengo events bypass this filter entirely.
-  query = query.or(
-    `trengo_assignee_user_id.is.null,source.neq.trengo`,
-  )
+  // A ticket claimed in Trengo stays VISIBLE and is shown as "Opgepakt" (Roy
+  // 2026-07-20: "show as Opgepakt", not hidden). The trengo_assignee_user_id
+  // column now drives the assigned affordance rather than an exclusion filter.
 
   const { data, error } = await query
   if (error) throw new Error(`Failed to list inbox items: ${error.message}`)
@@ -371,12 +368,8 @@ export async function getInboxItem(
   if (error || !data) return null
   const row = data as unknown as RawInboxRow
 
-  // Unassigned-only Trengo gate - applies to admins and non-admins alike.
-  // Once a teammate claims the ticket in Trengo, it leaves the Hub even if
-  // a user previously had access via channel subscription.
-  if (row.source === "trengo" && row.trengo_assignee_user_id != null) {
-    return null
-  }
+  // A Trengo-claimed ticket stays visible (shown as "Opgepakt"), so no
+  // assignee-based gate here — visibility rides on the checks below only.
 
   // Visibility check
   if (role !== "admin") {
@@ -976,10 +969,8 @@ export async function listChatThreads(
     }
   }
 
-  // Unassigned-only Trengo gate. Tickets claimed in Trengo leave the Hub.
-  query = query.or(
-    `trengo_assignee_user_id.is.null,source.neq.trengo`,
-  )
+  // Trengo-claimed tickets stay in the list and render as "Opgepakt" (Roy
+  // 2026-07-20). No exclusion filter — the assignee drives the affordance.
 
   const { data, error } = await query
   if (error) throw new Error(`Failed to list chat threads: ${error.message}`)
@@ -1017,18 +1008,8 @@ async function groupAndDecorateChatRows(
     entry.rows.push(row)
   }
 
-  // Thread-level unassigned-only gate. The row-level filter on the query
-  // already drops claimed events, but historical rows ingested before the
-  // assignee column existed carry NULL - without this pass, those threads
-  // would still surface (with stale NULL rows) once a teammate claims the
-  // ticket. Drop any thread where at least one event has a non-null Trengo
-  // assignee.
-  for (const [key, entry] of byThread) {
-    const claimed = entry.rows.some(
-      (r) => r.source === "trengo" && r.trengo_assignee_user_id != null,
-    )
-    if (claimed) byThread.delete(key)
-  }
+  // (No claimed-thread drop: Trengo-claimed tickets stay in the list and
+  // surface as "Opgepakt" via `isAssigned` below. Roy 2026-07-20.)
 
   const clientMap = await getMondayClientMap()
   const channelLookup = await getTrengoChannelLookup()
@@ -1095,7 +1076,13 @@ async function groupAndDecorateChatRows(
     // ("klant heeft op je archive geantwoord → back in inbox").
     const isStarred = threadRows.some((r) => r.starred === true)
     const isArchived = latestAny.archived_at != null
-    const isAssigned = threadRows.some((r) => r.assigned_at != null)
+    // "Opgepakt" when the Hub assigned it (assigned_at) OR Trengo currently has
+    // an assignee. The Trengo side is read off the NEWEST trengo row (threadRows
+    // is DESC by created_at) so an unassign in Trengo clears it on the next
+    // message rather than sticking forever. Roy 2026-07-20.
+    const newestTrengoRow = threadRows.find((r) => r.source === "trengo")
+    const trengoClaimed = (newestTrengoRow?.trengo_assignee_user_id ?? null) != null
+    const isAssigned = trengoClaimed || threadRows.some((r) => r.assigned_at != null)
     // Every distinct Trengo channel this thread has rows on (for the "any row
     // on channel X" per-channel filter).
     const channelIds = Array.from(
@@ -1273,17 +1260,8 @@ export async function markChatThreadRead(
 ): Promise<{ updated: number }> {
   const supabase = await createAdminClient()
 
-  // If the thread is currently claimed in Trengo, the user shouldn't be able
-  // to mark it read - they shouldn't even be seeing it. Cheap guard.
-  const { data: claimedRow } = await scopeThreadKey(
-    supabase.from("inbox_events").select("id"),
-    threadKey,
-  )
-    .eq("source", "trengo")
-    .not("trengo_assignee_user_id", "is", null)
-    .limit(1)
-    .maybeSingle()
-  if (claimedRow) return { updated: 0 }
+  // Trengo-claimed threads stay visible + mutable now (shown as Opgepakt), so
+  // marking read is allowed regardless of assignee. Roy 2026-07-20.
 
   let query = scopeThreadKey(
     supabase.from("inbox_events").select("id"),
@@ -1344,17 +1322,7 @@ export async function markChatThreadUnread(
 ): Promise<{ updated: number }> {
   const supabase = await createAdminClient()
 
-  // Same claimed-ticket gate as markChatThreadRead - a Trengo-claimed thread
-  // shouldn't be mutable from the Hub.
-  const { data: claimedRow } = await scopeThreadKey(
-    supabase.from("inbox_events").select("id"),
-    threadKey,
-  )
-    .eq("source", "trengo")
-    .not("trengo_assignee_user_id", "is", null)
-    .limit(1)
-    .maybeSingle()
-  if (claimedRow) return { updated: 0 }
+  // Trengo-claimed threads stay mutable (Opgepakt), same as markChatThreadRead.
 
   let query = scopeThreadKey(
     supabase.from("inbox_events").select("id, status"),
@@ -1560,7 +1528,7 @@ export async function getChatThreadState(
   const { data } = await scopeThreadKey(
     supabase
       .from("inbox_events")
-      .select("archived_at, assigned_at, created_at")
+      .select("archived_at, assigned_at, created_at, source, trengo_assignee_user_id")
       .order("created_at", { ascending: false }),
     threadKey,
   )
@@ -1568,10 +1536,16 @@ export async function getChatThreadState(
     archived_at: string | null
     assigned_at: string | null
     created_at: string
+    source: string | null
+    trengo_assignee_user_id: number | null
   }>
+  // Opgepakt = Hub-assigned OR Trengo currently has an assignee (read off the
+  // newest trengo row so an unassign self-clears). Mirrors listChatThreads.
+  const newestTrengoRow = rows.find((r) => r.source === "trengo")
+  const trengoClaimed = (newestTrengoRow?.trengo_assignee_user_id ?? null) != null
   return {
     isArchived: rows[0]?.archived_at != null,
-    isAssigned: rows.some((r) => r.assigned_at != null),
+    isAssigned: trengoClaimed || rows.some((r) => r.assigned_at != null),
   }
 }
 
