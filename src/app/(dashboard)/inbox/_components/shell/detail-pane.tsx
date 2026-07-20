@@ -4,6 +4,9 @@ import { useEffect, useState } from "react"
 import { Inbox as InboxIcon, Circle, User, Check } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import { cn } from "@/lib/utils"
 import { ItemDetailDialog } from "../item-detail-dialog"
 import { ThreadView } from "../chat-pane"
@@ -20,27 +23,27 @@ type NoteMentions = { done: Record<string, boolean>; toggle: (noteMsgId: string)
  *  Roy 2026-07-20. */
 const STATE_META: Record<TicketState, {
   icon: typeof Circle
-  label: string
-  title: string
+  labelKey: DictionaryKey
+  titleKey: DictionaryKey
   /** Fill when this is the current state. */
   activeClass: string
 }> = {
   open: {
     icon: Circle,
-    label: "Open",
-    title: "Open",
+    labelKey: "inbox.shell.state.open",
+    titleKey: "inbox.shell.state.open",
     activeClass: "bg-muted text-foreground",
   },
   assigned: {
     icon: User,
-    label: "Assigned",
-    title: "Pick up (Assigned)",
+    labelKey: "inbox.shell.state.assigned",
+    titleKey: "inbox.shell.state.assigned_title",
     activeClass: "bg-amber-500 text-white",
   },
   closed: {
     icon: Check,
-    label: "Closed",
-    title: "Close ticket",
+    labelKey: "inbox.shell.state.closed",
+    titleKey: "inbox.shell.state.closed_title",
     activeClass: "bg-emerald-500 text-white",
   },
 }
@@ -48,24 +51,29 @@ const STATE_META: Record<TicketState, {
 const STATE_ORDER: readonly TicketState[] = ["open", "assigned", "closed"] as const
 
 function StateSwitch({ current, onSetState }: { current: TicketState; onSetState?: (t: TicketState) => void }) {
+  const locale = useLocale()
   return (
     <div
       role="group"
-      aria-label="Ticket status"
+      aria-label={t("inbox.shell.state.group", locale)}
       className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm"
     >
       {STATE_ORDER.map((s) => {
         const meta = STATE_META[s]
         const Icon = meta.icon
         const isCurrent = s === current
+        const label = t(meta.labelKey, locale)
+        const controlLabel = isCurrent
+          ? t("inbox.shell.state.current", locale, { label })
+          : t(meta.titleKey, locale)
         return (
           <button
             key={s}
             type="button"
             onClick={() => !isCurrent && onSetState?.(s)}
             disabled={isCurrent}
-            title={isCurrent ? `Status: ${meta.label}` : meta.title}
-            aria-label={isCurrent ? `Status: ${meta.label}` : meta.title}
+            title={controlLabel}
+            aria-label={controlLabel}
             aria-pressed={isCurrent}
             className={cn(
               "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
@@ -77,7 +85,7 @@ function StateSwitch({ current, onSetState }: { current: TicketState; onSetState
             <Icon className="h-3.5 w-3.5" strokeWidth={s === "closed" ? 3 : 2} />
             {/* Only the active segment shows its label - keeps the control compact
                 while making the current state unmistakable. */}
-            {isCurrent && <span>{meta.label}</span>}
+            {isCurrent && <span>{label}</span>}
           </button>
         )
       })}
@@ -125,13 +133,14 @@ export function DetailPane({
   noteMentions,
   showDismiss,
 }: Props) {
+  const locale = useLocale()
   if (!row) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card text-center shadow-sm">
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground/50">
           <InboxIcon className="h-5 w-5" />
         </div>
-        <p className="text-sm text-muted-foreground/60">Select an item to open it here</p>
+        <p className="text-sm text-muted-foreground/60">{t("inbox.shell.detail.empty", locale)}</p>
       </div>
     )
   }

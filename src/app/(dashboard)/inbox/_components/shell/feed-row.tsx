@@ -1,6 +1,8 @@
 "use client"
 
 import { Check, AtSign } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { cn } from "@/lib/utils"
 import { InboxListRow, type RowAction } from "../inbox-list-row"
 import { SourceIcon, fmtRelative } from "../chat-pane"
@@ -33,6 +35,7 @@ type Props = {
 }
 
 export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", users }: Props) {
+  const locale = useLocale()
   if (row.kind !== "chat" && row.item) {
     return (
       <InboxListRow
@@ -110,7 +113,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                   onClose()
                 }}
                 aria-pressed={isClosed}
-                title={isClosed ? "Mark mention as to-do" : "Mark mention done"}
+                title={isClosed ? t("inbox.shell.checkbox.mention_todo", locale) : t("inbox.shell.checkbox.mention_done", locale)}
                 className={cn(
                   "flex h-6 w-6 items-center justify-center rounded-md border transition-colors",
                   isClosed
@@ -129,7 +132,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                   onClose()
                 }}
                 aria-pressed={isClosed}
-                title={isClosed ? "Reopen ticket" : "Close ticket"}
+                title={isClosed ? t("inbox.shell.checkbox.ticket_reopen", locale) : t("inbox.shell.checkbox.ticket_close", locale)}
                 className={cn(
                   "flex h-6 w-6 items-center justify-center rounded-full border transition-colors",
                   isClosed

@@ -10,6 +10,7 @@ import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { ComposerDialog } from "../composer-dialog"
 import { ExternalRail, type ChannelEntry, type ExternalGroup } from "./external-rail"
 import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
@@ -510,13 +511,13 @@ export function InboxShell({
 
   const extFilterTabs: TopTab<TicketState>[] = mentionedOnly
     ? [
-        { id: "open", label: "Open", icon: Circle, count: extCounts.open, accent: "primary" },
-        { id: "closed", label: locale === "nl" ? "Gesloten" : "Closed", icon: CircleCheck, count: extCounts.closed },
+        { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
       ]
     : [
-        { id: "open", label: "Open", icon: Circle, count: extCounts.open, accent: "primary" },
-        { id: "assigned", label: locale === "nl" ? "Opgepakt" : "Assigned", icon: User, count: extCounts.assigned },
-        { id: "closed", label: locale === "nl" ? "Gesloten" : "Closed", icon: CircleCheck, count: extCounts.closed },
+        { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
+        { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: extCounts.assigned },
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
       ]
 
   // Auto-open the top ticket on the external side (Roy: don't land on an empty
@@ -664,8 +665,8 @@ export function InboxShell({
     : "h-[calc(100vh-208px)] min-h-[520px]"
 
   const scopeItems: Array<{ id: InboxScope; label: string }> = [
-    { id: "internal", label: "Internal" },
-    { id: "external", label: "External" },
+    { id: "internal", label: t("inbox.shell.scope.internal", locale) },
+    { id: "external", label: t("inbox.shell.scope.external", locale) },
   ]
 
   const externalRail = (
@@ -700,8 +701,8 @@ export function InboxShell({
     <button
       type="button"
       onClick={toggleRail}
-      title={railCollapsed ? "Show sidebar" : "Hide sidebar"}
-      aria-label={railCollapsed ? "Show sidebar" : "Hide sidebar"}
+      title={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
+      aria-label={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
       className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
     >
       {railCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -710,24 +711,24 @@ export function InboxShell({
 
   const emptyHint = isExternal
     ? searching
-      ? "No tickets match your search."
+      ? t("inbox.shell.empty.search", locale)
       : mentionedOnly
-        ? "No tickets mention you right now."
+        ? t("inbox.shell.empty.mentioned", locale)
         : identityChannels.length === 0
-          ? "No channels connected — add them in Account settings."
+          ? t("inbox.shell.empty.no_channels", locale)
           : viewMode === "all"
-            ? "No tickets in this view."
-            : "No tickets on this channel in this view."
+            ? t("inbox.shell.empty.view", locale)
+            : t("inbox.shell.empty.view_channel", locale)
     : null
 
   return (
     <div className="flex flex-col gap-4">
       {!locked && (
         <PageHeader
-          title="Inbox"
+          title={t("inbox.shell.header.title", locale)}
           actions={
             <Button size="sm" onClick={() => openComposer(isExternal ? "task" : "update")}>
-              <Plus className="h-4 w-4" /> New
+              <Plus className="h-4 w-4" /> {t("inbox.shell.action.new", locale)}
             </Button>
           }
         />
@@ -769,14 +770,14 @@ export function InboxShell({
                 type="text"
                 value={extSearch}
                 onChange={(e) => setExtSearch(e.target.value)}
-                placeholder="Search tickets — name, client, or message…"
+                placeholder={t("inbox.shell.search.placeholder", locale)}
                 className="h-9 w-full rounded-md border border-border/60 bg-card pl-9 pr-9 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
               />
               {extSearch && (
                 <button
                   type="button"
                   onClick={() => setExtSearch("")}
-                  aria-label="Clear search"
+                  aria-label={t("inbox.shell.search.clear", locale)}
                   className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -787,7 +788,7 @@ export function InboxShell({
                 to stay on that line or widen to all channels (Trengo-style). */}
             {searching && viewMode === "channel" && (
               <div className="flex shrink-0 items-center gap-1.5 px-1 text-xs">
-                <span className="text-muted-foreground/60">Search in:</span>
+                <span className="text-muted-foreground/60">{t("inbox.shell.search.scope_label", locale)}</span>
                 <button
                   type="button"
                   onClick={() => setSearchScope("current")}
@@ -796,7 +797,7 @@ export function InboxShell({
                     searchScope === "current" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
                   )}
                 >
-                  {[...waEntries, ...emailEntries].find((e) => e.id === activeChannelId)?.name ?? "This channel"}
+                  {[...waEntries, ...emailEntries].find((e) => e.id === activeChannelId)?.name ?? t("inbox.shell.search.scope_this", locale)}
                 </button>
                 <button
                   type="button"
@@ -806,7 +807,7 @@ export function InboxShell({
                     searchScope === "all" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
                   )}
                 >
-                  All channels
+                  {t("inbox.shell.search.scope_all", locale)}
                 </button>
               </div>
             )}

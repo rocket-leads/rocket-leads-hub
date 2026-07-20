@@ -4,6 +4,8 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, CornerDownRight, Loader2, Send, ChevronDown, ChevronRight, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { UserAvatar } from "@/components/ui/user-avatar"
 import { fmtRelative } from "../chat-pane"
 import { ReactionBar } from "./reaction-bar"
@@ -40,8 +42,10 @@ type Props = {
 
 export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, onChanged }: Props) {
   const queryClient = useQueryClient()
+  const locale = useLocale()
   const isUpdate = item.kind === "update"
   const kind = isUpdate ? KIND_COLOR.update : KIND_COLOR.task
+  const kindLabel = t(isUpdate ? "inbox.card.kind.update" : "inbox.card.kind.task", locale)
   // "Checked off" = done (task) or read (update). Cancelled counts as closed.
   const isChecked = isUpdate ? item.status === "read" : item.status === "done" || item.status === "cancelled"
 
@@ -133,7 +137,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
             <span className="inline-flex items-center gap-1">
               <span className={cn("h-1.5 w-1.5 rounded-full", kind.dot)} />
-              {kind.label}
+              {kindLabel}
             </span>
             {item.clientName && item.clientName !== "(unknown)" && (
               <>
@@ -144,7 +148,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
             {item.dueDate && (
               <>
                 <span aria-hidden>·</span>
-                <span>Due {item.dueDate}</span>
+                <span>{t("inbox.card.due_prefix", locale, { date: item.dueDate })}</span>
               </>
             )}
           </div>
@@ -154,7 +158,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
           onClick={toggleChecked}
           disabled={busy}
           aria-pressed={isChecked}
-          title={isChecked ? "Mark as not done" : "Mark as done"}
+          title={isChecked ? t("inbox.card.mark_not_done", locale) : t("inbox.card.mark_done", locale)}
           className={cn(
             "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
             isChecked
@@ -187,14 +191,16 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
           >
             {repliesOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             <CornerDownRight className="h-3.5 w-3.5" />
-            {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
+            {replyCount > 0
+              ? t(replyCount === 1 ? "inbox.card.reply_count" : "inbox.card.reply_count_plural", locale, { n: replyCount })
+              : t("inbox.card.reply", locale)}
           </button>
 
           {repliesOpen && (
             <div className="mt-2 space-y-2">
               {commentsQuery.isLoading ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground/60">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading replies…
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("inbox.card.loading_replies", locale)}
                 </div>
               ) : (
                 comments.map((c) => {
@@ -238,7 +244,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
                     }
                   }}
                   rows={1}
-                  placeholder="Write a reply and mention others with @"
+                  placeholder={t("inbox.card.reply_placeholder", locale)}
                   className="max-h-24 min-h-9 flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 dark:bg-input/30"
                 />
                 <button

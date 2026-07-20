@@ -2,6 +2,8 @@
 
 import { Inbox as InboxIcon } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { cn } from "@/lib/utils"
 import { FeedRow } from "./feed-row"
 import { InboxRowSkeletonList } from "./row-skeleton"
@@ -57,6 +59,7 @@ export function UnifiedFeed<T extends string>({
   users,
   emptyHint,
 }: Props<T>) {
+  const locale = useLocale()
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <TopTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} />
@@ -69,7 +72,7 @@ export function UnifiedFeed<T extends string>({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
               <InboxIcon className="h-5 w-5" />
             </div>
-            <p className="text-sm font-medium text-foreground">Nothing here</p>
+            <p className="text-sm font-medium text-foreground">{t("inbox.shell.feed.empty", locale)}</p>
             {emptyHint && <div className="text-xs text-muted-foreground/70">{emptyHint}</div>}
           </div>
         ) : (
@@ -91,7 +94,7 @@ export function UnifiedFeed<T extends string>({
       </div>
 
       <p className={cn("shrink-0 text-center text-xs text-muted-foreground/50", rows.length === 0 && "hidden")}>
-        {rows.length} {rows.length === 1 ? "item" : "items"}
+        {rows.length} {rows.length === 1 ? t("inbox.shell.feed.item", locale) : t("inbox.shell.feed.items", locale)}
       </p>
     </div>
   )

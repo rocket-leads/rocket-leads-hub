@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Circle, User, CircleCheck, Inbox as InboxIcon } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { UpdateCard } from "./update-card"
 import { InboxRowSkeletonList } from "./row-skeleton"
 import type { InternalType, DeadlineFilter } from "./internal-rail"
@@ -79,9 +80,9 @@ export function UpdateFeed({ items, currentUserId, types, deadline, loading, onC
   const visible = useMemo(() => scoped.filter((it) => internalState(it) === state), [scoped, state])
 
   const filterTabs: TopTab<TicketState>[] = [
-    { id: "open", label: "Open", icon: Circle, count: counts.open, accent: "primary" },
-    { id: "assigned", label: locale === "nl" ? "Opgepakt" : "Assigned", icon: User, count: counts.assigned },
-    { id: "closed", label: locale === "nl" ? "Gesloten" : "Closed", icon: CircleCheck, count: counts.closed },
+    { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: counts.open, accent: "primary" },
+    { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: counts.assigned },
+    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: counts.closed },
   ]
 
   // One bulk reaction fetch for the whole visible page.
@@ -109,7 +110,7 @@ export function UpdateFeed({ items, currentUserId, types, deadline, loading, onC
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
               <InboxIcon className="h-5 w-5" />
             </div>
-            <p className="text-sm font-medium text-foreground">Nothing here</p>
+            <p className="text-sm font-medium text-foreground">{t("inbox.shell.feed.empty", locale)}</p>
           </div>
         ) : (
           visible.map((item) => (
