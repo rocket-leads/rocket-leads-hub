@@ -44,17 +44,29 @@ export async function getTrengoMentionContext(
 
   const { data: hubUsers } = await supabase
     .from("users")
-    .select("id, name, email")
+    .select("id, name, email, trengo_user_id")
     .not("name", "is", null)
+  type HubU = { id: string; name: string | null; email: string | null; trengo_user_id: number | null }
+  const hub = (hubUsers ?? []) as HubU[]
+
+  // 1. Durable id-based map (rename-proof): a Hub user whose trengo_user_id is
+  //    seeded maps directly, no name guessing.
+  const hubIdSeeded = new Set<string>()
+  for (const h of hub) {
+    if (h.trengo_user_id != null) {
+      hubIdByTrengoId.set(h.trengo_user_id, h.id)
+      if (!trengoIdByHubId.has(h.id)) trengoIdByHubId.set(h.id, h.trengo_user_id)
+      hubIdSeeded.add(h.id)
+    }
+  }
+
+  // 2. Name/email/first-name fallback for anyone not yet seeded. First-name only
+  //    when UNAMBIGUOUS (one Hub user has it) so shared first names never match.
   const hubByName = new Map<string, string>()
   const hubByEmail = new Map<string, string>()
-  // First-name → Hub id, but only kept when that first name is UNAMBIGUOUS
-  // (exactly one Hub user has it). Bridges spelling drift between Trengo and
-  // the Hub ("Stefan vd Wijdeven" vs "Stefan van de Wijdeven") without risking
-  // a wrong match when two teammates share a first name.
   const firstNameCounts = new Map<string, number>()
   const hubByFirstName = new Map<string, string>()
-  for (const h of (hubUsers ?? []) as Array<{ id: string; name: string | null; email: string | null }>) {
+  for (const h of hub) {
     if (h.name) {
       hubByName.set(normName(h.name), h.id)
       const first = normName(h.name).split(" ")[0]
@@ -65,7 +77,9 @@ export async function getTrengoMentionContext(
     }
     if (h.email) hubByEmail.set(h.email.trim().toLowerCase(), h.id)
   }
+  const toSeed: Array<{ hubId: string; trengoId: number }> = []
   for (const u of trengoUsers) {
+    if (hubIdByTrengoId.has(u.id)) continue // already id-mapped
     const firstName = normName(u.name).split(" ")[0]
     const hubId =
       hubByName.get(normName(u.name)) ??
@@ -76,8 +90,20 @@ export async function getTrengoMentionContext(
     if (hubId) {
       hubIdByTrengoId.set(u.id, hubId)
       if (!trengoIdByHubId.has(hubId)) trengoIdByHubId.set(hubId, u.id)
+      if (!hubIdSeeded.has(hubId)) toSeed.push({ hubId, trengoId: u.id })
     }
   }
+
+  // 3. Self-seed: persist the freshly name-matched pairs so future resolution is
+  //    id-based (rename-proof). Best-effort, fire-and-forget; only fills nulls.
+  if (toSeed.length > 0) {
+    void Promise.all(
+      toSeed.map(({ hubId, trengoId }) =>
+        supabase.from("users").update({ trengo_user_id: trengoId }).eq("id", hubId).is("trengo_user_id", null),
+      ),
+    ).catch(() => {})
+  }
+
   return { trengoById, hubIdByTrengoId, trengoIdByHubId }
 }
 
