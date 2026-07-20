@@ -95,13 +95,17 @@ export function TopTabs<T extends string>({
               key={id}
               type="button"
               onClick={() => onChange(id)}
+              // Compact tabs hide the label to fit a narrow column - the icon +
+              // count carry it, and the tooltip/aria-label keep the full word.
+              title={compact ? label : undefined}
+              aria-label={compact ? label : undefined}
               className={cn(
                 "relative flex items-center font-medium transition-all duration-150",
-                compact ? "gap-1.5 px-2.5 py-2 text-[13px]" : "gap-2 px-5 py-3 text-sm",
+                compact ? "gap-1.5 px-3 py-2 text-[13px]" : "gap-2 px-5 py-3 text-sm",
                 active ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
               )}
             >
-              {Icon && !compact && (
+              {Icon && (
                 <span className="relative">
                   <Icon
                     className={cn(
@@ -119,7 +123,7 @@ export function TopTabs<T extends string>({
                   )}
                 </span>
               )}
-              {label}
+              {!compact && label}
               {done && !active && (
                 <span
                   className="ml-0.5 inline-flex items-center justify-center text-emerald-500 dark:text-emerald-400"

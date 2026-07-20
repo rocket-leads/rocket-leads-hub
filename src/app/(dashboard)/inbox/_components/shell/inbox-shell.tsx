@@ -757,15 +757,15 @@ export function InboxShell({
           <div
             className={cn(
               "flex w-full min-w-0 flex-col gap-3",
-              // Ticket-list column kept as narrow as the Open/Opgepakt/Gesloten
-              // tab strip allows (Roy 2026-07-20) so the reading/chat pane on
-              // the right gets the space. xl = channels rail (200px) + a
-              // compact ticket feed (~285px, the floor for the 3 Dutch tabs).
+              // Narrow ticket-list column (Roy 2026-07-20: "de helft") so the
+              // reading/chat pane gets the space. Icon+count filter tabs let it
+              // stay tight. xl = channels rail (200px) + a compact ticket feed
+              // (~224px).
               locked
-                ? "lg:w-[380px]"
+                ? "lg:w-[360px]"
                 : railCollapsed
-                  ? "lg:w-[360px]"
-                  : "lg:w-[380px] xl:w-[500px]",
+                  ? "lg:w-[320px]"
+                  : "lg:w-[360px] xl:w-[440px]",
             )}
           >
             <div className="relative shrink-0">
