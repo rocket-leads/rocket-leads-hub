@@ -35,6 +35,8 @@ import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { InboxRowSkeletonList } from "./shell/row-skeleton"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { UserAvatar } from "@/components/ui/user-avatar"
 import { cn } from "@/lib/utils"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
@@ -129,6 +131,7 @@ export function ChatPane({
   underTabsSlot,
 }: Props) {
   const queryClient = useQueryClient()
+  const locale = useLocale()
   // Selection state. Always lives in `selectedInternal`; in docked mode we
   // keep it in sync with the parent's controlled `selectedThreadKey` via a
   // useEffect below, so auto-select-first and re-select-on-refresh logic
@@ -450,10 +453,10 @@ export function ChatPane({
     // RIGHT (scan-everything fallback). 2026-06-13: Snoozed + Archived
     // join the strip so the triage actions on the row have a discoverable
     // home for what they hide.
-    { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
-    { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
-    { id: "snoozed", label: "Snoozed", icon: Clock3, count: tabCounts.snoozed },
-    { id: "archived", label: "Archived", icon: Inbox, count: tabCounts.archived },
+    { id: "unread", label: t("inbox.chat.filter.unread", locale), icon: Mail, count: tabCounts.unread },
+    { id: "all", label: t("inbox.chat.filter.all", locale), icon: LayoutList, count: tabCounts.all },
+    { id: "snoozed", label: t("inbox.chat.filter.snoozed", locale), icon: Clock3, count: tabCounts.snoozed },
+    { id: "archived", label: t("inbox.chat.filter.archived", locale), icon: Inbox, count: tabCounts.archived },
   ]
 
   return (
@@ -557,6 +560,7 @@ function ThreadList({
   // mode. We avoid passing this through the prop sidewalk for every
   // visual state.
   const wrapperClass = mergedRightEdge ? "rounded-l-xl rounded-r-none" : "rounded-xl"
+  const locale = useLocale()
   if (loading) {
     return (
       <div className={cn("border border-border bg-card shadow-sm p-2", wrapperClass)}>
@@ -568,20 +572,20 @@ function ThreadList({
   if (threads.length === 0) {
     // Filtered-empty messaging shifts based on which tab the user is on so
     // "0 unread" doesn't look like a sync failure when they're on Unread mode.
-    const baseCopy =
-      scope === "external" ? "client conversations" : "team conversations"
     const empty =
       filter === "unread"
-        ? `No unread ${baseCopy}.`
+        ? scope === "external"
+          ? t("inbox.chat.empty.no_unread_client", locale)
+          : t("inbox.chat.empty.no_unread_team", locale)
         : scope === "external"
-          ? "No client conversations yet."
-          : "No team conversations yet."
+          ? t("inbox.chat.empty.no_client_yet", locale)
+          : t("inbox.chat.empty.no_team_yet", locale)
     const sub =
       filter === "all"
         ? scope === "external"
-          ? "Trengo messages will appear here once webhooks fire."
-          : "Slack messages will appear here once webhooks fire."
-        : "Try switching tabs to see other conversations."
+          ? t("inbox.chat.empty.sub_trengo", locale)
+          : t("inbox.chat.empty.sub_slack", locale)
+        : t("inbox.chat.empty.sub_switch", locale)
     return (
       <div className={cn("border border-dashed border-border bg-card/40 flex flex-col items-center justify-center py-12 px-4 text-center", wrapperClass)}>
         <Inbox className="h-6 w-6 text-muted-foreground/40 mb-2" />
@@ -616,11 +620,11 @@ function ThreadList({
           />
           {anySelected ? (
             <span className="text-xs font-medium tabular-nums">
-              {selectedKeys.size} selected
+              {selectedKeys.size} {t("inbox.chat.selected_suffix", locale)}
             </span>
           ) : (
             <span className="text-xs font-medium text-muted-foreground">
-              {threads.length} {threads.length === 1 ? "conversation" : "conversations"}
+              {threads.length} {threads.length === 1 ? t("inbox.chat.conversation", locale) : t("inbox.chat.conversations", locale)}
             </span>
           )}
         </div>
@@ -630,7 +634,7 @@ function ThreadList({
             onClick={onClearSelection}
             className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
           >
-            Clear
+            {t("inbox.chat.clear", locale)}
           </button>
         )}
       </div>
@@ -674,6 +678,7 @@ function ThreadRow({
   onToggleCheck: () => void
   onMark: (action: MarkAction, payload?: { until?: string | null }) => void
 }) {
+  const locale = useLocale()
   return (
     <div
       role="button"
@@ -716,7 +721,7 @@ function ThreadRow({
               : "border-muted-foreground/30 hover:border-foreground hover:bg-muted/60",
             isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           )}
-          title={isChecked ? "Deselect" : "Select for bulk action"}
+          title={isChecked ? t("inbox.chat.deselect", locale) : t("inbox.chat.select_bulk", locale)}
         >
           {isChecked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
         </button>
@@ -763,6 +768,7 @@ function ThreadRowQuickActions({
   isUnread: boolean
   onMark: (action: MarkAction, payload?: { until?: string | null }) => void
 }) {
+  const locale = useLocale()
   const isSnoozed =
     thread.snoozedUntil != null &&
     new Date(thread.snoozedUntil).getTime() > Date.now()
@@ -791,7 +797,7 @@ function ThreadRowQuickActions({
             )}
           />
         }
-        label={thread.isStarred ? "Unstar" : "Star"}
+        label={thread.isStarred ? t("inbox.chat.unstar", locale) : t("inbox.chat.star", locale)}
         onClick={(e) => {
           e.stopPropagation()
           onMark(thread.isStarred ? "unstar" : "star")
@@ -807,7 +813,7 @@ function ThreadRowQuickActions({
             )}
           />
         }
-        label={isSnoozed ? "Verwijder snooze" : "Snooze 8u"}
+        label={isSnoozed ? t("inbox.chat.snooze_remove", locale) : t("inbox.chat.snooze_8h", locale)}
         onClick={(e) => {
           e.stopPropagation()
           if (isSnoozed) onMark("unsnooze")
@@ -817,7 +823,7 @@ function ThreadRowQuickActions({
       />
       <RowActionButton
         icon={<Archive className="h-3.5 w-3.5" />}
-        label={thread.isArchived ? "Terug naar Inbox" : "Archiveer"}
+        label={thread.isArchived ? t("inbox.chat.back_to_inbox", locale) : t("inbox.chat.archive", locale)}
         onClick={(e) => {
           e.stopPropagation()
           onMark(thread.isArchived ? "unarchive" : "archive")
@@ -873,6 +879,7 @@ function EmailListRowBody({
   thread: ChatThreadSummary
   isUnread: boolean
 }) {
+  const locale = useLocale()
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -909,7 +916,7 @@ function EmailListRowBody({
         )}
       >
         {thread.latestSubject || thread.latestPreview || (
-          <span className="italic text-muted-foreground/60">No subject</span>
+          <span className="italic text-muted-foreground/60">{t("inbox.chat.no_subject", locale)}</span>
         )}
       </p>
       {thread.clientName && (
@@ -933,6 +940,7 @@ function ChatListRowBody({
   thread: ChatThreadSummary
   isUnread: boolean
 }) {
+  const locale = useLocale()
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-start justify-between gap-2 mb-0.5">
@@ -968,7 +976,7 @@ function ChatListRowBody({
           isUnread ? "text-foreground/85" : "text-muted-foreground/80",
         )}
       >
-        {thread.latestPreview || <span className="italic">No preview</span>}
+        {thread.latestPreview || <span className="italic">{t("inbox.chat.no_preview", locale)}</span>}
       </p>
       <p className="text-[10px] text-muted-foreground/50 mt-0.5">
         {fmtRelative(thread.latestAt)}
@@ -1031,10 +1039,11 @@ function ChatBulkActionBar({
   onClear: () => void
   onMark: (action: MarkAction) => void
 }) {
+  const locale = useLocale()
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-xl border border-border bg-popover shadow-lg px-2 py-1.5">
       <span className="text-xs font-medium px-2 tabular-nums">
-        {count} selected
+        {count} {t("inbox.chat.selected_suffix", locale)}
       </span>
       <span className="h-5 w-px bg-border/60" aria-hidden />
       {/* h-9 rounded-md chip chrome per the Hub button rules (CLAUDE.md): a
@@ -1044,26 +1053,26 @@ function ChatBulkActionBar({
         type="button"
         onClick={() => onMark("mark_read")}
         className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-        title="Mark selected conversations as read"
+        title={t("inbox.chat.mark_read_title", locale)}
       >
         <CheckCheck className="h-3.5 w-3.5" />
-        Mark read
+        {t("inbox.chat.mark_read", locale)}
       </button>
       <button
         type="button"
         onClick={() => onMark("mark_unread")}
         className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-        title="Mark selected conversations as unread"
+        title={t("inbox.chat.mark_unread_title", locale)}
       >
         <MailOpen className="h-3.5 w-3.5" />
-        Mark unread
+        {t("inbox.chat.mark_unread", locale)}
       </button>
       <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={onClear}
         className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        title="Clear selection"
+        title={t("inbox.chat.clear_selection", locale)}
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -1091,6 +1100,7 @@ function PedroDraftButton({
   onInsert: (text: string) => void
   disabled?: boolean
 }) {
+  const locale = useLocale()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1135,7 +1145,7 @@ function PedroDraftButton({
         type="button"
         onClick={load}
         disabled={disabled || loading}
-        title="Voeg Pedro's huidige concept-bericht toe aan de reply"
+        title={t("inbox.chat.pedro_draft_title", locale)}
         className={cn(
           "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium",
           "border border-border bg-card text-muted-foreground",
@@ -1148,7 +1158,7 @@ function PedroDraftButton({
         ) : (
           <Sparkles className="h-3.5 w-3.5" />
         )}
-        Pedro draft
+        {t("inbox.chat.pedro_draft", locale)}
       </button>
       {error && (
         <span className="text-[11px] text-muted-foreground/70">{error}</span>
@@ -1201,6 +1211,7 @@ export function ThreadView({
    *  accurate Open/Assigned/Closed even for stub (unsubscribed-channel) rows. */
   onResolvedState?: (state: { isArchived: boolean; isAssigned: boolean }) => void
 }) {
+  const locale = useLocale()
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
     if (inboxZero) {
@@ -1210,15 +1221,15 @@ export function ThreadView({
             <CheckCheck className="h-6 w-6" strokeWidth={2.5} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Je inbox is volledig up-to-date</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">Alle tickets bijgewerkt. Lekker bezig.</p>
+            <p className="text-sm font-semibold text-foreground">{t("inbox.chat.caught_up_title", locale)}</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">{t("inbox.chat.caught_up_sub", locale)}</p>
           </div>
         </div>
       )
     }
     return (
       <div className={cn("h-full border border-border bg-card shadow-sm flex items-center justify-center text-sm text-muted-foreground/60", wrapperRadius)}>
-        Select a conversation
+        {t("inbox.chat.select_conversation", locale)}
       </div>
     )
   }
@@ -1288,6 +1299,7 @@ function ThreadMessages({
   onResolvedState?: (state: { isArchived: boolean; isAssigned: boolean }) => void
 }) {
   const queryClient = useQueryClient()
+  const locale = useLocale()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1882,13 +1894,13 @@ function ThreadMessages({
             <p className="text-[11px] text-muted-foreground/70 truncate">
               {thread.clientName
                 ? thread.channelName
-                  ? `${thread.clientName} · via ${thread.channelName}`
+                  ? `${thread.clientName} · ${t("inbox.chat.via", locale)} ${thread.channelName}`
                   : thread.clientName
-                : `via ${thread.channelName}`}
+                : `${t("inbox.chat.via", locale)} ${thread.channelName}`}
               {thread.totalCount > 0 && (
                 <span className="ml-1.5 text-muted-foreground/50 tabular-nums">
                   · {thread.totalCount}{" "}
-                  {thread.totalCount === 1 ? "message" : "messages"}
+                  {thread.totalCount === 1 ? t("inbox.chat.message", locale) : t("inbox.chat.messages", locale)}
                 </span>
               )}
             </p>
@@ -1958,7 +1970,7 @@ function ThreadMessages({
             </div>
           ) : messages.length === 0 ? (
             <p className="text-sm text-muted-foreground/60 text-center py-8">
-              No messages in this thread.
+              {t("inbox.chat.no_messages", locale)}
             </p>
           ) : (
             <ThreadMessagesList
@@ -1987,7 +1999,7 @@ function ThreadMessages({
             className="gap-1.5"
           >
             <Mail className="h-3.5 w-3.5" />
-            Reply
+            {t("inbox.chat.reply", locale)}
           </Button>
         </div>
       )}
@@ -2045,7 +2057,7 @@ function ThreadMessages({
                         : "text-muted-foreground hover:text-foreground hover:bg-muted",
                     )}
                   >
-                    Reply
+                    {t("inbox.chat.reply", locale)}
                   </button>
                   <button
                     type="button"
@@ -2056,9 +2068,9 @@ function ThreadMessages({
                         ? "bg-amber-500 text-amber-950 shadow-sm"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted",
                     )}
-                    title="Team-only note - invisible to the client; @-mention to ping a teammate"
+                    title={t("inbox.chat.internal_title", locale)}
                   >
-                    Internal note
+                    {t("inbox.chat.tab_internal", locale)}
                   </button>
                 </div>
               ) : (
@@ -2067,7 +2079,7 @@ function ThreadMessages({
               {isEmail && (
                 <DismissButton
                   size="xs"
-                  label="Sluit composer"
+                  label={t("inbox.chat.composer_close", locale)}
                   onClick={() => setEmailComposerOpen(false)}
                 />
               )}
@@ -2075,9 +2087,9 @@ function ThreadMessages({
           )}
           {needsConnect && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
-              Connect your {needsConnect} account first.{" "}
+              {t("inbox.chat.connect_prefix", locale)}{needsConnect}{t("inbox.chat.connect_suffix", locale)}{" "}
               <Link href="/settings?tab=me" className="underline font-medium">
-                Go to My Account
+                {t("inbox.chat.go_to_account", locale)}
               </Link>
             </div>
           )}
@@ -2197,8 +2209,8 @@ function ThreadMessages({
                       type="button"
                       onClick={onPickFile}
                       disabled={sending}
-                      title="Attach files"
-                      aria-label="Attach files"
+                      title={t("inbox.chat.attach", locale)}
+                      aria-label={t("inbox.chat.attach", locale)}
                       className="h-10 w-10 inline-flex items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 shadow-sm"
                     >
                       <Paperclip className="h-4 w-4" />
@@ -2215,7 +2227,7 @@ function ThreadMessages({
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      Send email
+                      {t("inbox.chat.send_email", locale)}
                     </>
                   )}
                 </Button>
@@ -2237,7 +2249,7 @@ function ThreadMessages({
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    Send template
+                    {t("inbox.chat.send_template", locale)}
                   </>
                 )}
               </Button>
@@ -2280,8 +2292,8 @@ function ThreadMessages({
               }}
               placeholder={
                 isInternal
-                  ? "Internal note - team only. Use @ to mention a teammate."
-                  : `Reply via ${thread.source} as you`
+                  ? t("inbox.chat.internal_placeholder", locale)
+                  : t("inbox.chat.reply_placeholder", locale, { source: thread.source })
               }
               rows={6}
               disabled={sending}
@@ -2341,8 +2353,8 @@ function ThreadMessages({
                   type="button"
                   onClick={onPickFile}
                   disabled={sending}
-                  title="Attach files"
-                  aria-label="Attach files"
+                  title={t("inbox.chat.attach", locale)}
+                  aria-label={t("inbox.chat.attach", locale)}
                   className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
                 >
                   <Paperclip className="h-4 w-4" />
@@ -2366,7 +2378,7 @@ function ThreadMessages({
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  Send
+                  {t("inbox.chat.send", locale)}
                 </>
               )}
             </Button>
@@ -2435,6 +2447,7 @@ function WhatsAppWindowBanner({
   mode: WaMode
   onModeChange: (mode: WaMode) => void
 }) {
+  const locale = useLocale()
   return (
     <div
       className={cn(
@@ -2449,14 +2462,14 @@ function WhatsAppWindowBanner({
           <>
             <Clock3 className="h-4 w-4 shrink-0" />
             <span className="truncate font-medium">
-              Conversation window open · closes in {hoursRemaining}h
+              {t("inbox.chat.window_open", locale, { h: hoursRemaining })}
             </span>
           </>
         ) : (
           <>
             <ShieldAlert className="h-4 w-4 shrink-0" />
             <span className="truncate font-medium">
-              Window closed · only WhatsApp templates can be sent
+              {t("inbox.chat.window_closed", locale)}
             </span>
           </>
         )}
@@ -2473,9 +2486,9 @@ function WhatsAppWindowBanner({
               : "text-muted-foreground hover:text-foreground hover:bg-muted",
             !windowOpen && "opacity-40 cursor-not-allowed",
           )}
-          title={!windowOpen ? "Free-text disabled outside the 24h window" : "Default message"}
+          title={!windowOpen ? t("inbox.chat.freetext_disabled", locale) : t("inbox.chat.default_message", locale)}
         >
-          Default
+          {t("inbox.chat.default", locale)}
         </button>
         <button
           type="button"
@@ -2486,9 +2499,9 @@ function WhatsAppWindowBanner({
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted",
           )}
-          title="Send a pre-approved WhatsApp Business template"
+          title={t("inbox.chat.template_send_title", locale)}
         >
-          Template
+          {t("inbox.chat.template", locale)}
         </button>
       </span>
     </div>
@@ -2518,10 +2531,11 @@ function WhatsAppTemplateControls({
   onPick: (t: WaTemplate | null) => void
   onParamChange: (idx: number, value: string) => void
 }) {
+  const locale = useLocale()
   return (
     <div className="rounded-md border border-border/60 bg-background p-2.5 mb-2 space-y-2">
       <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
-        WhatsApp template
+        {t("inbox.chat.wa_template", locale)}
       </label>
       <div className="relative">
         <select
@@ -2536,10 +2550,10 @@ function WhatsAppTemplateControls({
         >
           <option value="">
             {loading
-              ? "Loading templates…"
+              ? t("inbox.chat.loading_templates", locale)
               : templates.length === 0
-                ? "No approved templates for this channel"
-                : "Select a template…"}
+                ? t("inbox.chat.no_templates", locale)
+                : t("inbox.chat.select_template", locale)}
           </option>
           {templates.map((t) => (
             <option key={t.id} value={t.id}>
@@ -2551,7 +2565,7 @@ function WhatsAppTemplateControls({
         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
       </div>
       {error && (
-        <p className="text-[11px] text-destructive">Failed to load templates: {error}</p>
+        <p className="text-[11px] text-destructive">{t("inbox.chat.templates_load_failed", locale)}{error}</p>
       )}
       {selectedTemplate && (
         <>
@@ -2566,7 +2580,7 @@ function WhatsAppTemplateControls({
                     type="text"
                     value={value}
                     onChange={(e) => onParamChange(idx, e.target.value)}
-                    placeholder={`Variable ${idx + 1}`}
+                    placeholder={t("inbox.chat.variable", locale, { n: idx + 1 })}
                     className="flex-1 h-7 px-2 rounded-md border border-input bg-background text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   />
                 </div>
@@ -2575,7 +2589,7 @@ function WhatsAppTemplateControls({
           )}
           <div className="rounded-md border border-border/40 bg-muted/30 px-2.5 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">
-              Preview
+              {t("inbox.chat.preview", locale)}
             </p>
             <p className="text-xs whitespace-pre-wrap leading-relaxed">
               {renderTemplate(selectedTemplate.message, params)}
@@ -2616,17 +2630,18 @@ function WhatsAppMarkdownToolbar({
       ta.setSelectionRange(cursor, cursor)
     })
   }
+  const locale = useLocale()
   const btnCls =
     "h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
   return (
     <div className="inline-flex items-center gap-0.5 mb-1.5">
-      <button type="button" onClick={() => wrap("*")} title="Bold (*x*)" className={btnCls}>
+      <button type="button" onClick={() => wrap("*")} title={t("inbox.chat.bold", locale)} className={btnCls}>
         <Bold className="h-3.5 w-3.5" />
       </button>
-      <button type="button" onClick={() => wrap("_")} title="Italic (_x_)" className={btnCls}>
+      <button type="button" onClick={() => wrap("_")} title={t("inbox.chat.italic", locale)} className={btnCls}>
         <Italic className="h-3.5 w-3.5" />
       </button>
-      <button type="button" onClick={() => wrap("~")} title="Strikethrough (~x~)" className={btnCls}>
+      <button type="button" onClick={() => wrap("~")} title={t("inbox.chat.strikethrough", locale)} className={btnCls}>
         <Strikethrough className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -2707,19 +2722,20 @@ function MentionPreviewStrip({
   resolved: InboxUser[]
   hasUnresolved: boolean
 }) {
+  const locale = useLocale()
   if (resolved.length === 0 && !hasUnresolved) {
     return (
       <p className="text-[11px] text-muted-foreground/70 mb-2 inline-flex items-center gap-1">
-        <span className="opacity-70">Type</span>
+        <span className="opacity-70">{t("inbox.chat.mention_hint_pre", locale)}</span>
         <span className="font-mono px-1 py-0.5 rounded bg-muted text-foreground/80">@</span>
-        <span className="opacity-70">to mention a teammate. They&apos;ll get an Update + push notification.</span>
+        <span className="opacity-70">{t("inbox.chat.mention_hint_post", locale)}</span>
       </p>
     )
   }
   return (
     <div className="mb-2 flex items-center flex-wrap gap-1.5">
       <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mr-1">
-        Will notify
+        {t("inbox.chat.will_notify", locale)}
       </span>
       {resolved.map((u) => (
         <span
@@ -2736,9 +2752,9 @@ function MentionPreviewStrip({
       {hasUnresolved && (
         <span
           className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium"
-          title="Couldn't match this @-mention to a teammate. Try typing the full name or pick from the suggestions."
+          title={t("inbox.chat.mention_unmatched", locale)}
         >
-          ⚠ unmatched mention
+          {t("inbox.chat.unmatched_mention", locale)}
         </span>
       )}
     </div>
@@ -2825,6 +2841,7 @@ function LinkToClientPicker({
   threadKey: string
   onLinked: () => void
 }) {
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -2898,7 +2915,7 @@ function LinkToClientPicker({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search clients…"
+            placeholder={t("inbox.chat.search_clients", locale)}
             autoFocus
             className="w-full h-7 px-2 mb-1.5 rounded border border-input bg-background text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           />
@@ -2907,9 +2924,9 @@ function LinkToClientPicker({
           )}
           <div className="max-h-[260px] overflow-y-auto space-y-0.5">
             {clientsQuery.isLoading ? (
-              <p className="text-[11px] text-muted-foreground px-1.5 py-1">Loading…</p>
+              <p className="text-[11px] text-muted-foreground px-1.5 py-1">{t("inbox.chat.loading", locale)}</p>
             ) : filtered.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground px-1.5 py-1">No matches</p>
+              <p className="text-[11px] text-muted-foreground px-1.5 py-1">{t("inbox.chat.no_matches", locale)}</p>
             ) : (
               filtered.slice(0, 50).map((c) => (
                 <button
@@ -2949,6 +2966,7 @@ function EditableContactName({
   editable: boolean
   onSave: (next: string) => Promise<void>
 }) {
+  const locale = useLocale()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(displayName)
   const [optimistic, setOptimistic] = useState<string | null>(null)
@@ -3030,7 +3048,7 @@ function EditableContactName({
         setError(null)
         setEditing(true)
       }}
-      title={error ?? "Click to edit contact name"}
+      title={error ?? t("inbox.chat.edit_contact", locale)}
       className={cn(
         "text-sm font-semibold truncate text-left rounded px-1 -mx-1 hover:bg-muted transition-colors max-w-full",
         error && "ring-1 ring-destructive/40",
@@ -3054,6 +3072,7 @@ function AttachmentChip({
   attachment: PendingAttachment
   onRemove: () => void
 }) {
+  const locale = useLocale()
   return (
     <div className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background pl-1 pr-1.5 py-1 max-w-[220px]">
       {attachment.isImage && attachment.fullUrl ? (
@@ -3075,7 +3094,7 @@ function AttachmentChip({
       <span className="text-[11px] text-foreground/80 truncate flex-1 min-w-0">
         {attachment.clientName}
       </span>
-      <DismissButton size="xs" onClick={onRemove} label="Remove attachment" stopPropagation={false} />
+      <DismissButton size="xs" onClick={onRemove} label={t("inbox.chat.remove_attachment", locale)} stopPropagation={false} />
     </div>
   )
 }
@@ -3288,6 +3307,7 @@ function MessageBubble({
    *  a client yet (we'd have no place to attach the task to). */
   onMakeTask?: () => void
 }) {
+  const locale = useLocale()
   const isUs = msg.authorKind === "rl_team"
   const isInternal = msg.isInternal === true
   // Email rendering branch - any message in an email thread (or any
@@ -3349,7 +3369,7 @@ function MessageBubble({
           <div className="mb-1.5 flex items-center gap-2">
             <span className="text-sm font-semibold">{msg.authorName}</span>
             <span className="rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-              Internal note
+              {t("inbox.chat.tab_internal", locale)}
             </span>
             <span className="text-[11px] tabular-nums text-muted-foreground/70">
               {fmtTime(msg.at)}
@@ -3360,8 +3380,8 @@ function MessageBubble({
                 role="checkbox"
                 aria-checked={mentionDone}
                 onClick={() => noteMentions!.toggle(noteMsgId!)}
-                title={mentionDone ? "Markeer notificatie als niet-afgehandeld" : "Vink deze mention af"}
-                aria-label={mentionDone ? "Mention afgehandeld - klik om terug te zetten" : "Vink deze mention af"}
+                title={mentionDone ? t("inbox.chat.mention_unresolve_title", locale) : t("inbox.chat.mention_check_title", locale)}
+                aria-label={mentionDone ? t("inbox.chat.mention_done_aria", locale) : t("inbox.chat.mention_check_title", locale)}
                 className={cn(
                   "ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-colors",
                   mentionDone
@@ -3404,7 +3424,7 @@ function MessageBubble({
           <span className="text-[11px] font-semibold">{msg.authorName}</span>
           {isInternal && (
             <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-700 dark:text-amber-400">
-              Internal
+              {t("inbox.chat.internal_badge", locale)}
             </span>
           )}
           <span
@@ -3453,6 +3473,7 @@ function EmailMessageCard({
   msg: ChatMessage
   isUs: boolean
 }) {
+  const locale = useLocale()
   const [height, setHeight] = useState<number>(140)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -3572,7 +3593,7 @@ function EmailMessageCard({
             </span>
             {isUs && (
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                Sent
+                {t("inbox.chat.sent", locale)}
               </span>
             )}
           </div>
@@ -3620,16 +3641,17 @@ function EmailMessageCard({
  *  composer with this message's body so the AM only has to confirm + pick
  *  a due date. Subtle by default; sharpens on hover/focus. */
 function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
+  const locale = useLocale()
   return (
     <button
       type="button"
       onClick={onClick}
-      title="Create task from this message"
-      aria-label="Create task from this message"
+      title={t("inbox.chat.make_task", locale)}
+      aria-label={t("inbox.chat.make_task", locale)}
       className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border bg-popover text-[11px] font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/40 shadow-sm shrink-0"
     >
       <ListTodo className="h-3.5 w-3.5" />
-      Task
+      {t("inbox.card.kind.task", locale)}
     </button>
   )
 }
@@ -3649,14 +3671,15 @@ function ReadCheckbox({
   isUnread: boolean
   onToggle: () => void
 }) {
+  const locale = useLocale()
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={!isUnread}
       onClick={onToggle}
-      title={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
-      aria-label={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
+      title={isUnread ? t("inbox.chat.mark_read_msg", locale) : t("inbox.chat.mark_unread_msg", locale)}
+      aria-label={isUnread ? t("inbox.chat.mark_read_msg", locale) : t("inbox.chat.mark_unread_msg", locale)}
       className={cn(
         "h-8 w-8 inline-flex items-center justify-center rounded-md border-2 transition-colors shrink-0 shadow-sm",
         isUnread
@@ -3801,6 +3824,7 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
  * (token + channels) are fully healthy.
  */
 function TrengoIdentityBanner() {
+  const locale = useLocale()
   const { data } = useQuery<TrengoIdentity>({
     queryKey: ["trengo-identity"],
     queryFn: () => fetch("/api/inbox/trengo-identity").then((r) => r.json()),
@@ -3819,12 +3843,12 @@ function TrengoIdentityBanner() {
         <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
         <div className="flex-1">
           <p className="font-medium text-amber-700 dark:text-amber-400">
-            Trengo niet gekoppeld
+            {t("inbox.chat.trengo_not_connected_title", locale)}
           </p>
           <p className="text-muted-foreground/80 mt-0.5">
-            Je persoonlijke Trengo API token is niet ingesteld. Zonder dat kunnen Hub-sends niet als jou worden verstuurd.{" "}
+            {t("inbox.chat.trengo_not_connected_body", locale)}{" "}
             <Link href="/account" className="text-primary underline hover:no-underline">
-              Koppel Trengo in /account
+              {t("inbox.chat.trengo_connect_cta", locale)}
             </Link>
             .
           </p>
@@ -3839,12 +3863,12 @@ function TrengoIdentityBanner() {
         <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-500" />
         <div className="flex-1">
           <p className="font-medium text-red-700 dark:text-red-400">
-            Trengo token werkt niet
+            {t("inbox.chat.trengo_token_broken_title", locale)}
           </p>
           <p className="text-muted-foreground/80 mt-0.5">
             {data.error}.{" "}
             <Link href="/account" className="text-primary underline hover:no-underline">
-              Vernieuw je token in /account
+              {t("inbox.chat.trengo_refresh_cta", locale)}
             </Link>
             .
           </p>
@@ -3869,10 +3893,10 @@ function TrengoIdentityBanner() {
     <Link
       href="/account"
       className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400 hover:underline"
-      title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd - daarom mis je ze in de inbox`}
+      title={t("inbox.chat.channel_warning", locale, { types: missingChannelTypes.join(" + ") })}
     >
       <AlertTriangle className="h-3 w-3" />
-      Geen {missingChannelTypes.join(" / ")} channels - koppel ze in /account
+      {t("inbox.chat.channel_missing_link", locale, { types: missingChannelTypes.join(" / ") })}
     </Link>
   )
 }
