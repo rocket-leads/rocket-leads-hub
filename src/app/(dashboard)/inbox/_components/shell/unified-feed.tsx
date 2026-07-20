@@ -32,6 +32,11 @@ type Props<T extends string> = {
   /** Per-row checkbox checked-state (defaults to the thread's archived flag).
    *  The Mentioned view supplies "mention done" here instead. */
   closedOf?: (row: FeedRowType) => boolean
+  /** What the per-row checkbox MEANS: "ticket" (close/reopen the conversation,
+   *  round emerald check) or "mention" (a personal mark-mention-done to-do,
+   *  square primary check). Disambiguates the two axes that used to share one
+   *  icon. Defaults to "ticket". */
+  checkboxKind?: "ticket" | "mention"
   users?: InboxUser[]
   emptyHint?: React.ReactNode
 }
@@ -48,6 +53,7 @@ export function UnifiedFeed<T extends string>({
   onAction,
   onCloseRow,
   closedOf,
+  checkboxKind,
   users,
   emptyHint,
 }: Props<T>) {
@@ -77,6 +83,7 @@ export function UnifiedFeed<T extends string>({
               onAction={(action) => onAction(row, action)}
               onClose={onCloseRow && row.kind === "chat" ? () => onCloseRow(row) : undefined}
               closed={closedOf ? closedOf(row) : undefined}
+              checkboxKind={checkboxKind}
               users={users}
             />
           ))

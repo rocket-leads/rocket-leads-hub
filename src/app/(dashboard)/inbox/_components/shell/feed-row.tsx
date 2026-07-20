@@ -1,6 +1,6 @@
 "use client"
 
-import { Check } from "lucide-react"
+import { Check, AtSign } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { InboxListRow, type RowAction } from "../inbox-list-row"
 import { SourceIcon, fmtRelative } from "../chat-pane"
@@ -26,10 +26,13 @@ type Props = {
   /** Checkbox checked-state override. Channel tickets use archive (default);
    *  the Mentioned view passes its own per-user "mention done" state here. */
   closed?: boolean
+  /** What the checkbox means — "ticket" close/reopen (round emerald) or
+   *  "mention" done (square primary to-do). Defaults to "ticket". */
+  checkboxKind?: "ticket" | "mention"
   users?: InboxUser[]
 }
 
-export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, users }: Props) {
+export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", users }: Props) {
   if (row.kind !== "chat" && row.item) {
     return (
       <InboxListRow
@@ -97,7 +100,9 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                 {row.unreadCount > 99 ? "99+" : row.unreadCount}
               </span>
             )}
-            {onClose && (
+            {onClose && checkboxKind === "mention" && (
+              // Personal "mention done" to-do: SQUARE + primary hue + @ icon, so
+              // it never reads as "close the ticket" (which is round + emerald).
               <button
                 type="button"
                 onClick={(e) => {
@@ -105,7 +110,26 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                   onClose()
                 }}
                 aria-pressed={isClosed}
-                title={isClosed ? "Reopen" : "Mark done"}
+                title={isClosed ? "Mark mention as to-do" : "Mark mention done"}
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-md border transition-colors",
+                  isClosed
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-muted-foreground/40 text-transparent hover:border-primary/60 hover:text-primary/50",
+                )}
+              >
+                {isClosed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <AtSign className="h-3.5 w-3.5" strokeWidth={2.5} />}
+              </button>
+            )}
+            {onClose && checkboxKind === "ticket" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onClose()
+                }}
+                aria-pressed={isClosed}
+                title={isClosed ? "Reopen ticket" : "Close ticket"}
                 className={cn(
                   "flex h-6 w-6 items-center justify-center rounded-full border transition-colors",
                   isClosed

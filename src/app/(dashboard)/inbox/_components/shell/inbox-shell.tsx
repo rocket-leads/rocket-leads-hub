@@ -827,6 +827,7 @@ export function InboxShell({
                   onAction={handleRowAction}
                   onCloseRow={mentionedOnly ? closeMention : closeThread}
                   closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
+                  checkboxKind={mentionedOnly ? "mention" : "ticket"}
                   users={users}
                   emptyHint={emptyHint}
                 />
