@@ -12,7 +12,7 @@ import {
   setChatThreadSnoozedUntil,
   setChatThreadStarred,
 } from "@/lib/inbox/fetchers"
-import { setTrengoTicketState } from "@/lib/integrations/trengo"
+import { setTrengoTicketState, assignTrengoTicket } from "@/lib/integrations/trengo"
 
 /**
  * GET /api/inbox/threads/{threadKey}
@@ -193,6 +193,29 @@ export async function PATCH(
       } catch (e) {
         console.error(
           `[threads] Trengo ${trengoAction} sync failed for ${threadKey}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
+    // Mirror a Hub "Opgepakt" pick-up to Trengo: assign the ticket to the user
+    // who claimed it here, so they show + get notified in Trengo. Roy 2026-07-20
+    // ("assigning in the Hub assigns in Trengo"). Best-effort; only when we can
+    // resolve the Hub user to a Trengo user id.
+    if (action === "assign") {
+      try {
+        const { getTrengoMentionContext } = await import("@/lib/inbox/trengo-mentions")
+        const { createAdminClient } = await import("@/lib/supabase/server")
+        const supabase = await createAdminClient()
+        const ctx = await getTrengoMentionContext(supabase)
+        const trengoUserId = ctx.trengoIdByHubId.get(userId)
+        if (trengoUserId != null) {
+          const ticketIds = await getChatThreadTicketIds(threadKey)
+          await Promise.all(ticketIds.map((id) => assignTrengoTicket(id, trengoUserId)))
+        }
+      } catch (e) {
+        console.error(
+          `[threads] Trengo assign sync failed for ${threadKey}:`,
           e instanceof Error ? e.message : e,
         )
       }

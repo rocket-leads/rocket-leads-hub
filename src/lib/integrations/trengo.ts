@@ -586,6 +586,35 @@ export async function setTrengoTicketState(
 }
 
 /**
+ * Assign a Trengo ticket to a workspace user, mirroring a Hub "Opgepakt" pick-up
+ * so the assignee shows + gets notified in Trengo too. `POST /tickets/{id}/assign`
+ * with `{ type: "user", user_id }` (verified the endpoint requires `type`). Best-
+ * effort: caller swallows failures so a Trengo hiccup never blocks the Hub action.
+ * Roy 2026-07-20.
+ */
+export async function assignTrengoTicket(
+  ticketId: number | string,
+  trengoUserId: number,
+): Promise<void> {
+  const token = (await getTrengoToken()).trim()
+  const res = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/assign`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ type: "user", user_id: trengoUserId }),
+    },
+  )
+  if (!res.ok && res.status !== 422) {
+    throw new Error(`Trengo ticket assign failed (${res.status})`)
+  }
+}
+
+/**
  * List all Trengo workspace users (agents). Used to resolve note authors and
  * @-mention targets (Trengo stores mentions as `@<firstname><userId>` handles
  * + a structured `mentions` array) to display names, and to map them onto Hub
