@@ -45,7 +45,12 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
 
   const thread = row.thread
   if (!thread) return null
-  const railColor = row.channel === "whatsapp" ? "bg-emerald-500" : "bg-violet-500"
+  // One accent hue per row = its channel. The rail AND the unread wash use the
+  // same hue so an unread row reads as a single coherent colour statement
+  // (email rows no longer get a violet rail under an emerald wash). Roy 2026-07-20.
+  const isWhatsApp = row.channel === "whatsapp"
+  const railColor = isWhatsApp ? "bg-emerald-500" : "bg-violet-500"
+  const unreadTint = isWhatsApp ? "bg-emerald-500/[0.05]" : "bg-violet-500/[0.05]"
   const isClosed = closed ?? thread.isArchived
 
   return (
@@ -67,7 +72,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
       )}
     >
       <span aria-hidden className={cn("absolute left-0 top-0 bottom-0 w-1", railColor, !row.unread && "opacity-40")} />
-      {row.unread && <span aria-hidden className="absolute inset-0 bg-emerald-500/[0.04] pointer-events-none" />}
+      {row.unread && <span aria-hidden className={cn("absolute inset-0 pointer-events-none", unreadTint)} />}
 
       {/* Simplified row (Roy 2026-07-15): channel icon + contact name + message,
           date top-right, pending count + close checkbox on the right. No channel

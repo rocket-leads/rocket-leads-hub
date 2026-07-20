@@ -1032,15 +1032,18 @@ function ChatBulkActionBar({
   onMark: (action: MarkAction) => void
 }) {
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-xl border border-border bg-popover shadow-lg px-2 py-1.5">
       <span className="text-xs font-medium px-2 tabular-nums">
         {count} selected
       </span>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
+      {/* h-9 rounded-md chip chrome per the Hub button rules (CLAUDE.md): a
+          floating bulk bar keeps its pill shell but its actions match the rest
+          of the Hub. */}
       <button
         type="button"
         onClick={() => onMark("mark_read")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
         title="Mark selected conversations as read"
       >
         <CheckCheck className="h-3.5 w-3.5" />
@@ -1049,17 +1052,17 @@ function ChatBulkActionBar({
       <button
         type="button"
         onClick={() => onMark("mark_unread")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
+        className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
         title="Mark selected conversations as unread"
       >
         <MailOpen className="h-3.5 w-3.5" />
         Mark unread
       </button>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={onClear}
-        className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         title="Clear selection"
       >
         <X className="h-3.5 w-3.5" />

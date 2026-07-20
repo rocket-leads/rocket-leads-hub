@@ -37,16 +37,21 @@ const KIND_TREATMENT: Record<"task" | "update", {
   rail: string
   dot: string
   label: string
+  /** Faint full-row wash for the unread state, matched to the rail hue so an
+   *  unread row reads as one coherent colour (rail + wash agree). Roy 2026-07-20. */
+  tint: string
 }> = {
   task: {
     rail: "bg-violet-500",
     dot: "bg-violet-500",
     label: "Task",
+    tint: "bg-violet-500/[0.05]",
   },
   update: {
     rail: "bg-sky-500",
     dot: "bg-sky-500",
     label: "Update",
+    tint: "bg-sky-500/[0.05]",
   },
 }
 
@@ -180,7 +185,7 @@ export function InboxListRow({
       {isUnread && (
         <span
           aria-hidden
-          className="absolute inset-0 bg-sky-500/[0.04] pointer-events-none"
+          className={cn("absolute inset-0 pointer-events-none", kindTreatment.tint)}
         />
       )}
       <div className="flex items-start gap-3">

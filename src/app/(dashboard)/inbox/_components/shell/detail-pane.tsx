@@ -13,42 +13,75 @@ import type { CurrentUser, InboxUser, FeedRow } from "./types"
 type TicketState = "open" | "assigned" | "closed"
 type NoteMentions = { done: Record<string, boolean>; toggle: (noteMsgId: string) => void }
 
-/** The header state buttons: each ticket shows the two states it's NOT in, so
- *  you can always move it either direction (Roy 2026-07-15). */
-const STATE_META: Record<TicketState, { icon: typeof Circle; title: string; className: string }> = {
+/** Ticket-state segmented control. Unlike the old two-button "move to" pattern,
+ *  this shows ALL three states so the CURRENT one is always visible (filled),
+ *  and the other two are one click away. Active fills read as a progression:
+ *  neutral (Open) → amber (Assigned/working) → emerald (Closed/done).
+ *  Roy 2026-07-20. */
+const STATE_META: Record<TicketState, {
+  icon: typeof Circle
+  label: string
+  title: string
+  /** Fill when this is the current state. */
+  activeClass: string
+}> = {
   open: {
     icon: Circle,
-    title: "Move to Open",
-    className: "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted",
+    label: "Open",
+    title: "Open",
+    activeClass: "bg-muted text-foreground",
   },
   assigned: {
     icon: User,
+    label: "Assigned",
     title: "Pick up (Assigned)",
-    className: "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted",
+    activeClass: "bg-amber-500 text-white",
   },
   closed: {
     icon: Check,
+    label: "Closed",
     title: "Close ticket",
-    className: "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600",
+    activeClass: "bg-emerald-500 text-white",
   },
 }
 
-function StateButton({ target, onClick }: { target: TicketState; onClick: () => void }) {
-  const meta = STATE_META[target]
-  const Icon = meta.icon
+const STATE_ORDER: readonly TicketState[] = ["open", "assigned", "closed"] as const
+
+function StateSwitch({ current, onSetState }: { current: TicketState; onSetState?: (t: TicketState) => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={meta.title}
-      aria-label={meta.title}
-      className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors",
-        meta.className,
-      )}
+    <div
+      role="group"
+      aria-label="Ticket status"
+      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm"
     >
-      <Icon className="h-4 w-4" strokeWidth={target === "closed" ? 3 : 2} />
-    </button>
+      {STATE_ORDER.map((s) => {
+        const meta = STATE_META[s]
+        const Icon = meta.icon
+        const isCurrent = s === current
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => !isCurrent && onSetState?.(s)}
+            disabled={isCurrent}
+            title={isCurrent ? `Status: ${meta.label}` : meta.title}
+            aria-label={isCurrent ? `Status: ${meta.label}` : meta.title}
+            aria-pressed={isCurrent}
+            className={cn(
+              "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
+              isCurrent
+                ? meta.activeClass
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" strokeWidth={s === "closed" ? 3 : 2} />
+            {/* Only the active segment shows its label - keeps the control compact
+                while making the current state unmistakable. */}
+            {isCurrent && <span>{meta.label}</span>}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -180,15 +213,10 @@ function ChatDetail({
         ? "assigned"
         : "open"
     : ticketState ?? "open"
-  const targets: readonly TicketState[] = (["open", "assigned", "closed"] as const).filter(
-    (s) => s !== current,
-  )
   return (
     <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-        {targets.map((t) => (
-          <StateButton key={t} target={t} onClick={() => onSetState?.(t)} />
-        ))}
+        <StateSwitch current={current} onSetState={onSetState} />
         {showDismiss && <DismissButton onClick={onClose} />}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
