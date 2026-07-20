@@ -1,9 +1,10 @@
 "use client"
 
-import { Inbox as InboxIcon, Loader2 } from "lucide-react"
+import { Inbox as InboxIcon } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { cn } from "@/lib/utils"
 import { FeedRow } from "./feed-row"
+import { InboxRowSkeletonList } from "./row-skeleton"
 import type { RowAction } from "../inbox-list-row"
 import type { InboxUser, FeedRow as FeedRowType } from "./types"
 
@@ -56,9 +57,7 @@ export function UnifiedFeed<T extends string>({
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {loading && rows.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground/70">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-          </div>
+          <InboxRowSkeletonList />
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground/60">

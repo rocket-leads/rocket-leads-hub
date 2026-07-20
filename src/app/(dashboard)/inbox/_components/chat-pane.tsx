@@ -33,6 +33,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
+import { InboxRowSkeletonList } from "./shell/row-skeleton"
 import { UserAvatar } from "@/components/ui/user-avatar"
 import { cn } from "@/lib/utils"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
@@ -557,8 +559,8 @@ function ThreadList({
   const wrapperClass = mergedRightEdge ? "rounded-l-xl rounded-r-none" : "rounded-xl"
   if (loading) {
     return (
-      <div className={cn("border border-border bg-card shadow-sm flex items-center justify-center py-12", wrapperClass)}>
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      <div className={cn("border border-border bg-card shadow-sm p-2", wrapperClass)}>
+        <InboxRowSkeletonList count={7} />
       </div>
     )
   }
@@ -1218,7 +1220,14 @@ export function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} onResolvedState={onResolvedState} />
+  // Resilience: a render error in the thread (bad message payload, etc.) must
+  // not white-screen the whole inbox. Reset when the open thread changes so
+  // navigating away from a broken thread recovers. Roy 2026-07-20.
+  return (
+    <ErrorBoundary label="this conversation" resetKey={thread.threadKey}>
+      <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} onResolvedState={onResolvedState} />
+    </ErrorBoundary>
+  )
 }
 
 type ComposerMode = "reply" | "internal"

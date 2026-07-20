@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Circle, User, CircleCheck, Inbox as InboxIcon, Loader2 } from "lucide-react"
+import { Circle, User, CircleCheck, Inbox as InboxIcon } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
 import { UpdateCard } from "./update-card"
+import { InboxRowSkeletonList } from "./row-skeleton"
 import type { InternalType, DeadlineFilter } from "./internal-rail"
 import type { ReactionSummary } from "@/lib/inbox/reactions"
 import type { InboxItem } from "@/types/inbox"
@@ -102,9 +103,7 @@ export function UpdateFeed({ items, currentUserId, types, deadline, loading, onC
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {loading && items.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground/70">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-          </div>
+          <InboxRowSkeletonList />
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground/60">
