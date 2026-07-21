@@ -31,10 +31,18 @@ type Props = {
   /** What the checkbox means — "ticket" close/reopen (round emerald) or
    *  "mention" done (square primary to-do). Defaults to "ticket". */
   checkboxKind?: "ticket" | "mention"
+  /** Channel-ticket multi-select. When provided, the LEFT channel icon doubles
+   *  as a select checkbox (hover reveals it; click toggles) and the right close
+   *  bolletje is dropped — closing happens in bulk from the selection bar.
+   *  Roy 2026-07-21. `onToggleSelect` gets the click event so the shell can do
+   *  Shift-range selection. */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (e: React.MouseEvent) => void
   users?: InboxUser[]
 }
 
-export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", users }: Props) {
+export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", selectable, selected, onToggleSelect, users }: Props) {
   const locale = useLocale()
   if (row.kind !== "chat" && row.item) {
     return (
@@ -81,12 +89,48 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
       {row.unread && <span aria-hidden className={cn("absolute inset-0 pointer-events-none", unreadTint)} />}
 
       {/* Simplified row (Roy 2026-07-15): channel icon + contact name + message,
-          date top-right, pending count + close checkbox on the right. No channel
+          date top-right, pending count on the right. Channel view: the left
+          icon doubles as a multi-select checkbox (Roy 2026-07-21). No channel
           badge, no linked/unlinked, no duplicate name line. */}
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-muted-foreground/80">
-          <SourceIcon thread={thread} />
-        </span>
+        {selectable ? (
+          // Left control: vertically centred, shows the channel icon by default
+          // and morphs into a checkbox on hover / when selected. Click selects
+          // (Shift-click range-selects via the shell) instead of opening.
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect?.(e)
+            }}
+            aria-pressed={selected}
+            aria-label="Select ticket"
+            className="relative flex h-6 w-6 shrink-0 items-center justify-center self-center"
+          >
+            <span
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground opacity-100"
+                  : "border-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:border-foreground",
+              )}
+            >
+              {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+            </span>
+            <span
+              className={cn(
+                "pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground/80 transition-opacity",
+                selected ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+              )}
+            >
+              <SourceIcon thread={thread} />
+            </span>
+          </button>
+        ) : (
+          <span className="mt-0.5 shrink-0 text-muted-foreground/80">
+            <SourceIcon thread={thread} />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <p className={cn("truncate text-sm", row.unread ? "font-semibold text-foreground" : "font-medium text-foreground/90")}>
             {row.title}
@@ -103,9 +147,10 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                 {row.unreadCount > 99 ? "99+" : row.unreadCount}
               </span>
             )}
-            {onClose && checkboxKind === "mention" && (
-              // Personal "mention done" to-do: SQUARE + primary hue + @ icon, so
-              // it never reads as "close the ticket" (which is round + emerald).
+            {/* Mentioned view keeps its per-user "mention done" checkbox on the
+                right (square + primary + @). Channel tickets no longer have a
+                right close bolletje — they close in bulk via the selection bar. */}
+            {!selectable && onClose && checkboxKind === "mention" && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -122,25 +167,6 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                 )}
               >
                 {isClosed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <AtSign className="h-3.5 w-3.5" strokeWidth={2.5} />}
-              </button>
-            )}
-            {onClose && checkboxKind === "ticket" && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onClose()
-                }}
-                aria-pressed={isClosed}
-                title={isClosed ? t("inbox.shell.checkbox.ticket_reopen", locale) : t("inbox.shell.checkbox.ticket_close", locale)}
-                className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full border transition-colors",
-                  isClosed
-                    ? "border-emerald-500 bg-emerald-500 text-white"
-                    : "border-muted-foreground/40 text-transparent hover:border-emerald-500/60 hover:text-emerald-500/40",
-                )}
-              >
-                <Check className="h-3.5 w-3.5" strokeWidth={3} />
               </button>
             )}
           </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck, Search, X } from "lucide-react"
@@ -636,14 +636,6 @@ export function InboxShell({
     [markThread],
   )
 
-  const closeThread = useCallback(
-    (row: FeedRow) => {
-      if (!row.thread) return
-      markThread(row.thread, row.thread.isArchived ? "unarchive" : "archive")
-    },
-    [markThread],
-  )
-
   // Mark a mention done/undone = flip the read-state of MY mention update rows
   // for that thread (per-user; doesn't touch the shared thread).
   const closeMention = useCallback(
@@ -679,6 +671,62 @@ export function InboxShell({
     setViewMode("mentioned")
     setExtState((s) => (s === "assigned" ? "open" : s))
   }, [])
+
+  // --- Channel-ticket multi-select (bulk close) ------------------------------
+  // Roy 2026-07-21: select tickets via the left channel icon, Shift-click to
+  // range-select down the list, then close them all at once from the bulk bar.
+  const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set())
+  const lastSelectedRef = useRef<string | null>(null)
+  // Offer selection on the channel ticket views (not the Mentioned view, whose
+  // right-side per-user "done" checkbox is a different axis). Shift-range uses
+  // whatever order the current list is in (tab or search results).
+  const selectable = isExternal && !mentionedOnly
+
+  const toggleTicketSelect = useCallback(
+    (row: FeedRow, e: React.MouseEvent) => {
+      const ordered = visibleExternalRows.map((r) => r.id)
+      const anchor = lastSelectedRef.current
+      setSelectedTickets((prev) => {
+        const next = new Set(prev)
+        if (e.shiftKey && anchor && anchor !== row.id) {
+          // Range-select every row between the last-clicked anchor and this one.
+          const a = ordered.indexOf(anchor)
+          const b = ordered.indexOf(row.id)
+          if (a !== -1 && b !== -1) {
+            const [lo, hi] = a < b ? [a, b] : [b, a]
+            for (let i = lo; i <= hi; i++) next.add(ordered[i])
+          } else {
+            next.has(row.id) ? next.delete(row.id) : next.add(row.id)
+          }
+        } else {
+          next.has(row.id) ? next.delete(row.id) : next.add(row.id)
+        }
+        return next
+      })
+      lastSelectedRef.current = row.id
+    },
+    [visibleExternalRows],
+  )
+
+  const clearTicketSelection = useCallback(() => {
+    setSelectedTickets((prev) => (prev.size === 0 ? prev : new Set()))
+    lastSelectedRef.current = null
+  }, [])
+
+  // Selection is scoped to the current tab/view — drop it when the context
+  // changes so a stale Shift-anchor can't range-select across lists.
+  useEffect(() => {
+    clearTicketSelection()
+  }, [effectiveState, viewMode, scope, clearTicketSelection])
+
+  const closeSelectedTickets = useCallback(() => {
+    const ids = Array.from(selectedTickets)
+    for (const id of ids) {
+      const thread = threads.find((t) => t.threadKey === id)
+      if (thread && !thread.isArchived) markThread(thread, "archive")
+    }
+    clearTicketSelection()
+  }, [selectedTickets, threads, markThread, clearTicketSelection])
 
   // --- Composer --------------------------------------------------------------
   const [composerOpen, setComposerOpen] = useState(false)
@@ -901,9 +949,12 @@ export function InboxShell({
                   onFilterChange={setExtState}
                   onOpen={openItem}
                   onAction={handleRowAction}
-                  onCloseRow={mentionedOnly ? closeMention : closeThread}
+                  onCloseRow={mentionedOnly ? closeMention : undefined}
                   closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
                   checkboxKind={mentionedOnly ? "mention" : "ticket"}
+                  selectable={selectable}
+                  selectedOf={selectable ? (row) => selectedTickets.has(row.id) : undefined}
+                  onToggleSelect={selectable ? toggleTicketSelect : undefined}
                   users={users}
                   emptyHint={emptyHint}
                 />
@@ -986,6 +1037,34 @@ export function InboxShell({
         defaultTitle={composerDefaults.title}
         defaultBody={composerDefaults.body}
       />
+
+      {/* Bulk-select action bar — appears once ≥1 ticket is selected via the
+          left icon. Same h-9 rounded-md chip chrome as the chat bulk bar. */}
+      {selectable && selectedTickets.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-popover px-2 py-1.5 shadow-lg">
+          <span className="px-2 text-xs font-medium tabular-nums">
+            {t("inbox.shell.bulk.selected", locale, { n: selectedTickets.size })}
+          </span>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={closeSelectedTickets}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+          >
+            <CircleCheck className="h-3.5 w-3.5" />
+            {t("inbox.shell.bulk.close", locale)}
+          </button>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={clearTicketSelection}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+            {t("inbox.shell.bulk.clear", locale)}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

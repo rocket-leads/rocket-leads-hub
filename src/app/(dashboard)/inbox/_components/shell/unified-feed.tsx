@@ -39,6 +39,11 @@ type Props<T extends string> = {
    *  square primary check). Disambiguates the two axes that used to share one
    *  icon. Defaults to "ticket". */
   checkboxKind?: "ticket" | "mention"
+  /** Channel-ticket multi-select: makes the left icon a select checkbox.
+   *  `onToggleSelect` receives the click event (for Shift-range). */
+  selectable?: boolean
+  selectedOf?: (row: FeedRowType) => boolean
+  onToggleSelect?: (row: FeedRowType, e: React.MouseEvent) => void
   users?: InboxUser[]
   emptyHint?: React.ReactNode
 }
@@ -56,6 +61,9 @@ export function UnifiedFeed<T extends string>({
   onCloseRow,
   closedOf,
   checkboxKind,
+  selectable,
+  selectedOf,
+  onToggleSelect,
   users,
   emptyHint,
 }: Props<T>) {
@@ -87,6 +95,9 @@ export function UnifiedFeed<T extends string>({
               onClose={onCloseRow && row.kind === "chat" ? () => onCloseRow(row) : undefined}
               closed={closedOf ? closedOf(row) : undefined}
               checkboxKind={checkboxKind}
+              selectable={selectable && row.kind === "chat"}
+              selected={selectedOf ? selectedOf(row) : undefined}
+              onToggleSelect={onToggleSelect ? (e) => onToggleSelect(row, e) : undefined}
               users={users}
             />
           ))
