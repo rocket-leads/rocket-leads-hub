@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth"
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import {
   getChatThreadMessages,
   getChatThreadState,
@@ -182,43 +182,50 @@ export async function PATCH(
         break
     }
 
-    // Mirror a Hub close/reopen back to the underlying Trengo ticket(s) so the
-    // two stay in sync directly (Roy 2026-07-17: "direct syncen als ik een
-    // ticket sluit"). Best-effort - a Trengo hiccup mustn't fail the Hub action.
+    // Mirror the Hub action back to the underlying Trengo ticket(s), but do it
+    // AFTER the response is sent (`after()`), NOT in the request path. The
+    // Supabase write above is already done, so the Hub UI can update instantly
+    // (optimistically) while the slow Trengo API round-trip runs in the
+    // background. Roy 2026-07-21: "als ik klik moet 'ie meteen reageren". The
+    // Supabase state is canonical for the Hub; Trengo is a mirror + has the
+    // reconcile cron as a backstop, so a dropped mirror self-heals.
     if (action === "archive" || action === "unarchive") {
       const trengoAction = action === "archive" ? "close" : "reopen"
-      try {
-        const ticketIds = await getChatThreadTicketIds(threadKey)
-        await Promise.all(ticketIds.map((id) => setTrengoTicketState(id, trengoAction)))
-      } catch (e) {
-        console.error(
-          `[threads] Trengo ${trengoAction} sync failed for ${threadKey}:`,
-          e instanceof Error ? e.message : e,
-        )
-      }
+      after(async () => {
+        try {
+          const ticketIds = await getChatThreadTicketIds(threadKey)
+          await Promise.all(ticketIds.map((id) => setTrengoTicketState(id, trengoAction)))
+        } catch (e) {
+          console.error(
+            `[threads] Trengo ${trengoAction} sync failed for ${threadKey}:`,
+            e instanceof Error ? e.message : e,
+          )
+        }
+      })
     }
 
     // Mirror a Hub "Opgepakt" pick-up to Trengo: assign the ticket to the user
     // who claimed it here, so they show + get notified in Trengo. Roy 2026-07-20
-    // ("assigning in the Hub assigns in Trengo"). Best-effort; only when we can
-    // resolve the Hub user to a Trengo user id.
+    // ("assigning in the Hub assigns in Trengo"). Deferred via `after()` too.
     if (action === "assign") {
-      try {
-        const { getTrengoMentionContext } = await import("@/lib/inbox/trengo-mentions")
-        const { createAdminClient } = await import("@/lib/supabase/server")
-        const supabase = await createAdminClient()
-        const ctx = await getTrengoMentionContext(supabase)
-        const trengoUserId = ctx.trengoIdByHubId.get(userId)
-        if (trengoUserId != null) {
-          const ticketIds = await getChatThreadTicketIds(threadKey)
-          await Promise.all(ticketIds.map((id) => assignTrengoTicket(id, trengoUserId)))
+      after(async () => {
+        try {
+          const { getTrengoMentionContext } = await import("@/lib/inbox/trengo-mentions")
+          const { createAdminClient } = await import("@/lib/supabase/server")
+          const supabase = await createAdminClient()
+          const ctx = await getTrengoMentionContext(supabase)
+          const trengoUserId = ctx.trengoIdByHubId.get(userId)
+          if (trengoUserId != null) {
+            const ticketIds = await getChatThreadTicketIds(threadKey)
+            await Promise.all(ticketIds.map((id) => assignTrengoTicket(id, trengoUserId)))
+          }
+        } catch (e) {
+          console.error(
+            `[threads] Trengo assign sync failed for ${threadKey}:`,
+            e instanceof Error ? e.message : e,
+          )
         }
-      } catch (e) {
-        console.error(
-          `[threads] Trengo assign sync failed for ${threadKey}:`,
-          e instanceof Error ? e.message : e,
-        )
-      }
+      })
     }
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {

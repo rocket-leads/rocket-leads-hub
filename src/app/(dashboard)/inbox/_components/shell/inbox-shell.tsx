@@ -61,6 +61,41 @@ function threadState(t: ChatThreadSummary): TicketState {
   return t.isAssigned ? "assigned" : "open"
 }
 
+/** The instant, client-side state change a thread action implies, applied
+ *  optimistically to the cached thread so the row moves tabs / clears its badge
+ *  the moment you click - before the server (and its background Trengo mirror)
+ *  round-trip. Returns null for actions with no visible thread-state change.
+ *  Roy 2026-07-21: "als ik klik, boom, de volgende". */
+function optimisticThreadPatch(
+  action: string,
+  payload?: { until?: string | null },
+): Partial<ChatThreadSummary> | null {
+  switch (action) {
+    case "archive":
+      return { isArchived: true }
+    case "unarchive":
+      return { isArchived: false }
+    case "assign":
+      return { isAssigned: true }
+    case "open":
+      return { isArchived: false, isAssigned: false }
+    case "mark_read":
+      return { unreadCount: 0 }
+    case "mark_unread":
+      return { unreadCount: 1 }
+    case "star":
+      return { isStarred: true }
+    case "unstar":
+      return { isStarred: false }
+    case "snooze":
+      return { snoozedUntil: payload?.until ?? null }
+    case "unsnooze":
+      return { snoozedUntil: null }
+    default:
+      return null
+  }
+}
+
 /** Build a Mentioned-view feed row from a mention UPDATE. Prefers the fully
  *  loaded thread (rich preview / channel / triage state) when it's in the
  *  active thread list; otherwise synthesizes a stub so the mention still shows
@@ -534,14 +569,40 @@ export function InboxShell({
 
   const markThread = useCallback(
     (thread: ChatThreadSummary, action: string, payload?: { until?: string | null }) => {
+      // 1. Optimistic: patch the cached thread NOW so the row moves tabs / clears
+      //    its badge and the auto-open effect advances to the next ticket, all in
+      //    the same frame as the click. No waiting on the network.
+      const patch = optimisticThreadPatch(action, payload)
+      if (patch) {
+        queryClient.setQueryData<{ threads: ChatThreadSummary[] }>(
+          ["inbox-threads", "external"],
+          (old) =>
+            old?.threads
+              ? {
+                  ...old,
+                  threads: old.threads.map((t) =>
+                    t.threadKey === thread.threadKey ? { ...t, ...patch } : t,
+                  ),
+                }
+              : old,
+        )
+      }
+      // 2. Fire the write. On success we DON'T refetch the list (the optimistic
+      //    state already matches the canonical Supabase write, and a refetch
+      //    would flicker); the 5s poll + open-thread detail invalidate reconcile.
+      //    On failure we resync from the server to roll the optimism back.
       fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, until: payload?.until }),
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
-        queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
       })
+        .then((res) => {
+          if (!res.ok) throw new Error(`thread ${action} failed: ${res.status}`)
+          queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+        })
+        .catch(() => {
+          queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
+        })
     },
     [queryClient],
   )
@@ -591,6 +652,16 @@ export function InboxShell({
       if (list.length === 0) return
       const done = list.every((u) => u.status === "read")
       const status = done ? "unread" : "read"
+      const ids = new Set(list.map((u) => u.id))
+      // Optimistic: flip the cached mention rows now so the row moves To-do <->
+      // Done and the Mentioned view advances instantly (Roy 2026-07-21).
+      queryClient.setQueryData<{ items: InboxItem[] }>(
+        ["shell-mentions", locked?.id ?? "me"],
+        (old) =>
+          old?.items
+            ? { ...old, items: old.items.map((it) => (ids.has(it.id) ? { ...it, status } : it)) }
+            : old,
+      )
       Promise.all(
         list.map((u) =>
           fetch(`/api/inbox/${u.id}`, {
@@ -599,9 +670,9 @@ export function InboxShell({
             body: JSON.stringify({ status }),
           }),
         ),
-      ).then(refreshItems)
+      ).catch(refreshItems) // only resync on failure; success already matches
     },
-    [mentionUpdatesByThread, refreshItems],
+    [mentionUpdatesByThread, queryClient, locked?.id, refreshItems],
   )
 
   const selectMentioned = useCallback(() => {
