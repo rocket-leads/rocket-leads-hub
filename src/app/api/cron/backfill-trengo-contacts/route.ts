@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
-import { fetchTrengoContact } from "@/lib/integrations/trengo"
-import { upsertTrengoContacts, contactIdFromThreadKey } from "@/lib/inbox/trengo-contacts"
+import { fetchTrengoContactStatus } from "@/lib/integrations/trengo"
+import {
+  upsertTrengoContacts,
+  contactIdFromThreadKey,
+  reconcileDeadContact,
+} from "@/lib/inbox/trengo-contacts"
 
 /**
  * Populate / refresh the `trengo_contacts` registry for EXISTING threads.
@@ -113,18 +117,34 @@ export async function GET(req: NextRequest) {
     const stillMissing = idList.filter((id) => !withPhone.has(id))
     let fetched = 0
     let namedFromApi = 0
+    const deadIds: number[] = []
     for (const id of stillMissing) {
       if (fetched >= fetchCap) break
       fetched += 1
-      const c = await fetchTrengoContact(id)
+      const { status, contact: c } = await fetchTrengoContactStatus(id)
       if (c && (c.name || c.phone)) {
         await upsertTrengoContacts(supabase, [
           { id, name: c.name ?? c.full_name ?? null, email: c.email, phone: c.phone },
         ])
         if (c.name || c.full_name) namedFromApi += 1
+      } else if (status === 404) {
+        // Record is gone in Trengo - a candidate for dead-contact auto-relink.
+        deadIds.push(id)
       }
       // ~5 req/s ceiling, same as the poll, to stay under Trengo's limit.
       await new Promise((r) => setTimeout(r, 200))
+    }
+
+    // 4b. Dead (404) contacts: if one is linked to a client with a single live
+    //     number, merge its stale thread onto that number and drop the dead id.
+    let deadMerged = 0
+    let deadRowsMerged = 0
+    for (const id of deadIds) {
+      const r = await reconcileDeadContact(supabase, id)
+      if (r.merged) {
+        deadMerged += 1
+        deadRowsMerged += r.rows ?? 0
+      }
     }
 
     // 5. Merge duplicate contacts for the same number: re-key historical
@@ -146,6 +166,9 @@ export async function GET(req: NextRequest) {
       seededFromRows: seededFromRows.size,
       apiFetched: fetched,
       namedFromApi,
+      deadContacts: deadIds.length,
+      deadMerged,
+      deadRowsMerged,
       remaining: Math.max(0, stillMissing.length - fetched),
       messagesRekeyed,
       mentionsRekeyed,

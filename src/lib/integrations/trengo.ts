@@ -806,6 +806,40 @@ export async function fetchTrengoContact(
 }
 
 /**
+ * Like fetchTrengoContact but reports the HTTP status, so a caller can tell a
+ * DELETED contact (404 → the record is gone in Trengo, e.g. a duplicate that was
+ * merged away) apart from a transient error. Roy 2026-07-22: auto-relink dead
+ * 404 contacts to the client's live number. `status: 0` = network/other error
+ * (treat as "unknown, not dead").
+ */
+export async function fetchTrengoContactStatus(
+  contactId: number | string,
+): Promise<{ status: number; contact: TrengoContact | null }> {
+  try {
+    const token = (await getTrengoToken()).trim()
+    const res = await fetch(`https://app.trengo.com/api/v2/contacts/${contactId}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    })
+    if (!res.ok) return { status: res.status, contact: null }
+    const data = (await res.json()) as { data?: TrengoContact } | TrengoContact
+    const obj = (data as { data?: TrengoContact }).data ?? (data as TrengoContact)
+    if (!obj || typeof obj.id !== "number") return { status: res.status, contact: null }
+    return {
+      status: res.status,
+      contact: {
+        id: obj.id,
+        name: obj.name ?? null,
+        email: obj.email ?? null,
+        phone: obj.phone ?? null,
+        full_name: obj.full_name ?? null,
+      },
+    }
+  } catch {
+    return { status: 0, contact: null }
+  }
+}
+
+/**
  * Map a raw Trengo contact to the unified ResolvedEntity. The subline
  * carries phone + email so the AM can disambiguate same-named contacts -
  * "Brian Verheij" alone is useless when a company has separate WhatsApp,

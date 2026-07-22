@@ -67,6 +67,64 @@ export async function getCanonicalThreadBases(
   return out
 }
 
+/**
+ * Auto-relink a DEAD (deleted/404) Trengo contact's thread onto the client's
+ * live number. When a contact record is gone in Trengo but still has Hub history
+ * (a stale duplicate the weekly-update automation left behind, a merged-away
+ * record, …) and it's linked to a client that has exactly ONE live phone number
+ * among its other contacts, we can safely conclude it's the same person and
+ * merge its rows into that phone thread. Ambiguous cases (unlinked, or a client
+ * with several distinct numbers) are left untouched. Roy 2026-07-22.
+ */
+export async function reconcileDeadContact(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  deadContactId: number | string,
+): Promise<{ merged: boolean; phone?: string; rows?: number }> {
+  const deadIdStr = String(deadContactId)
+  const { data: clients } = await supabase
+    .from("clients")
+    .select("monday_item_id, trengo_contact_ids")
+    .contains("trengo_contact_ids", [deadIdStr])
+  const list = (clients ?? []) as Array<{ monday_item_id: string; trengo_contact_ids: string[] | null }>
+  if (list.length !== 1) return { merged: false } // unlinked or linked to several clients → don't guess
+  const client = list[0]
+  const otherIds = (client.trengo_contact_ids ?? [])
+    .filter((x) => x !== deadIdStr)
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+  if (otherIds.length === 0) return { merged: false }
+
+  const { data: contacts } = await supabase
+    .from("trengo_contacts")
+    .select("phone")
+    .in("id", otherIds)
+    .not("phone", "is", null)
+  const phones = Array.from(
+    new Set(
+      ((contacts ?? []) as Array<{ phone: string | null }>)
+        .map((c) => normalizePhone(c.phone))
+        .filter((p): p is string => p != null),
+    ),
+  )
+  if (phones.length !== 1) return { merged: false } // no single unambiguous number
+  const phone = phones[0]
+  const phoneBase = `trengo:phone:${phone}`
+
+  // Merge the dead contact's rows into the live phone thread + attribute them.
+  const { data: upd } = await supabase
+    .from("inbox_events")
+    .update({ thread_key: phoneBase, client_id: client.monday_item_id })
+    .eq("thread_key", `trengo:contact:${deadIdStr}`)
+    .select("id")
+  // Drop the dead id from the client's link list - it's gone in Trengo.
+  await supabase
+    .from("clients")
+    .update({ trengo_contact_ids: (client.trengo_contact_ids ?? []).filter((x) => x !== deadIdStr) })
+    .eq("monday_item_id", client.monday_item_id)
+
+  return { merged: true, phone, rows: upd?.length ?? 0 }
+}
+
 /** Display names for a set of phone-canonical threads: phone → contact name.
  *  Picks any registry row on that phone that carries a name. */
 export async function getTrengoNamesByPhone(
