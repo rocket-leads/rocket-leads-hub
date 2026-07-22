@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { normalizePhone } from "@/lib/inbox/trengo-contacts"
 
 /**
  * POST /api/inbox/threads/{threadKey}/link
@@ -28,19 +29,11 @@ export async function POST(
   }
 
   const { threadKey: encoded } = await params
-  // Threads are channel-scoped ("<base>|ch:<id>"); linking a contact to a
-  // client is contact-level, so act on the base key across all channels.
+  // Threads are channel-scoped ("<base>|ch:<id>"); linking is contact-level, so
+  // act on the base key across all channels. A base is either a single contact
+  // (`trengo:contact:<id>`) or a phone-merged thread (`trengo:phone:<E164>`)
+  // that fuses several duplicate contacts for one number. Roy 2026-07-22.
   const threadKey = decodeURIComponent(encoded).replace(/\|ch:.*$/, "")
-  if (!threadKey.startsWith("trengo:contact:")) {
-    return NextResponse.json(
-      { error: "Linking is only supported on Trengo contact threads" },
-      { status: 400 },
-    )
-  }
-  const contactId = threadKey.replace(/^trengo:contact:/, "")
-  if (!contactId) {
-    return NextResponse.json({ error: "Missing contact id in threadKey" }, { status: 400 })
-  }
 
   const body = (await req.json().catch(() => null)) as { clientId?: string } | null
   const clientId = body?.clientId?.trim()
@@ -49,6 +42,50 @@ export async function POST(
   }
 
   const supabase = await createAdminClient()
+
+  // Resolve the set of Trengo contact ids this thread represents, and the
+  // thread_key(s) whose rows we must backfill.
+  const contactIds: string[] = []
+  const backfillKeys: string[] = [threadKey]
+  if (threadKey.startsWith("trengo:contact:")) {
+    const cid = threadKey.replace(/^trengo:contact:/, "")
+    if (cid) contactIds.push(cid)
+    // If this contact has a phone, its rows may already be phone-merged, and
+    // sibling contacts on the same number should link too.
+    const { data: me } = await supabase
+      .from("trengo_contacts")
+      .select("phone")
+      .eq("id", Number(cid))
+      .maybeSingle<{ phone: string | null }>()
+    const norm = normalizePhone(me?.phone)
+    if (norm) {
+      backfillKeys.push(`trengo:phone:${norm}`)
+      const { data: sibs } = await supabase
+        .from("trengo_contacts")
+        .select("id, phone")
+        .eq("phone", me!.phone)
+      for (const s of (sibs ?? []) as Array<{ id: number }>) contactIds.push(String(s.id))
+    }
+  } else if (threadKey.startsWith("trengo:phone:")) {
+    const norm = threadKey.replace(/^trengo:phone:/, "")
+    // Every registry contact whose normalised phone matches this thread.
+    const { data: all } = await supabase
+      .from("trengo_contacts")
+      .select("id, phone")
+      .not("phone", "is", null)
+    for (const r of (all ?? []) as Array<{ id: number; phone: string | null }>) {
+      if (normalizePhone(r.phone) === norm) contactIds.push(String(r.id))
+    }
+  } else {
+    return NextResponse.json(
+      { error: "Linking is only supported on Trengo contact/phone threads" },
+      { status: 400 },
+    )
+  }
+  const contactId = contactIds[0]
+  if (!contactId) {
+    return NextResponse.json({ error: "No contact id resolvable from thread" }, { status: 400 })
+  }
 
   // Resolve target client and verify it exists.
   const { data: client, error: cErr } = await supabase
@@ -71,10 +108,11 @@ export async function POST(
   // Surfaces the conflict so the AM can decide (Trengo allows one contact
   // per real person; mapping it to two RL clients is almost always a
   // mistake).
+  const uniqueContactIds = Array.from(new Set(contactIds))
   const { data: existingOwner } = await supabase
     .from("clients")
     .select("monday_item_id, name")
-    .contains("trengo_contact_ids", [contactId])
+    .overlaps("trengo_contact_ids", uniqueContactIds)
     .neq("monday_item_id", clientId)
     .maybeSingle<{ monday_item_id: string; name: string }>()
   if (existingOwner) {
@@ -88,15 +126,11 @@ export async function POST(
     )
   }
 
-  // Append the contact id (no-op if already present). PostgreSQL doesn't
-  // have a native upsert-into-array; we do the dedupe in JS.
+  // Append every contact id on this thread (dedupe in JS - PostgreSQL has no
+  // native upsert-into-array). Covers all duplicate contacts on a merged phone.
   const current = client.trengo_contact_ids ?? []
-  let appended = false
-  let next = current
-  if (!current.includes(contactId)) {
-    next = [...current, contactId]
-    appended = true
-  }
+  const next = Array.from(new Set([...current, ...uniqueContactIds]))
+  const appended = next.length > current.length
   if (appended) {
     const { error: uErr } = await supabase
       .from("clients")
@@ -107,18 +141,16 @@ export async function POST(
     }
   }
 
-  // Backfill historical inbox_events: every unlinked event in this thread
-  // gets the target client_id so the thread shows up under the client's
-  // history immediately. We only touch rows that were truly unlinked
-  // (`client_id = ""`) - never overwrite an existing link.
+  // Backfill historical inbox_events: every unlinked event on this thread (both
+  // the contact base and the merged phone base) gets the target client_id so
+  // the thread shows under the client's history immediately. Only touch rows
+  // that were truly unlinked (`client_id = ""`) - never overwrite a link.
   const { error: bErr, count } = await supabase
     .from("inbox_events")
     .update({ client_id: clientId }, { count: "exact" })
-    .eq("thread_key", threadKey)
+    .in("thread_key", backfillKeys)
     .eq("client_id", "")
   if (bErr) {
-    // Don't fail the response - the link itself succeeded; the backfill
-    // is a nice-to-have. Surface in logs for monitoring.
     console.error("link: backfill failed", bErr)
   }
 
