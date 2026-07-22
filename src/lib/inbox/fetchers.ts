@@ -890,9 +890,14 @@ function deriveThreadName(threadKey: string, fallback: string): string {
  */
 const GREETING_RE =
   /^\s*(?:Ha|Hoi|Hi|Hallo|Hey|Hé)\s+([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\-']{1,29}(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\-']{1,29})?)\s*[,!.\n]/
+// Name-first opener of OUR weekly-update template: "Rutger Hier de update…" /
+// "Sylwester Here is the update…". Our own copy, so the shape is reliable enough
+// to capture the leading first name without a greeting word. Roy 2026-07-22.
+const WEEKLY_OPENER_RE =
+  /^\s*([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\-']{1,29})\s+(?:Hier\s+(?:is|de)|Here'?s|Here\s+is)\s+(?:de\s+|the\s+)?update\b/i
 function extractRecipientFromGreeting(body: string | null | undefined): string | null {
   if (!body) return null
-  const match = body.match(GREETING_RE)
+  const match = body.match(GREETING_RE) ?? body.match(WEEKLY_OPENER_RE)
   if (!match) return null
   const captured = match[1].trim()
   // Reject obvious non-names that occasionally slip through ("There",
