@@ -1,6 +1,6 @@
 "use client"
 
-import { Inbox as InboxIcon } from "lucide-react"
+import { Inbox as InboxIcon, Check } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -44,6 +44,9 @@ type Props<T extends string> = {
   selectable?: boolean
   selectedOf?: (row: FeedRowType) => boolean
   onToggleSelect?: (row: FeedRowType, e: React.MouseEvent) => void
+  /** Tri-state select-all header over the visible rows (Trengo-style). */
+  selectAllState?: "none" | "some" | "all"
+  onToggleSelectAll?: () => void
   users?: InboxUser[]
   emptyHint?: React.ReactNode
 }
@@ -64,6 +67,8 @@ export function UnifiedFeed<T extends string>({
   selectable,
   selectedOf,
   onToggleSelect,
+  selectAllState = "none",
+  onToggleSelectAll,
   users,
   emptyHint,
 }: Props<T>) {
@@ -71,6 +76,34 @@ export function UnifiedFeed<T extends string>({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <TopTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} compact />
+
+      {/* Select-all header: only appears once ≥1 ticket is selected (Roy
+          2026-07-22: permanent = ruis). Then one click extends to every visible
+          ticket in this tab; click again (state "all") clears + hides it. */}
+      {selectable && onToggleSelectAll && selectAllState !== "none" && (
+        <button
+          type="button"
+          onClick={onToggleSelectAll}
+          role="checkbox"
+          aria-checked={selectAllState === "all" ? true : selectAllState === "some" ? "mixed" : false}
+          className="flex shrink-0 items-center gap-2 px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all",
+              selectAllState === "all"
+                ? "border-primary bg-primary text-primary-foreground"
+                : selectAllState === "some"
+                  ? "border-primary bg-primary/25"
+                  : "border-muted-foreground/40",
+            )}
+          >
+            {selectAllState === "all" && <Check className="h-3 w-3" strokeWidth={3} />}
+            {selectAllState === "some" && <span className="block h-0.5 w-2.5 rounded-sm bg-primary" />}
+          </span>
+          {t(selectAllState === "all" ? "inbox.shell.bulk.deselect_all" : "inbox.shell.bulk.select_all", locale)}
+        </button>
+      )}
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {loading && rows.length === 0 ? (

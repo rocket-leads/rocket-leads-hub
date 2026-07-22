@@ -653,6 +653,8 @@ export const DICTIONARY = {
   "inbox.shell.bulk.selected": { nl: "{n} geselecteerd", en: "{n} selected" },
   "inbox.shell.bulk.close": { nl: "Sluiten", en: "Close" },
   "inbox.shell.bulk.clear": { nl: "Wissen", en: "Clear" },
+  "inbox.shell.bulk.select_all": { nl: "Alles selecteren", en: "Select all" },
+  "inbox.shell.bulk.deselect_all": { nl: "Alles deselecteren", en: "Deselect all" },
   "inbox.card.kind.task": { nl: "Taak", en: "Task" },
   "inbox.card.kind.update": { nl: "Update", en: "Update" },
   "inbox.card.due_prefix": { nl: "Deadline {date}", en: "Due {date}" },

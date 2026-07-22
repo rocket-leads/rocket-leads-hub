@@ -728,6 +728,23 @@ export function InboxShell({
     clearTicketSelection()
   }, [selectedTickets, threads, markThread, clearTicketSelection])
 
+  // Select-all header (Trengo-style): tri-state over the currently-visible tab.
+  const visibleTicketIds = useMemo(() => visibleExternalRows.map((r) => r.id), [visibleExternalRows])
+  const selectAllState: "none" | "some" | "all" = useMemo(() => {
+    if (!selectable || visibleTicketIds.length === 0) return "none"
+    const sel = visibleTicketIds.filter((id) => selectedTickets.has(id)).length
+    if (sel === 0) return "none"
+    return sel === visibleTicketIds.length ? "all" : "some"
+  }, [selectable, visibleTicketIds, selectedTickets])
+  const toggleSelectAll = useCallback(() => {
+    setSelectedTickets((prev) => {
+      const allSelected =
+        visibleTicketIds.length > 0 && visibleTicketIds.every((id) => prev.has(id))
+      return allSelected ? new Set() : new Set(visibleTicketIds)
+    })
+    lastSelectedRef.current = null
+  }, [visibleTicketIds])
+
   // --- Composer --------------------------------------------------------------
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerDefaults, setComposerDefaults] = useState<{
@@ -955,6 +972,8 @@ export function InboxShell({
                   selectable={selectable}
                   selectedOf={selectable ? (row) => selectedTickets.has(row.id) : undefined}
                   onToggleSelect={selectable ? toggleTicketSelect : undefined}
+                  selectAllState={selectAllState}
+                  onToggleSelectAll={toggleSelectAll}
                   users={users}
                   emptyHint={emptyHint}
                 />
