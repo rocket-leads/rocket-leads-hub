@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
-import { fetchTrengoTickets } from "@/lib/integrations/trengo"
+import { fetchTrengoTickets, fetchUserTickets } from "@/lib/integrations/trengo"
+import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 
 /**
  * Mirror Trengo ticket CLOSES back into the Hub.
@@ -56,24 +57,56 @@ export async function GET(req: NextRequest) {
     const supabase = await createAdminClient()
 
     // 1. Collect recently-closed Trengo ticket ids (newest-first; stop once a
-    //    whole page is older than the window).
-    const closedIds: number[] = []
+    //    whole page is older than the window). Helper so both the workspace-token
+    //    pass and the per-user pass share the paging + recency logic.
+    const closedIdSet = new Set<number>()
     let ticketsScanned = 0
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const tickets = await fetchTrengoTickets(`status=CLOSED&page=${page}`)
-      if (tickets.length === 0) break
-      ticketsScanned += tickets.length
-      let anyRecent = false
-      for (const t of tickets) {
-        const closedMs = parseTrengoTs(t.closed_at) ?? parseTrengoTs(t.latest_message_at)
-        // No timestamp → include (safer to check than skip); recent → include.
-        if (closedMs == null || closedMs >= cutoffMs) {
-          closedIds.push(t.id)
-          anyRecent = true
+    let usersScanned = 0
+    async function collectClosed(
+      fetchPage: (page: number) => Promise<Array<{ id: number; closed_at: string | null; latest_message_at: string | null }>>,
+    ) {
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        let tickets: Array<{ id: number; closed_at: string | null; latest_message_at: string | null }>
+        try {
+          tickets = await fetchPage(page)
+        } catch {
+          break
         }
+        if (tickets.length === 0) break
+        ticketsScanned += tickets.length
+        let anyRecent = false
+        for (const t of tickets) {
+          const closedMs = parseTrengoTs(t.closed_at) ?? parseTrengoTs(t.latest_message_at)
+          // No timestamp → include (safer to check than skip); recent → include.
+          if (closedMs == null || closedMs >= cutoffMs) {
+            closedIdSet.add(t.id)
+            anyRecent = true
+          }
+        }
+        if (!anyRecent) break
+        await new Promise((r) => setTimeout(r, 120))
       }
-      if (!anyRecent) break
     }
+
+    // 1a. Workspace token → shared channels.
+    await collectClosed((page) => fetchTrengoTickets(`status=CLOSED&page=${page}`))
+
+    // 1b. Per-user token → PRIVATE inboxes ("Roy Personal" etc.), which the
+    //     workspace token can't see. This is why closes there weren't syncing to
+    //     the Hub, inflating the open count. Roy 2026-07-22. Only users with a
+    //     connected personal Trengo token.
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("id")
+      .not("trengo_channel_ids", "is", null)
+    for (const u of (userRows ?? []) as Array<{ id: string }>) {
+      const token = await getUserPlatformToken(u.id, "trengo")
+      if (!token) continue
+      usersScanned += 1
+      await collectClosed((page) => fetchUserTickets(token, `status=CLOSED&page=${page}`))
+    }
+
+    const closedIds = Array.from(closedIdSet)
 
     // 2. Of those, find the ones the Hub still shows as OPEN (archived_at null).
     let archivedThreads = 0
@@ -111,6 +144,7 @@ export async function GET(req: NextRequest) {
     const metrics = {
       windowHours,
       ticketsScanned,
+      usersScanned,
       closedTickets: closedIds.length,
       archivedThreads,
       archivedRows,

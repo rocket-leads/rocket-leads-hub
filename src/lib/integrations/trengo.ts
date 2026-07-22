@@ -558,6 +558,23 @@ export async function fetchTrengoTickets(params: string): Promise<TrengoConversa
 }
 
 /**
+ * Same as fetchTrengoTickets but through a USER's personal token, so it can see
+ * that user's PRIVATE-inbox tickets (which the workspace token can't read). Used
+ * by the status reconcile to sync closes on personal inboxes like "Roy Personal"
+ * back into the Hub. Roy 2026-07-22.
+ */
+export async function fetchUserTickets(
+  userToken: string,
+  params: string,
+): Promise<TrengoConversation[]> {
+  const data = await trengoFetchAsUser<{ data: TrengoConversation[] }>(
+    `/tickets?${params}`,
+    userToken,
+  )
+  return data.data
+}
+
+/**
  * Close or reopen a Trengo ticket. Mirrors a Hub-side status change back to
  * Trengo so the two stay in sync (unlike mentions, tickets ARE writable via the
  * v2 API — `POST /tickets/{id}/close|reopen`). Best-effort: a 422 (already in

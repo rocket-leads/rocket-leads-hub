@@ -621,7 +621,7 @@ export const DICTIONARY = {
   // ─── Inbox 3-pane shell (feed rows, detail pane, ticket-state control) ─
   "inbox.shell.scope.internal": { nl: "Intern", en: "Internal" },
   "inbox.shell.scope.external": { nl: "Extern", en: "External" },
-  "inbox.shell.state.open": { nl: "Open", en: "Open" },
+  "inbox.shell.state.open": { nl: "Nieuw", en: "New" },
   "inbox.shell.state.assigned": { nl: "Opgepakt", en: "Assigned" },
   "inbox.shell.state.closed": { nl: "Gesloten", en: "Closed" },
   "inbox.shell.state.assigned_title": { nl: "Oppakken (Opgepakt)", en: "Pick up (Assigned)" },
