@@ -12,6 +12,7 @@ import {
   NeedsConnectError,
 } from "@/lib/inbox/reply"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
+import { getCanonicalThreadBases } from "@/lib/inbox/trengo-contacts"
 import { resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
 import { resolveAmUserIdForClient } from "@/lib/clients/build-weekly-update-draft"
 import {
@@ -345,9 +346,15 @@ export async function POST(
     const bodyFull = previewSource.length > 100 ? previewSource : null
     const createdAtSrc = new Date().toISOString()
 
-    const threadKey = client.trengoContactId
-      ? `trengo:contact:${client.trengoContactId}`
-      : `client:${clientRowId}`
+    // Key the mirror on the CANONICAL base (phone when known) so a weekly-update
+    // push merges into the client's live conversation instead of spawning a
+    // separate contact-keyed thread. Roy 2026-07-22.
+    let threadKey = `client:${clientRowId}`
+    if (client.trengoContactId) {
+      const canon = await getCanonicalThreadBases(supabase, [Number(client.trengoContactId)])
+      threadKey =
+        canon.get(Number(client.trengoContactId)) ?? `trengo:contact:${client.trengoContactId}`
+    }
     const sourceThread = ticketId
       ? `trengo:ticket:${ticketId}`
       : `client:${clientRowId}:${sendAsEmail ? "email" : "whatsapp"}`
@@ -356,7 +363,11 @@ export async function POST(
       .from("inbox_events")
       .insert({
         kind: "chat",
-        client_id: clientRowId,
+        // inbox_events.client_id is the Monday item id (that's what the chat
+        // grouping's client map is keyed on) - NOT the clients-table UUID. Using
+        // the UUID here left the mirrored weekly-update threads unresolvable →
+        // they rendered "Unknown" instead of the client name. Roy 2026-07-22.
+        client_id: mondayItemId,
         author_id: session.user.id,
         assignee_id: session.user.id,
         title: titlePreview,
