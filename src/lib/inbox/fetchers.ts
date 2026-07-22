@@ -8,7 +8,12 @@ import {
 } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
-import { getTrengoContactNames, contactIdFromThreadKey } from "@/lib/inbox/trengo-contacts"
+import {
+  getTrengoContactNames,
+  getTrengoNamesByPhone,
+  contactIdFromThreadKey,
+  phoneFromThreadKey,
+} from "@/lib/inbox/trengo-contacts"
 import { stripHtml } from "@/lib/html"
 import type {
   InboxChannelKind,
@@ -1014,16 +1019,21 @@ async function groupAndDecorateChatRows(
 
   const clientMap = await getMondayClientMap()
   const channelLookup = await getTrengoChannelLookup()
-  // Real Trengo contact names, keyed by the contact id in each thread_key, so
-  // even outbound-only / unlinked threads render the contact instead of
-  // "Unknown". Roy 2026-07-22. Registry is populated by the poll + webhook.
-  const contactIds = Array.from(byThread.keys())
-    .map((k) => contactIdFromThreadKey(k))
-    .filter((n): n is number => n != null)
-  const contactNameById =
-    contactIds.length > 0
-      ? await getTrengoContactNames(await createAdminClient(), contactIds)
-      : new Map<number, string>()
+  // Real Trengo contact names so even outbound-only / unlinked threads render
+  // the contact instead of "Unknown". Threads are keyed either by contact id
+  // (`trengo:contact:<id>`) or, once merged, by phone (`trengo:phone:<E164>`),
+  // so resolve names from both. Roy 2026-07-22. Registry populated by ingest +
+  // the backfill cron.
+  const keys = Array.from(byThread.keys())
+  const contactIds = keys.map((k) => contactIdFromThreadKey(k)).filter((n): n is number => n != null)
+  const phones = keys.map((k) => phoneFromThreadKey(k)).filter((p): p is string => p != null)
+  const admin = contactIds.length > 0 || phones.length > 0 ? await createAdminClient() : null
+  const contactNameById = admin && contactIds.length > 0
+    ? await getTrengoContactNames(admin, contactIds)
+    : new Map<number, string>()
+  const nameByPhone = admin && phones.length > 0
+    ? await getTrengoNamesByPhone(admin, phones)
+    : new Map<string, string>()
 
   const threads: ChatThreadSummary[] = []
   for (const [threadKey, { rows: threadRows }] of byThread) {
@@ -1046,7 +1056,12 @@ async function groupAndDecorateChatRows(
     // (2) an inbound client row's cached author name; (3) "Unknown", which the
     // greeting-extraction below tries to recover. Roy 2026-07-22: outbound-only
     // threads showed "Unknown" even though Trengo knows the contact.
-    const registryName = contactNameById.get(contactIdFromThreadKey(threadKey) ?? -1) ?? null
+    const cidForName = contactIdFromThreadKey(threadKey)
+    const phoneForName = phoneFromThreadKey(threadKey)
+    const registryName =
+      (cidForName != null ? contactNameById.get(cidForName) : null) ??
+      (phoneForName ? nameByPhone.get(phoneForName) : null) ??
+      null
     const fallbackName = registryName ?? externalAuthor?.author_name_cached ?? "Unknown"
     let primaryName = deriveThreadName(threadKey, fallbackName)
 

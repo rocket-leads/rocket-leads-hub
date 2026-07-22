@@ -64,24 +64,30 @@ export async function GET(req: NextRequest) {
 
     // 2. Which are already named in the registry — skip those.
     const alreadyNamed = new Set<number>()
+    // A contact is "fully known" only when it has BOTH a name and a phone: the
+    // name kills "Unknown", the PHONE enables the same-number merge. Anything
+    // missing a phone still needs a Trengo fetch (phone only comes from the API).
     const idList = Array.from(contactIds)
+    const withPhone = new Set<number>()
     for (let i = 0; i < idList.length; i += 500) {
       const chunk = idList.slice(i, i + 500)
       const { data } = await supabase
         .from("trengo_contacts")
-        .select("id, name")
+        .select("id, name, phone")
         .in("id", chunk)
-      for (const r of (data ?? []) as Array<{ id: number; name: string | null }>) {
+      for (const r of (data ?? []) as Array<{ id: number; name: string | null; phone: string | null }>) {
         if (r.name && r.name.trim()) alreadyNamed.add(r.id)
+        if (r.phone && r.phone.trim()) withPhone.add(r.id)
       }
     }
-    const missing = idList.filter((id) => !alreadyNamed.has(id))
+    const missingName = idList.filter((id) => !alreadyNamed.has(id))
 
     // 3. Cheap seed: any inbound client row already carries the contact name in
-    //    author_name_cached (author_external = the contact id). One pass.
+    //    author_name_cached (author_external = the contact id). One pass. Fills
+    //    names (kills "Unknown") without an API call; phones still need the fetch.
     const seededFromRows = new Map<number, string>()
-    for (let i = 0; i < missing.length; i += 300) {
-      const chunk = missing.slice(i, i + 300).map(String)
+    for (let i = 0; i < missingName.length; i += 300) {
+      const chunk = missingName.slice(i, i + 300).map(String)
       const { data } = await supabase
         .from("inbox_events")
         .select("author_external, author_name_cached")
@@ -102,9 +108,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // 4. Trengo fetch for the still-unnamed (outbound-only duplicates etc.),
-    //    bounded + throttled. Captures phone too (seeds the same-number merge).
-    const stillMissing = missing.filter((id) => !seededFromRows.has(id))
+    // 4. Trengo fetch for every contact still missing a PHONE (the merge key),
+    //    bounded + throttled. Also fills any still-missing name.
+    const stillMissing = idList.filter((id) => !withPhone.has(id))
     let fetched = 0
     let namedFromApi = 0
     for (const id of stillMissing) {
@@ -121,6 +127,19 @@ export async function GET(req: NextRequest) {
       await new Promise((r) => setTimeout(r, 200))
     }
 
+    // 5. Merge duplicate contacts for the same number: re-key historical
+    //    contact-based rows to the canonical phone base. Idempotent — only rows
+    //    still on a contact base are touched — so this converges as phones get
+    //    learned over successive runs.
+    let messagesRekeyed = 0
+    let mentionsRekeyed = 0
+    const { data: rekey } = await supabase.rpc("rekey_trengo_threads_by_phone")
+    const rk = Array.isArray(rekey) ? rekey[0] : rekey
+    if (rk) {
+      messagesRekeyed = Number(rk.messages_rekeyed ?? 0)
+      mentionsRekeyed = Number(rk.mentions_rekeyed ?? 0)
+    }
+
     const metrics = {
       distinctContacts: contactIds.size,
       alreadyNamed: alreadyNamed.size,
@@ -128,6 +147,8 @@ export async function GET(req: NextRequest) {
       apiFetched: fetched,
       namedFromApi,
       remaining: Math.max(0, stillMissing.length - fetched),
+      messagesRekeyed,
+      mentionsRekeyed,
       durationMs: Date.now() - startedAt,
     }
     await tracker.ok(metrics)

@@ -22,6 +22,72 @@ export function contactIdFromThreadKey(threadKey: string | null | undefined): nu
   return m ? Number(m[1]) : null
 }
 
+/** The phone embedded in a phone-canonical thread_key (`trengo:phone:<E164>`). */
+export function phoneFromThreadKey(threadKey: string | null | undefined): string | null {
+  if (!threadKey) return null
+  const m = threadKey.match(/^trengo:phone:([^|]+)/)
+  return m ? m[1] : null
+}
+
+/** Normalise a phone to a stable identity key: keep a leading `+`, drop every
+ *  other non-digit. `+31 6 34235885` / `0031634235885` → comparable forms.
+ *  Returns null for anything too short to be a real number. */
+export function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  const plus = trimmed.startsWith("+") || trimmed.startsWith("00")
+  const digits = trimmed.replace(/\D/g, "").replace(/^00/, "")
+  if (digits.length < 7) return null
+  return (plus ? "+" : "") + digits
+}
+
+/**
+ * Resolve the CANONICAL thread base for a set of Trengo contact ids. When a
+ * contact has a phone in the registry, its base is `trengo:phone:<E164>` so
+ * every Trengo contact record for the same WhatsApp number collapses into one
+ * thread (Roy 2026-07-22: duplicate contacts split the same person's history).
+ * Contacts with no known phone keep their `trengo:contact:<id>` base. Returns a
+ * Map only for the ids that map to a phone; callers default to the contact base.
+ */
+export async function getCanonicalThreadBases(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  contactIds: number[],
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>()
+  const unique = Array.from(new Set(contactIds.filter((n) => Number.isFinite(n))))
+  if (unique.length === 0) return out
+  const { data } = await supabase
+    .from("trengo_contacts")
+    .select("id, phone")
+    .in("id", unique)
+  for (const r of (data ?? []) as Array<{ id: number; phone: string | null }>) {
+    const norm = normalizePhone(r.phone)
+    if (norm) out.set(r.id, `trengo:phone:${norm}`)
+  }
+  return out
+}
+
+/** Display names for a set of phone-canonical threads: phone → contact name.
+ *  Picks any registry row on that phone that carries a name. */
+export async function getTrengoNamesByPhone(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  phones: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const unique = Array.from(new Set(phones.filter(Boolean)))
+  if (unique.length === 0) return out
+  const { data } = await supabase
+    .from("trengo_contacts")
+    .select("name, phone")
+    .in("phone", unique)
+    .not("name", "is", null)
+  for (const r of (data ?? []) as Array<{ name: string | null; phone: string | null }>) {
+    const norm = normalizePhone(r.phone)
+    if (norm && r.name?.trim() && !out.has(norm)) out.set(norm, r.name.trim())
+  }
+  return out
+}
+
 /**
  * Upsert a batch of contacts. Only writes fields we actually have (never
  * clobbers an existing phone/name with null), so a later phone-enrichment pass

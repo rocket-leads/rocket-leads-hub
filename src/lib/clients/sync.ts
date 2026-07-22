@@ -53,7 +53,6 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     name: client.name,
     meta_ad_account_id: client.metaAdAccountId || null,
     stripe_customer_id: client.stripeCustomerId || null,
-    trengo_contact_ids: client.trengoContactId ? [client.trengoContactId] : [],
     google_drive_folder_id: client.googleDriveId || null,
     cycle_start_date: dateOrNull(client.cycleStartDate),
     next_invoice_date: dateOrNull(client.nextInvoiceDate),
@@ -63,22 +62,39 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
   // Try update first - preserves columns like column_mapping_override and monday_active
   const { data: existing } = await supabase
     .from("clients")
-    .select("id")
+    .select("id, trengo_contact_ids")
     .eq("monday_item_id", client.mondayItemId)
     .single()
+
+  // trengo_contact_ids is a UNION, never an overwrite: the Hub's "Link to
+  // client" button appends extra contact ids (a client can have several Trengo
+  // contacts — duplicates, a churned-and-recreated number, etc.), and a plain
+  // sync from Monday's single-value column would wipe those every cycle. Keep
+  // any existing ids and add Monday's. Roy 2026-07-22.
+  const mondayId = client.trengoContactId?.trim()
+  const unionContactIds = Array.from(
+    new Set([
+      ...(((existing?.trengo_contact_ids as string[] | null) ?? [])),
+      ...(mondayId ? [mondayId] : []),
+    ]),
+  )
 
   let clientId: string
   if (existing) {
     const { error } = await supabase
       .from("clients")
-      .update(syncFields)
+      .update({ ...syncFields, trengo_contact_ids: unionContactIds })
       .eq("monday_item_id", client.mondayItemId)
     if (error) throw new Error(`Supabase sync failed: ${error.message}`)
     clientId = existing.id
   } else {
     const { data, error } = await supabase
       .from("clients")
-      .insert({ monday_item_id: client.mondayItemId, ...syncFields })
+      .insert({
+        monday_item_id: client.mondayItemId,
+        ...syncFields,
+        trengo_contact_ids: mondayId ? [mondayId] : [],
+      })
       .select("id")
       .single()
     if (error) throw new Error(`Supabase sync failed: ${error.message}`)

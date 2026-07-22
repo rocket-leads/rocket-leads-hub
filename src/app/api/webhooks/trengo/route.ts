@@ -11,7 +11,7 @@ import {
   resolveMentionedHubIds,
 } from "@/lib/inbox/trengo-mentions"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
-import { upsertTrengoContacts } from "@/lib/inbox/trengo-contacts"
+import { upsertTrengoContacts, getCanonicalThreadBases } from "@/lib/inbox/trengo-contacts"
 
 export const maxDuration = 60
 
@@ -365,6 +365,14 @@ export async function POST(req: NextRequest) {
     { id: Number(payload.contactId), name: payload.contactName },
   ])
 
+  // Canonical thread base — `trengo:phone:<E164>` once the number is known, so
+  // duplicate contacts for the same WhatsApp number share one thread. Used for
+  // both the message row and any mention fan-out below. Roy 2026-07-22.
+  const threadBase =
+    (await getCanonicalThreadBases(supabase, [Number(payload.contactId)])).get(
+      Number(payload.contactId),
+    ) ?? `trengo:contact:${payload.contactId}`
+
   // Look up the linked client via the Trengo contact id.
   const { data: clientRow } = await supabase
     .from("clients")
@@ -518,7 +526,7 @@ export async function POST(req: NextRequest) {
       source: "trengo",
       source_thread: `trengo:ticket:${payload.ticketId}`,
       source_msg_id: sourceMsgId,
-      thread_key: `trengo:contact:${payload.contactId}`,
+      thread_key: threadBase,
       scope: "external",
       author_kind: payload.authorKind,
       author_external: payload.authorExternal,
@@ -572,7 +580,7 @@ export async function POST(req: NextRequest) {
           source: "trengo",
           source_ref: {
             trengo_mention_in_chat_event_id: inserted.id,
-            trengo_mention_in_thread_key: `trengo:contact:${payload.contactId}|ch:${payload.channelId}`,
+            trengo_mention_in_thread_key: `${threadBase}|ch:${payload.channelId}`,
             trengo_mention_contact_name: conversationLabel,
             trengo_mention_channel_name: mentionChan?.name ?? null,
             trengo_mention_channel_kind: mentionChan?.kind ?? null,

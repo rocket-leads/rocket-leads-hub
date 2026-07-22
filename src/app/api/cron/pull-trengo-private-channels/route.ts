@@ -5,7 +5,11 @@ import { startCronRun } from "@/lib/observability/cron-runs"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
-import { upsertTrengoContacts, type TrengoContactSeed } from "@/lib/inbox/trengo-contacts"
+import {
+  upsertTrengoContacts,
+  getCanonicalThreadBases,
+  type TrengoContactSeed,
+} from "@/lib/inbox/trengo-contacts"
 import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
@@ -405,6 +409,10 @@ async function insertEvents(
   // the webhook uses - so listChatThreads etc. group these rows under
   // the right client when one exists.
   const contactIds = Array.from(new Set(events.map((e) => e.contactId)))
+  // Canonical thread base per contact: `trengo:phone:<E164>` once we know the
+  // number (merges duplicate contacts for the same WhatsApp number), else the
+  // `trengo:contact:<id>` base. Roy 2026-07-22.
+  const canonicalBase = await getCanonicalThreadBases(supabase, contactIds.map(Number))
   const clientByContact = new Map<string, { monday_item_id: string }>()
   // Route each contact's rows to the responsible AM, exactly like the webhook
   // (webhooks/trengo/route.ts). Without this the poll dumped every private-
@@ -464,7 +472,7 @@ async function insertEvents(
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,
       source_msg_id: e.sourceMsgId,
-      thread_key: `trengo:contact:${e.contactId}`,
+      thread_key: canonicalBase.get(Number(e.contactId)) ?? `trengo:contact:${e.contactId}`,
       scope: "external",
       author_kind: e.authorKind,
       author_external: e.authorKind === "client" ? e.contactId : "",
@@ -531,6 +539,9 @@ async function insertMentionUpdates(
 
   // Resolve client per contact so the mention lands under the right client.
   const contactIds = Array.from(new Set(withMentions.map((c) => c.contactId)))
+  // Canonical base so the mention points at the SAME (possibly phone-merged)
+  // thread the channel view shows. Roy 2026-07-22.
+  const canonicalBase = await getCanonicalThreadBases(supabase, contactIds.map(Number))
   const clientByContact = new Map<string, string>()
   for (const contactId of contactIds) {
     const { data: clientRow } = await supabase
@@ -562,7 +573,7 @@ async function insertMentionUpdates(
         source: "trengo",
         source_msg_id: `trengo:mention:${noteMsgId}:${hubId}`,
         source_ref: {
-          trengo_mention_in_thread_key: `trengo:contact:${c.contactId}|ch:${c.channelId}`,
+          trengo_mention_in_thread_key: `${canonicalBase.get(Number(c.contactId)) ?? `trengo:contact:${c.contactId}`}|ch:${c.channelId}`,
           trengo_mention_contact_name: c.contactName,
           trengo_mention_channel_name: chan?.name ?? null,
           trengo_mention_channel_kind: chan?.kind ?? null,
