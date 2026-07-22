@@ -5,6 +5,7 @@ import { startCronRun } from "@/lib/observability/cron-runs"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
+import { upsertTrengoContacts, type TrengoContactSeed } from "@/lib/inbox/trengo-contacts"
 import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
@@ -695,7 +696,17 @@ export async function GET(req: NextRequest) {
           const freshTickets = tickets.filter((t) => ticketIsFresh(t, cutoffMs))
           totalFreshTickets += freshTickets.length
           const candidates: EventToInsert[] = []
+          // Every ticket carries its contact - register it so outbound-only /
+          // unlinked threads still resolve a real name. Roy 2026-07-22.
+          const contactSeeds: TrengoContactSeed[] = []
           for (const ticket of freshTickets) {
+            if (ticket.contact?.id) {
+              contactSeeds.push({
+                id: ticket.contact.id,
+                name: ticket.contact.name,
+                email: ticket.contact.email,
+              })
+            }
             try {
               const messages = await fetchUserTicketMessages({
                 userToken: token,
@@ -771,6 +782,8 @@ export async function GET(req: NextRequest) {
           const result = await insertEvents(supabase, hq.id, toInsert, existing)
           totalEventsInserted += result.inserted
           if (result.lastError) lastInsertError = result.lastError
+          // Register the contacts we saw so their threads resolve a real name.
+          await upsertTrengoContacts(supabase, contactSeeds)
           // Fan out @-mentions in the notes we just ingested so tagged
           // teammates see them in their Mentioned inbox. Idempotent across
           // cycles (deterministic source_msg_id). Runs on `toInsert` so it

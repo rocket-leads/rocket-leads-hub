@@ -11,6 +11,7 @@ import {
   resolveMentionedHubIds,
 } from "@/lib/inbox/trengo-mentions"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
+import { upsertTrengoContacts } from "@/lib/inbox/trengo-contacts"
 
 export const maxDuration = 60
 
@@ -357,6 +358,12 @@ export async function POST(req: NextRequest) {
   if (existing) {
     return NextResponse.json({ ok: true, deduped: true })
   }
+
+  // Register the contact so its threads (including outbound-only ones) resolve
+  // a real name from the registry rather than falling back to "Unknown".
+  await upsertTrengoContacts(supabase, [
+    { id: Number(payload.contactId), name: payload.contactName },
+  ])
 
   // Look up the linked client via the Trengo contact id.
   const { data: clientRow } = await supabase

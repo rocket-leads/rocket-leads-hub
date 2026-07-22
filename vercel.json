@@ -53,6 +53,10 @@
       "schedule": "37 * * * *"
     },
     {
+      "path": "/api/cron/backfill-trengo-contacts",
+      "schedule": "23 4 * * 1"
+    },
+    {
       "path": "/api/cron/refresh-watchlist-context",
       "schedule": "55 */2 * * *"
     },

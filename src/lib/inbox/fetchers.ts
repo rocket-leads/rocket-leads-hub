@@ -8,6 +8,7 @@ import {
 } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
+import { getTrengoContactNames, contactIdFromThreadKey } from "@/lib/inbox/trengo-contacts"
 import { stripHtml } from "@/lib/html"
 import type {
   InboxChannelKind,
@@ -1013,6 +1014,16 @@ async function groupAndDecorateChatRows(
 
   const clientMap = await getMondayClientMap()
   const channelLookup = await getTrengoChannelLookup()
+  // Real Trengo contact names, keyed by the contact id in each thread_key, so
+  // even outbound-only / unlinked threads render the contact instead of
+  // "Unknown". Roy 2026-07-22. Registry is populated by the poll + webhook.
+  const contactIds = Array.from(byThread.keys())
+    .map((k) => contactIdFromThreadKey(k))
+    .filter((n): n is number => n != null)
+  const contactNameById =
+    contactIds.length > 0
+      ? await getTrengoContactNames(await createAdminClient(), contactIds)
+      : new Map<number, string>()
 
   const threads: ChatThreadSummary[] = []
   for (const [threadKey, { rows: threadRows }] of byThread) {
@@ -1030,12 +1041,13 @@ async function groupAndDecorateChatRows(
       (r) => r.author_kind && r.author_kind !== "rl_team",
     )
     // Name the thread after the CONTACT, never the teammate who sent an
-    // outbound message. When there's no inbound client row yet (outbound-only,
-    // e.g. an automated weekly-update to "Hi Sergio"), fall to "Unknown" so the
-    // greeting-extraction below recovers the real recipient - otherwise it used
-    // to show the sending agent (Roy 2026-07-15: "John Kuil" instead of the
-    // client Sergio | AltaDent).
-    const fallbackName = externalAuthor?.author_name_cached ?? "Unknown"
+    // outbound message. Priority: (1) the Trengo contact registry (authoritative
+    // — set from ticket.contact on every ingest, so outbound-only threads work);
+    // (2) an inbound client row's cached author name; (3) "Unknown", which the
+    // greeting-extraction below tries to recover. Roy 2026-07-22: outbound-only
+    // threads showed "Unknown" even though Trengo knows the contact.
+    const registryName = contactNameById.get(contactIdFromThreadKey(threadKey) ?? -1) ?? null
+    const fallbackName = registryName ?? externalAuthor?.author_name_cached ?? "Unknown"
     let primaryName = deriveThreadName(threadKey, fallbackName)
 
     // If the resolved name is the generic "Team" (our WhatsApp Business

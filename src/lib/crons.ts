@@ -39,4 +39,5 @@ export const EXPECTED_CRONS: ReadonlyArray<ExpectedCron> = [
   { name: "pull-trengo-private-channels", description: "Per-user pull of Trengo private/personal inboxes (webhook doesn't fire for those) - runs every minute for near-real-time", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 3 },
   { name: "sync-trengo-mention-seen", description: "Mirror Trengo mention seen-state into the Hub Mentioned view (Trengo->Hub)", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 15 },
   { name: "trengo-status-reconcile", description: "Archive Hub threads whose Trengo ticket was closed (status sync Trengo->Hub)", cadenceKey: "settings.health.cadence.hourly", cadenceMinutes: 60 },
+  { name: "backfill-trengo-contacts", description: "Populate/refresh the Trengo contact-name registry so threads (incl. outbound-only) resolve real names", cadenceKey: "settings.health.cadence.weekly", cadenceMinutes: 10080 },
 ] as const
