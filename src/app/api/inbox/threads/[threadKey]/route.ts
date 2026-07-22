@@ -182,6 +182,20 @@ export async function PATCH(
         break
     }
 
+    // Closing (archive) or picking up (assign) a ticket implies it's read — you
+    // can't close/pick-up something unread (Roy 2026-07-22). Persist that so the
+    // read state is consistent if it's ever reopened. Best-effort.
+    if (action === "archive" || action === "assign") {
+      try {
+        await markChatThreadRead(threadKey, userId, role)
+      } catch (e) {
+        console.error(
+          `[threads] mark-read on ${action} failed for ${threadKey}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     // Mirror the Hub action back to the underlying Trengo ticket(s), but do it
     // AFTER the response is sent (`after()`), NOT in the request path. The
     // Supabase write above is already done, so the Hub UI can update instantly

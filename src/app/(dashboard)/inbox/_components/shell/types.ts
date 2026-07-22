@@ -91,15 +91,19 @@ export function threadToFeedRow(thread: ChatThreadSummary): FeedRow | null {
   if (thread.channelKind === "whatsapp") channel = "whatsapp"
   else if (thread.channelKind === "email") channel = "email"
   else return null
+  // Read/unread only exists while a ticket is Open. Once it's Opgepakt
+  // (assigned) or Gesloten (archived) it is ALWAYS read — you can't pick up or
+  // close something you haven't read (Roy 2026-07-22). So the unread signal +
+  // badge only show in the Open state; assigned/closed rows are always calm.
+  const isOpen = !thread.isArchived && !thread.isAssigned
+  const unreadCount = isOpen ? thread.unreadCount : 0
   return {
     id: thread.threadKey,
     channel,
     kind: "chat",
     sortAt: thread.latestAt,
-    // "Unread" here means "awaiting our reply" - client messages since our last
-    // send (Roy 2026-07-15), not the raw unread-status count.
-    unread: thread.pendingCount > 0,
-    unreadCount: thread.pendingCount,
+    unread: unreadCount > 0,
+    unreadCount,
     // The row headlines the Trengo contact name (Roy's simplified row: icon +
     // name + date + preview, nothing else).
     title: thread.primaryName,
