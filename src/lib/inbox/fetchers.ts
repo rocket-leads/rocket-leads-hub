@@ -1068,6 +1068,14 @@ async function groupAndDecorateChatRows(
     const clientName = latest.client_id
       ? clientMap.get(latest.client_id)?.name ?? null
       : null
+    // Last resort: a thread whose Trengo contact is gone (deleted/merged in
+    // Trengo → 404, e.g. a stale duplicate the weekly-update automation made)
+    // has no registry name, no inbound row, and no greeting to parse. If it's
+    // linked to a client, show the client name instead of "Unknown". Roy
+    // 2026-07-22: better ProSteel than Unknown when the contact record is dead.
+    if (isGenericThreadName(primaryName) && clientName) {
+      primaryName = clientName
+    }
     const previewSrc = latest.body ?? latest.title ?? ""
     const latestPreview =
       previewSrc.length > 120 ? previewSrc.slice(0, 120) + "…" : previewSrc
