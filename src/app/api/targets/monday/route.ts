@@ -34,6 +34,9 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   // Reject them so the next load recomputes with both fields present.
   if (typeof cached.all.noShows !== "number") return false
   if (typeof cached.all.cancellations !== "number") return false
+  // collectedRevenue added 2026-07-23 - it's the primary Revenue/ROAS figure, so
+  // a cache without it would render collected as 0/undefined. Force a refetch.
+  if (typeof cached.all.collectedRevenue !== "number") return false
 
   const closers = cached.all.closers
   if (!Array.isArray(closers)) return false

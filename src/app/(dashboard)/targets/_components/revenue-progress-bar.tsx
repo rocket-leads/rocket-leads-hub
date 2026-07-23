@@ -11,7 +11,11 @@ interface Props {
   monthlyTarget: number
   isLoading: boolean
   label?: string
-  /** Stripe-side cross-check value. When higher than `current`, the gap is surfaced as a yellow chip. */
+  /** Closed deal value (total contract value) - shown as a secondary reference
+   *  since `current` is now the collected (actually-paid) figure. The Stripe
+   *  cross-check compares against this, not against collected. */
+  closed?: number
+  /** Stripe-side cross-check value. When higher than closed deal value, the gap is surfaced as a yellow chip. */
   stripeCrossCheck?: number
   /** Click handler for the gap chip - host can open a drilldown listing the underlying Stripe invoices. */
   onGapClick?: () => void
@@ -21,8 +25,8 @@ interface Props {
 const GAP_THRESHOLD = 100
 
 export const RevenueProgressBar = memo(function RevenueProgressBar({
-  current, proRata, monthlyTarget, isLoading, label = "Revenue",
-  stripeCrossCheck, onGapClick,
+  current, proRata, monthlyTarget, isLoading, label = "Revenue (collected)",
+  closed, stripeCrossCheck, onGapClick,
 }: Props) {
   const [animated, setAnimated] = useState(false)
 
@@ -50,8 +54,10 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const textColor = performance >= 1 ? "text-green-500" : "text-red-500"
 
   // Surface a gap when Stripe shows more new business than Monday's closed deals -
-  // means deals are invoiced but not yet logged in Monday. Click → drilldown.
-  const gap = stripeCrossCheck != null ? stripeCrossCheck - current : 0
+  // means deals are invoiced but not yet logged in Monday. Compared against
+  // closed deal value (not collected), since Stripe NB is contract-side. Click → drilldown.
+  const gapBase = closed ?? current
+  const gap = stripeCrossCheck != null ? stripeCrossCheck - gapBase : 0
   const showGapChip = gap > GAP_THRESHOLD
 
   return (
@@ -75,9 +81,16 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
             </button>
           )}
         </div>
-        <div className="flex items-baseline gap-2">
-          <span className={cn("text-xl font-bold font-mono", textColor)}>{formatCurrency(current)}</span>
-          <span className="text-xs text-muted-foreground/60 font-mono">of {formatCurrency(monthlyTarget)}</span>
+        <div className="flex flex-col items-end">
+          <div className="flex items-baseline gap-2">
+            <span className={cn("text-xl font-bold font-mono", textColor)}>{formatCurrency(current)}</span>
+            <span className="text-xs text-muted-foreground/60 font-mono">of {formatCurrency(monthlyTarget)}</span>
+          </div>
+          {closed != null && (
+            <span className="text-[10px] font-mono text-muted-foreground/60">
+              closed {formatCurrency(closed)}
+            </span>
+          )}
         </div>
       </div>
 

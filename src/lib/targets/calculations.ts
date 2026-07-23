@@ -79,6 +79,9 @@ export function calculateKpiGroups(
   const takenCalls = monday?.takenCalls ?? 0
   const deals = monday?.deals ?? 0
   const closedRevenue = monday?.closedRevenue ?? 0
+  // Collected (actually-paid) revenue is the primary Revenue + ROAS figure;
+  // closedRevenue (total contract value) rides along as a secondary reference.
+  const collectedRevenue = monday?.collectedRevenue ?? 0
 
   const t = targets ?? null
   const derived = deriveTargets(t)
@@ -130,10 +133,13 @@ export function calculateKpiGroups(
         },
         {
           label: "Revenue",
-          value: closedRevenue,
-          formatted: formatCurrency(closedRevenue),
+          value: collectedRevenue,
+          formatted: formatCurrency(collectedRevenue),
           target: prRevenue,
-          targetFormatted: prRevenue != null ? `${formatCurrency(closedRevenue)} of ${formatCurrency(prRevenue)}` : undefined,
+          targetFormatted:
+            prRevenue != null
+              ? `${formatCurrency(collectedRevenue)} of ${formatCurrency(prRevenue)} · closed ${formatCurrency(closedRevenue)}`
+              : `closed ${formatCurrency(closedRevenue)}`,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -225,12 +231,12 @@ export function calculateKpiGroups(
         },
         {
           label: "ROAS",
-          value: safeDivide(closedRevenue, spend),
-          formatted: formatMultiplier(safeDivide(closedRevenue, spend)),
+          value: safeDivide(collectedRevenue, spend),
+          formatted: formatMultiplier(safeDivide(collectedRevenue, spend)),
           target: roasTarget,
           targetFormatted: roasTarget != null
-            ? `${formatMultiplier(safeDivide(closedRevenue, spend))} of ${formatMultiplier(roasTarget)}`
-            : undefined,
+            ? `${formatMultiplier(safeDivide(collectedRevenue, spend))} of ${formatMultiplier(roasTarget)} · closed ${formatMultiplier(safeDivide(closedRevenue, spend))}`
+            : `closed ${formatMultiplier(safeDivide(closedRevenue, spend))}`,
           variant: "volume",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,

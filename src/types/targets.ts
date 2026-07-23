@@ -46,7 +46,12 @@ export interface MondayTargetsData {
   takenCalls: number
   /** Closed-positive subset of taken (Deal + Signed). */
   deals: number
+  /** Total contract value of deals closed in the period (Monday `numbers`). */
   closedRevenue: number
+  /** Cash actually collected on those deals so far (Monday `numeric_mm5bv69m`) -
+   *  may be a partial upfront of closedRevenue. Attributed on the deal close date
+   *  like closedRevenue. The dashboard's primary Revenue + ROAS figure. */
+  collectedRevenue: number
   totalItems: number
   weekly: WeeklyData[]
   industries: IndustryData[]

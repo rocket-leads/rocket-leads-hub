@@ -225,6 +225,7 @@ export function MarketingTab() {
         <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
         <RevenueProgressBar
           current={revenueProgress.current}
+          closed={m?.closedRevenue ?? 0}
           proRata={revenueProgress.proRata}
           monthlyTarget={revenueProgress.monthlyTarget}
           isLoading={data.mondayLoading}
@@ -424,7 +425,7 @@ export function MarketingTab() {
         onClose={() => setStripeGapOpen(false)}
         invoices={m?.stripeNewBusinessInvoices ?? []}
         deals={m?.closedDeals ?? []}
-        mondayRevenue={revenueProgress.current}
+        mondayRevenue={m?.closedRevenue ?? 0}
         stripeRevenue={m?.stripeNewBusinessRevenue ?? 0}
       />
     </div>

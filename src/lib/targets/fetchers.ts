@@ -47,6 +47,9 @@ const TARGETS_BOARD_COLUMNS = [
   "status_17",
   "wie_",
   "bedrijfsnaam",
+  // Collected revenue - actually-collected cash on a deal (e.g. €1k upfront of a
+  // €3k close), attributed on the deal close date like closedRevenue. Roy 2026-07-23.
+  "numeric_mm5bv69m",
 ]
 
 // In-process cache for the raw Targets board items. The board is huge (full lead
@@ -418,13 +421,13 @@ export async function fetchMondayTargets(
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
-    takenCalls: number; deals: number; closedRevenue: number; totalItems: number;
+    takenCalls: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
     industryMap: Record<string, { deals: number; revenue: number }>;
     closerMap: Record<string, CloserAcc>;
   }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
+    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
   }
   // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
   // deal alongside the Stripe-side invoices.
@@ -456,6 +459,8 @@ export async function fetchMondayTargets(
     const dateDeal = parseDate(getColumnValue(item, "date3"))
     const status = getColumnValue(item, "status")
     const dealValue = getNumericValue(item, "numbers")
+    // Actually-collected cash on this deal (may be a partial upfront of dealValue).
+    const collectedValue = getNumericValue(item, "numeric_mm5bv69m")
     const industry = getColumnValue(item, "status_17") || "Unknown"
     const closer = getColumnValue(item, "wie_").trim()
     const closerKey = closer || "Unassigned"
@@ -489,7 +494,7 @@ export async function fetchMondayTargets(
     }
     if (includeInTopLevel && isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
       addTo(country, (a) => {
-        a.deals++; a.closedRevenue += dealValue
+        a.deals++; a.closedRevenue += dealValue; a.collectedRevenue += collectedValue
         if (!a.industryMap[industry]) a.industryMap[industry] = { deals: 0, revenue: 0 }
         a.industryMap[industry].deals++
         a.industryMap[industry].revenue += dealValue

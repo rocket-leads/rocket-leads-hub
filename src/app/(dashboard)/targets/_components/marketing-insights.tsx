@@ -66,6 +66,9 @@ function generateInsights(
   const taken = m.takenCalls
   const deals = m.deals
   const revenue = m.closedRevenue
+  // ROAS is now measured on collected (actually-paid) revenue; avg deal value
+  // stays on closed contract value (that's the proposition/pricing signal).
+  const collectedRevenue = m.collectedRevenue ?? 0
 
   const derived = deriveTargets(t)
   const prCalls = Math.round(proRata(derived.calls, range))
@@ -77,7 +80,7 @@ function generateInsights(
   const bookingRate = safeDivide(calls, optIns)
   const showUpRate = safeDivide(taken, calls)
   const conversionRate = safeDivide(deals, taken)
-  const roas = safeDivide(revenue, spend)
+  const roas = safeDivide(collectedRevenue, spend)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
   const callsOnTrack = prCalls > 0 && calls >= prCalls
