@@ -59,7 +59,10 @@ export function deriveTargets(t: TargetsConfig | null | undefined): DerivedTarge
   const bookingRate = t.cpOptIn > 0 && t.cbc > 0 ? t.cpOptIn / t.cbc : 0
   const showUpRate = t.cbc > 0 && t.ctc > 0 ? t.cbc / t.ctc : 0
   const convRate = t.ctc > 0 && t.cpd > 0 ? t.ctc / t.cpd : 0
-  const roas = t.revenue > 0 && adSpend > 0 ? t.revenue / adSpend : 0
+  // ROAS actual is measured on collected revenue, so its target derives from the
+  // collected revenue target (not closed) - keep them the same basis.
+  const collectedTarget = t.collectedRevenue ?? 0
+  const roas = collectedTarget > 0 && adSpend > 0 ? collectedTarget / adSpend : 0
   return { adSpend, optIns, calls, takenCalls, bookingRate, showUpRate, convRate, roas }
 }
 
@@ -90,7 +93,10 @@ export function calculateKpiGroups(
   const prCalls = derived.calls > 0 ? Math.round(getProRataTarget(derived.calls, range)) : undefined
   const prTaken = derived.takenCalls > 0 ? Math.round(getProRataTarget(derived.takenCalls, range)) : undefined
   const prDeals = t && t.deals > 0 ? Math.round(getProRataTarget(t.deals, range)) : undefined
-  const prRevenue = t && t.revenue > 0 ? Math.round(getProRataTarget(t.revenue, range)) : undefined
+  // The Revenue KPI card shows collected as its value, so its pro-rata target is
+  // the collected revenue target.
+  const collectedTargetCfg = t?.collectedRevenue ?? 0
+  const prRevenue = collectedTargetCfg > 0 ? Math.round(getProRataTarget(collectedTargetCfg, range)) : undefined
 
   // Ratio targets derived from the cost ladder (cbc / ctc / cpd)
   const showUpRateTarget = derived.showUpRate > 0 ? derived.showUpRate : undefined
@@ -247,16 +253,15 @@ export function calculateKpiGroups(
 }
 
 export function getRevenueProgress(
-  closedRevenue: number,
+  actual: number,
+  monthlyTarget: number,
   range: DateRange,
-  targets?: TargetsConfig | null,
 ): { current: number; proRata: number; monthlyTarget: number; pct: number } {
-  const monthlyTarget = targets?.revenue ?? 0
   const proRata = monthlyTarget > 0 ? getProRataTarget(monthlyTarget, range) : 0
   return {
-    current: closedRevenue,
+    current: actual,
     proRata,
     monthlyTarget,
-    pct: safeDivide(closedRevenue, proRata),
+    pct: safeDivide(actual, proRata),
   }
 }

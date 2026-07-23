@@ -57,7 +57,7 @@ export function MarketingTab() {
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
   const data = useTargetsData(range, country, closer)
   const { data: targets } = useTargetsConfig()
-  const { kpiGroups, revenueProgress } = useKpiCalculations(
+  const { kpiGroups, closedProgress, collectedProgress } = useKpiCalculations(
     data.monday, data.meta, range,
     data.mondayLoading, data.metaLoading,
     data.mondayError, data.metaError,
@@ -223,15 +223,26 @@ export function MarketingTab() {
         <SectionHeader title={t("targets.section.summary.title", locale)} />
         <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
         <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
-        <RevenueProgressBar
-          current={revenueProgress.current}
-          closed={m?.closedRevenue ?? 0}
-          proRata={revenueProgress.proRata}
-          monthlyTarget={revenueProgress.monthlyTarget}
-          isLoading={data.mondayLoading}
-          stripeCrossCheck={country === "all" ? m?.stripeNewBusinessRevenue : undefined}
-          onGapClick={() => setStripeGapOpen(true)}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Cash collected - the money actually in the door. */}
+          <RevenueProgressBar
+            label="Cash collected"
+            current={collectedProgress.current}
+            proRata={collectedProgress.proRata}
+            monthlyTarget={collectedProgress.monthlyTarget}
+            isLoading={data.mondayLoading}
+          />
+          {/* Closed deal value - total contract value; carries the Stripe cross-check. */}
+          <RevenueProgressBar
+            label="Closed deal revenue"
+            current={closedProgress.current}
+            proRata={closedProgress.proRata}
+            monthlyTarget={closedProgress.monthlyTarget}
+            isLoading={data.mondayLoading}
+            stripeCrossCheck={country === "all" ? m?.stripeNewBusinessRevenue : undefined}
+            onGapClick={() => setStripeGapOpen(true)}
+          />
+        </div>
         <MarketingInsights
           monday={m}
           meta={meta}

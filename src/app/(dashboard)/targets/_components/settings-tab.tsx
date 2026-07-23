@@ -15,7 +15,8 @@ type Field = { key: keyof TargetsConfig; label: string; prefix?: string; suffix?
 
 const MARKETING_FIELDS: Field[] = [
   { key: "deals", label: "Deals" },
-  { key: "revenue", label: "Revenue", prefix: "€" },
+  { key: "revenue", label: "Closed Deal Revenue", prefix: "€" },
+  { key: "collectedRevenue", label: "Cash Collected Revenue", prefix: "€" },
   { key: "cpOptIn", label: "Max Cost per Opt-in", prefix: "€", step: "0.01" },
   { key: "cbc", label: "Max Cost per Booked Call", prefix: "€", step: "0.01" },
   { key: "ctc", label: "Max Cost per Taken Call", prefix: "€", step: "0.01" },
@@ -43,7 +44,7 @@ const SECTIONS = [
 ]
 
 const EMPTY_CONFIG: TargetsConfig = {
-  deals: 0, revenue: 0,
+  deals: 0, revenue: 0, collectedRevenue: 0,
   cpOptIn: 0, cbc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
   mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,

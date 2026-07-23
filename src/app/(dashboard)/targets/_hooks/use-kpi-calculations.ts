@@ -19,13 +19,17 @@ export function useKpiCalculations(
     [monday, meta, range, mondayLoading, metaLoading, mondayError, metaError, targets],
   )
 
-  // Collected revenue (actually-collected cash) is the primary Revenue figure
-  // now - the progress bar tracks it against target. Closed deal value is still
-  // shown as a secondary reference on the bar + card. Roy 2026-07-23.
-  const revenueProgress = useMemo(
-    () => getRevenueProgress(monday?.collectedRevenue ?? 0, range, targets),
-    [monday?.collectedRevenue, range, targets],
+  // Two separate revenue tracks, each against its own target: closed deal value
+  // and cash collected. The dashboard renders one progress bar for each.
+  // Roy 2026-07-23.
+  const closedProgress = useMemo(
+    () => getRevenueProgress(monday?.closedRevenue ?? 0, targets?.revenue ?? 0, range),
+    [monday?.closedRevenue, targets?.revenue, range],
+  )
+  const collectedProgress = useMemo(
+    () => getRevenueProgress(monday?.collectedRevenue ?? 0, targets?.collectedRevenue ?? 0, range),
+    [monday?.collectedRevenue, targets?.collectedRevenue, range],
   )
 
-  return { kpiGroups, revenueProgress }
+  return { kpiGroups, closedProgress, collectedProgress }
 }

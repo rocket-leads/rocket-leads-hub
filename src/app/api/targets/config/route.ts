@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import type { TargetsConfig } from "@/types/targets"
 
 const EMPTY: TargetsConfig = {
-  deals: 0, revenue: 0,
+  deals: 0, revenue: 0, collectedRevenue: 0,
   cpOptIn: 0, cbc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
   mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,

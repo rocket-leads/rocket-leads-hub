@@ -6,7 +6,11 @@ export interface TargetsConfig {
   // the cost ladder (booking rate = cpOptIn / cbc, show-up rate = cbc / ctc).
   // 2026-05-27: qualification stage dropped - cqc removed.
   deals: number
+  /** Closed deal revenue target (total contract value of deals closed). */
   revenue: number
+  /** Cash-collected revenue target (money actually collected). Compared against
+   *  MondayTargetsData.collectedRevenue on its own progress bar. */
+  collectedRevenue: number
   /** Max cost per opt-in (€) - top-of-funnel form submission. Derives the
    *  opt-ins volume target (adSpend / cpOptIn) and the appointment booking
    *  rate target (cpOptIn / cbc). */
