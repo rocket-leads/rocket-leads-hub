@@ -157,7 +157,7 @@ export async function fetchAllItems(
   boardId: string,
   token: string,
   maxRetries = 4,
-  options: { bypassCache?: boolean } = {},
+  options: { bypassCache?: boolean; columnIds?: string[] } = {},
 ) {
   // Page size lowered from 500 → 200 (2026-05) after a string of
   // CursorExpiredError reports on the Clients overview. Monday's `items_page`
@@ -165,6 +165,15 @@ export async function fetchAllItems(
   // enough that the *next* page's cursor is already stale. 200 keeps each
   // round-trip well under the TTL while still being only ~5 pages for the
   // largest boards in the workspace.
+  //
+  // `columnIds` scopes the fetch to just the columns a caller actually reads.
+  // The Targets board has ~30 columns but its aggregation touches 9 - scoping
+  // cuts the per-page payload and Monday query complexity, shaving the cold
+  // fetch substantially. Omit it (the default) to fetch every column unchanged.
+  const columnSelection =
+    options.columnIds && options.columnIds.length > 0
+      ? `column_values(ids: [${options.columnIds.map((c) => JSON.stringify(c)).join(", ")}])`
+      : "column_values"
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {
@@ -173,7 +182,7 @@ export async function fetchAllItems(
           items {
             id
             name
-            column_values {
+            ${columnSelection} {
               id
               text
             }

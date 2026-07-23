@@ -4,6 +4,10 @@ import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, read
 import { fetchMetaTargets, getMtdRange } from "@/lib/targets/fetchers"
 import type { MetaTargetsByCountry } from "@/types/targets"
 
+// Match the Monday targets route: allow the full Pro budget so a cold fetch
+// completes instead of 504-ing into blank cards.
+export const maxDuration = 300
+
 export async function GET(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

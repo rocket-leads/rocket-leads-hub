@@ -32,6 +32,22 @@ import type {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const TARGETS_BOARD_ID = "3762696870"
+// The only Targets-board columns the marketing/sales aggregation reads. Passed
+// to fetchAllItems so each page fetches ~9 columns instead of all ~30 - a big
+// cut in payload + Monday query complexity, which is what makes the cold board
+// scrape slow. Keep in sync with the getColumnValue/getNumericValue calls in
+// fetchMondayTargets.
+const TARGETS_BOARD_COLUMNS = [
+  "color",
+  "datum_created",
+  "datum_afspraak",
+  "date3",
+  "status",
+  "numbers",
+  "status_17",
+  "wie_",
+  "bedrijfsnaam",
+]
 
 // In-process cache for the raw Targets board items. The board is huge (full lead
 // history across all clients) and pagination dominates the wall-clock time of
@@ -61,7 +77,7 @@ async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> 
   // being paginated, both await the same promise instead of triggering two
   // 3-minute parallel scrapes against Monday.
   if (targetsBoardCache.inflight) return targetsBoardCache.inflight
-  const promise = fetchAllItems(TARGETS_BOARD_ID, token)
+  const promise = fetchAllItems(TARGETS_BOARD_ID, token, 4, { columnIds: TARGETS_BOARD_COLUMNS })
     .then((items) => {
       targetsBoardCache = { items, fetchedAt: Date.now(), inflight: null }
       return items
@@ -98,7 +114,7 @@ async function getOptInsBoardItems(token: string): Promise<TargetsBoardItem[]> {
   const fresh = Date.now() - optInsBoardCache.fetchedAt < TARGETS_BOARD_TTL_MS && optInsBoardCache.items.length > 0
   if (fresh) return optInsBoardCache.items
   if (optInsBoardCache.inflight) return optInsBoardCache.inflight
-  const promise = fetchAllItems(OPT_INS_BOARD_ID, token)
+  const promise = fetchAllItems(OPT_INS_BOARD_ID, token, 4, { columnIds: [OPT_INS_DATE_COLUMN] })
     .then((items) => {
       optInsBoardCache = { items, fetchedAt: Date.now(), inflight: null }
       return items

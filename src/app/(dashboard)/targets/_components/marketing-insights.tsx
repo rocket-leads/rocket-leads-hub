@@ -171,8 +171,10 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
   const taken = m.takenCalls
   const deals = m.deals
   const revenue = m.closedRevenue
-  const noShows = m.noShows
-  const cancellations = m.cancellations
+  // Coalesce to 0: a cache written before these fields existed serves them as
+  // undefined, which turned the drop-off line into "NaN … undefined cancellations".
+  const noShows = m.noShows ?? 0
+  const cancellations = m.cancellations ?? 0
   const cbc = safeDivide(spend, calls)
   const bookingRate = safeDivide(calls, optIns)
   const showUpRate = safeDivide(taken, calls)

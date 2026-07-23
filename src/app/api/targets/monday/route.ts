@@ -4,6 +4,13 @@ import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, read
 import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems, invalidateOptInsBoardItems } from "@/lib/targets/fetchers"
 import type { MondayTargetsByCountry } from "@/types/targets"
 
+// The Targets board is huge; a cold pagination can run a couple of minutes.
+// Without an explicit budget the function hits Vercel's short default timeout
+// and 504s, which renders as permanently-blank Marketing/Sales cards while
+// Meta (faster) loads fine. Give it the full Pro budget so the live fetch can
+// finish and warm the cache. Roy 2026-07-23.
+export const maxDuration = 300
+
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
 // notUpdated) are stale. Also detect the old takenCalls semantic - after the recent
 // change Not Updated is folded into Taken, so a closer with notUpdated > 0 must have
@@ -21,6 +28,12 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   // field; serving them back would render the new tiles as 0 instead of
   // triggering a refetch with the new value.
   if (typeof cached.all.optIns !== "number") return false
+  // noShows / cancellations power the show-up drop-off line. Caches written
+  // before cancellations existed have noShows but not cancellations, which
+  // rendered "NaN booked calls didn't happen (… undefined cancellations)".
+  // Reject them so the next load recomputes with both fields present.
+  if (typeof cached.all.noShows !== "number") return false
+  if (typeof cached.all.cancellations !== "number") return false
 
   const closers = cached.all.closers
   if (!Array.isArray(closers)) return false

@@ -77,6 +77,10 @@
       "schedule": "40 5 * * *"
     },
     {
+      "path": "/api/cron/refresh-targets",
+      "schedule": "2,32 * * * *"
+    },
+    {
       "path": "/api/cron/weekly-update-cache",
       "schedule": "45 6 * * 1"
     },
