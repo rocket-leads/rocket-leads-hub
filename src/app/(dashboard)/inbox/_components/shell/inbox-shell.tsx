@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
-import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
@@ -847,9 +846,9 @@ export function InboxShell({
       onClick={toggleRail}
       title={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
       aria-label={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      className="icon-btn shrink-0"
     >
-      {railCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+      {railCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
     </button>
   )
 
@@ -881,7 +880,19 @@ export function InboxShell({
       <div className="flex items-center gap-2">
         {railToggle}
         {(!locked || canViewComms) && (
-          <SegmentedTabs items={scopeItems} value={scope} onChange={setScope} />
+          <div className="flex items-center gap-1.5" role="group" aria-label="Scope">
+            {scopeItems.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                onClick={() => setScope(it.id)}
+                aria-pressed={scope === it.id}
+                className={cn("chip h-9", scope === it.id && "active")}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
@@ -912,21 +923,20 @@ export function InboxShell({
                   : "lg:w-[360px] xl:w-[440px]",
             )}
           >
-            <div className="relative shrink-0">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+            <div className="search-pill w-full shrink-0">
+              <Search />
               <input
                 type="text"
                 value={extSearch}
                 onChange={(e) => setExtSearch(e.target.value)}
                 placeholder={t("inbox.shell.search.placeholder", locale)}
-                className="h-9 w-full rounded-md border border-border/60 bg-card pl-9 pr-9 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
               />
               {extSearch && (
                 <button
                   type="button"
                   onClick={() => setExtSearch("")}
                   aria-label={t("inbox.shell.search.clear", locale)}
-                  className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -935,25 +945,19 @@ export function InboxShell({
             {/* Scope toggle: when searching inside one channel, choose whether
                 to stay on that line or widen to all channels (Trengo-style). */}
             {searching && viewMode === "channel" && (
-              <div className="flex shrink-0 items-center gap-1.5 px-1 text-xs">
-                <span className="text-muted-foreground/60">{t("inbox.shell.search.scope_label", locale)}</span>
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-1">
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground/60">{t("inbox.shell.search.scope_label", locale)}</span>
                 <button
                   type="button"
                   onClick={() => setSearchScope("current")}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 font-medium transition-colors",
-                    searchScope === "current" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
-                  )}
+                  className={cn("chip h-7", searchScope === "current" && "active")}
                 >
                   {[...waEntries, ...emailEntries].find((e) => e.id === activeChannelId)?.name ?? t("inbox.shell.search.scope_this", locale)}
                 </button>
                 <button
                   type="button"
                   onClick={() => setSearchScope("all")}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 font-medium transition-colors",
-                    searchScope === "all" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60",
-                  )}
+                  className={cn("chip h-7", searchScope === "all" && "active")}
                 >
                   {t("inbox.shell.search.scope_all", locale)}
                 </button>
