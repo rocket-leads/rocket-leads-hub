@@ -2046,27 +2046,26 @@ function ThreadMessages({
           {(supportsInternalNote || isEmail) && (
             <div className="flex items-center justify-between gap-2 mb-3">
               {supportsInternalNote ? (
-                <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 shadow-sm">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setComposerMode("reply")}
-                    className={cn(
-                      "px-4 h-8 rounded-md text-xs font-medium transition-colors",
-                      composerMode === "reply"
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                    )}
+                    aria-pressed={composerMode === "reply"}
+                    className={cn("chip h-8", composerMode === "reply" && "active")}
                   >
                     {t("inbox.chat.reply", locale)}
                   </button>
                   <button
                     type="button"
                     onClick={() => setComposerMode("internal")}
+                    aria-pressed={composerMode === "internal"}
+                    // Internal note keeps the amber (warning) tone so it never
+                    // reads like a client-facing reply. Amber is allowed for
+                    // semantic signals per the 187N brand rules.
                     className={cn(
-                      "px-4 h-8 rounded-md text-xs font-medium transition-colors",
-                      composerMode === "internal"
-                        ? "bg-amber-500 text-amber-950 shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                      "chip h-8",
+                      composerMode === "internal" &&
+                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
                     )}
                     title={t("inbox.chat.internal_title", locale)}
                   >
