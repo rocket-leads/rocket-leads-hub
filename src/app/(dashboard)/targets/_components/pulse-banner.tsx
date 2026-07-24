@@ -30,20 +30,20 @@ const VARIANT_STYLE: Record<Variant, {
   "on-track": {
     label: "ON TRACK",
     icon: CheckCircle2,
-    iconColor: "text-green-500",
-    borderColor: "border-l-green-500",
-    bgTint: "bg-green-500/[0.04]",
-    iconBg: "bg-green-500/10",
-    bulletColor: "text-green-500",
+    iconColor: "text-[var(--st-live)]",
+    borderColor: "border-l-[var(--st-live)]",
+    bgTint: "bg-[color-mix(in_srgb,var(--st-live)_5%,transparent)]",
+    iconBg: "bg-[color-mix(in_srgb,var(--st-live)_12%,transparent)]",
+    bulletColor: "text-[var(--st-live)]",
   },
   "off-track": {
     label: "OFF TRACK",
     icon: AlertOctagon,
-    iconColor: "text-red-500",
-    borderColor: "border-l-red-500",
-    bgTint: "bg-red-500/[0.04]",
-    iconBg: "bg-red-500/10",
-    bulletColor: "text-red-500",
+    iconColor: "text-[var(--st-error)]",
+    borderColor: "border-l-[var(--st-error)]",
+    bgTint: "bg-[color-mix(in_srgb,var(--st-error)_5%,transparent)]",
+    iconBg: "bg-[color-mix(in_srgb,var(--st-error)_12%,transparent)]",
+    bulletColor: "text-[var(--st-error)]",
   },
 }
 
@@ -58,7 +58,7 @@ function StatusCard({ variant, pillars, totalCount }: StatusCardProps) {
   const Icon = style.icon
   return (
     <div className={cn(
-      "bg-card rounded-lg border border-border/40 border-l-4 p-5 h-full",
+      "section-card border-l-4 h-full",
       style.borderColor,
       style.bgTint,
     )}>
@@ -91,7 +91,7 @@ function StatusCard({ variant, pillars, totalCount }: StatusCardProps) {
 
 function NeutralBanner() {
   return (
-    <div className="bg-card rounded-lg border border-border/40 border-l-4 border-l-muted-foreground/20 p-5">
+    <div className="section-card border-l-4 border-l-muted-foreground/20">
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg shrink-0 bg-muted-foreground/10">
           <Info className="h-6 w-6 text-muted-foreground" strokeWidth={2.25} />
@@ -110,7 +110,7 @@ function NeutralBanner() {
 export const PulseBanner = memo(function PulseBanner({ monday, meta, targets, range, isLoading }: Props) {
   if (isLoading || !monday || !meta || !targets) {
     return (
-      <div className="bg-card rounded-lg border border-border/40 border-l-4 border-l-muted-foreground/20 p-5">
+      <div className="section-card border-l-4 border-l-muted-foreground/20">
         <div className="flex items-center gap-4">
           <Skeleton className="h-12 w-12 rounded-lg" />
           <div className="flex-1 space-y-2">

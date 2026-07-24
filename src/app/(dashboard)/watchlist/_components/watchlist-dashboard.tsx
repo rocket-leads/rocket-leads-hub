@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { type FilterConfig } from "@/components/ui/filters-popover"
+import { ConditionFilter } from "@/components/ui/condition-filter"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
 import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, CheckCheck } from "lucide-react"
@@ -1221,14 +1222,14 @@ function WatchSection({
               card-style rows with everything stacked vertically. */}
           {variant === "wide" && (
             <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.move", locale)}</span>
-              <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.ads_manager", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.client", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.insight", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.spend", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.leads", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.cpl", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.create_task", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium sr-only">{t("watchlist.col.move", locale)}</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium sr-only">{t("watchlist.col.ads_manager", locale)}</span>
             </div>
           )}
 
@@ -1343,7 +1344,7 @@ function WatchSection({
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
                   onKeyDown={onRowKeyDown}
-                  className="flex items-start gap-3 px-4 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+                  className="flex items-start gap-3 px-4 py-3 border-b border-border/40 hover:bg-accent transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
                 >
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center gap-1.5">
@@ -1375,7 +1376,7 @@ function WatchSection({
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
                   onKeyDown={onRowKeyDown}
-                  className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+                  className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 hover:bg-accent transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -1434,8 +1435,8 @@ function NoDataSection({
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
           <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.no_data.col_reason", locale)}</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.client", locale)}</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.no_data.col_reason", locale)}</span>
             <span />
           </div>
 
@@ -1443,7 +1444,7 @@ function NoDataSection({
             <Link
               key={client.mondayItemId}
               href={`/clients/${client.mondayItemId}?from=watchlist`}
-              className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 border-l-muted-foreground/30 hover:bg-muted/30 transition-colors items-center"
+              className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 border-l-muted-foreground/30 hover:bg-accent transition-colors items-center"
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-muted-foreground/80 truncate">{client.name}</p>
@@ -1718,15 +1719,15 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         actions={
           <>
             {lastUpdated && (
-              <span className="text-[11px] text-muted-foreground/40">{t("watchlist.updated", locale, { time: lastUpdated })}</span>
+              <span className="font-mono text-[11px] text-muted-foreground/50">{t("watchlist.updated", locale, { time: lastUpdated })}</span>
             )}
             <button
               type="button"
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+              className="icon-btn disabled:opacity-50"
               onClick={handleRefresh}
               disabled={isFetching}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={isFetching ? "animate-spin" : ""} />
             </button>
           </>
         }
@@ -1763,7 +1764,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
               })}
             </span>
           )}
-          <FiltersPopover
+          <ConditionFilter
             align="end"
             filters={[
               {

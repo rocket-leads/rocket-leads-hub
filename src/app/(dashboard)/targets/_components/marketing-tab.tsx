@@ -23,7 +23,8 @@ import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
 import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
-import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { ConditionFilter } from "@/components/ui/condition-filter"
+import { type FilterConfig } from "@/components/ui/filters-popover"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
@@ -171,7 +172,7 @@ export function MarketingTab() {
           onChange={setRange}
           maxDate={maxPickerDate}
         />
-        <FiltersPopover filters={filters} />
+        <ConditionFilter filters={filters} />
         {closerActive && (() => {
           // Bold the closer name inside the pill text - sentinel split keeps
           // the dictionary entry natural ("Filteren op closer: {name}").
@@ -181,36 +182,31 @@ export function MarketingTab() {
             <button
               type="button"
               onClick={() => setCloser("All")}
-              className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+              className="chip active h-9"
               title={t("targets.filter.clear_closer", locale)}
             >
               <span>{before}<span className="font-semibold">{closer}</span>{after}</span>
-              <span className="text-primary/70">×</span>
+              <span className="opacity-70">×</span>
             </button>
           )
         })()}
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
           {presets.map((preset) => (
             <button
               key={preset.label}
               onClick={() => applyPreset(preset)}
-              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+              className="chip h-9"
             >
               {preset.label}
             </button>
           ))}
         </div>
-        <div className="flex gap-0.5 ml-auto bg-muted rounded-md p-0.5">
+        <div className="flex gap-1.5 flex-wrap ml-auto">
           {COUNTRY_SHAPE.map(({ key, labelKey, label }) => (
             <button
               key={key}
               onClick={() => setCountry(key)}
-              className={cn(
-                "h-7 px-3 text-[11px] font-medium rounded transition-colors",
-                country === key
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              className={cn("chip h-9", country === key && "active")}
             >
               {labelKey ? t(labelKey, locale) : label}
             </button>
@@ -601,11 +597,9 @@ function StripeGapModal({
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="flex items-center gap-3 pb-2 border-b border-border/30">
-      <div className="flex items-baseline gap-2.5">
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
-        {subtitle && (
-          <span className="text-xs text-muted-foreground hidden sm:inline">· {subtitle}</span>
-        )}
+      <div className="section-title">
+        {title}
+        {subtitle && <span className="count hidden sm:inline">{subtitle}</span>}
       </div>
     </div>
   )

@@ -183,6 +183,8 @@
 .st-label.pending .sd { background: var(--st-pending); }
 .st-label.idle { color: var(--ink-muted); }
 .st-label.idle .sd { background: var(--st-idle); }
+.st-label.brand { color: var(--teal); }
+.st-label.brand .sd { background: var(--teal); }
 
 /* Light mode - Flow-inspired warm cream background so cards float as
  * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar

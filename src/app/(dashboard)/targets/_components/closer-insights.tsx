@@ -13,9 +13,9 @@ interface Insight {
 }
 
 const STATUS_ICON: Record<Insight["type"], { icon: LucideIcon; color: string }> = {
-  positive: { icon: CheckCircle2, color: "text-green-500" },
-  warning: { icon: AlertCircle, color: "text-yellow-500" },
-  critical: { icon: AlertOctagon, color: "text-red-500" },
+  positive: { icon: CheckCircle2, color: "text-[var(--st-live)]" },
+  warning: { icon: AlertCircle, color: "text-[var(--st-warn)]" },
+  critical: { icon: AlertOctagon, color: "text-[var(--st-error)]" },
 }
 
 // Targets from the brand playbook (Pillars 3 & 4)
@@ -134,10 +134,12 @@ interface Props {
 export const CloserInsights = memo(function CloserInsights({ data, isLoading }: Props) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-5 border border-border/40">
-        <div className="flex items-center gap-2 mb-4">
-          <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
-          <Skeleton className="h-3 w-32" />
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">
+            <Lightbulb className="h-3.5 w-3.5" />
+            <Skeleton className="h-3 w-32" />
+          </div>
         </div>
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
@@ -149,10 +151,13 @@ export const CloserInsights = memo(function CloserInsights({ data, isLoading }: 
   const insights = generateCloserInsights(data)
 
   return (
-    <div className="bg-card rounded-lg p-5 border border-border/40">
-      <div className="flex items-center gap-2 mb-4">
-        <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Closer Insights</h3>
+    <div className="section-card">
+      <div className="section-head">
+        <div className="section-title">
+          <Lightbulb className="h-3.5 w-3.5" />
+          Closer Insights
+          {insights.length > 0 && <span className="count">{insights.length}</span>}
+        </div>
       </div>
       {insights.length === 0 ? (
         <p className="text-sm text-muted-foreground leading-relaxed">Not enough closer data this period to surface patterns.</p>

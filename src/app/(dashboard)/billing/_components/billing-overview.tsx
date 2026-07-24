@@ -277,10 +277,10 @@ export function BillingOverview({
         <Panel key={bucket.key} className="overflow-hidden">
           <div className="px-5 pt-4 pb-3 flex items-baseline justify-between border-b border-border/40">
             <div>
-              <h2 className={`text-sm font-semibold ${bucket.tone}`}>{bucket.label}</h2>
-              <p className="text-[11px] text-muted-foreground/60">{bucket.hint}</p>
+              <h2 className={`section-title ${bucket.tone}`}>{bucket.label}</h2>
+              <p className="text-[11px] text-muted-foreground/60 mt-1">{bucket.hint}</p>
             </div>
-            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+            <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">
               {bucket.groups.length} {bucket.groups.length === 1 ? "client" : "clients"}
             </span>
           </div>
@@ -634,32 +634,26 @@ function PaymentStatusCell({
   outstanding: number
   hasStripe: boolean
 }) {
-  if (!hasStripe) {
-    return <span className="text-[11px] text-muted-foreground/40">-</span>
-  }
-  if (status === null) {
+  if (!hasStripe || status === null) {
     return <span className="text-[11px] text-muted-foreground/40">-</span>
   }
   if (status === "complete") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 font-medium">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      <span className="st-label live">
+        <span className="sd" />
         Paid up
       </span>
     )
   }
-  if (status === "open") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-amber-500 font-medium">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        Open · {fmtEuro(outstanding)}
-      </span>
-    )
-  }
+  // Open / overdue: 187N bare status label + a mono € suffix for the amount.
+  const tone = status === "overdue" ? "error" : "warn"
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-red-500 font-medium">
-      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-      Overdue · {fmtEuro(outstanding)}
+    <span className="inline-flex items-center gap-2">
+      <span className={`st-label ${tone}`}>
+        <span className="sd" />
+        {status === "overdue" ? "Overdue" : "Open"}
+      </span>
+      <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{fmtEuro(outstanding)}</span>
     </span>
   )
 }
@@ -724,16 +718,15 @@ function SummaryStat({
   hint?: string
   tone?: "amber" | "red"
 }) {
-  const valueTone = tone === "red" ? "text-red-500" : tone === "amber" ? "text-amber-500" : ""
+  const valueTone =
+    tone === "red" ? "text-[color:var(--st-error)]" : tone === "amber" ? "text-[color:var(--st-warn)]" : ""
   return (
-    <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
-      <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">
-        {label}
-      </p>
-      <p className={`text-xl font-semibold mt-0.5 tabular-nums ${valueTone}`}>
-        {value}
-      </p>
-      {hint && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{hint}</p>}
+    <div className="rev-card">
+      <div className="rc-label">{label}</div>
+      <div className="rc-row">
+        <span className={`rc-value ${valueTone}`}>{value}</span>
+      </div>
+      {hint && <div className="rc-sub">{hint}</div>}
     </div>
   )
 }

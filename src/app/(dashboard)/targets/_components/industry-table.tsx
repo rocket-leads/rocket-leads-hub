@@ -4,6 +4,9 @@ import { memo } from "react"
 import type { IndustryData } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table"
 
 interface Props {
   data: IndustryData[]
@@ -13,7 +16,7 @@ interface Props {
 export const IndustryTable = memo(function IndustryTable({ data, isLoading }: Props) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-4 border border-border/40">
+      <div className="section-card">
         <Skeleton className="h-4 w-40 mb-4" />
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}
@@ -28,44 +31,47 @@ export const IndustryTable = memo(function IndustryTable({ data, isLoading }: Pr
   const avgDealSize = totalDeals > 0 ? totalRevenue / totalDeals : 0
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border/40">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Deals by Industry</h3>
+    <div className="section-card">
+      <div className="section-head">
+        <div className="section-title">
+          Deals by Industry
+          {rows.length > 0 && <span className="count">{rows.length}</span>}
+        </div>
+      </div>
       {data.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-4">No deal data</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border/60 text-[12px] text-foreground/80 font-semibold">
-                <th className="text-left font-medium pb-2">Industry</th>
-                <th className="text-right font-medium pb-2">Deals</th>
-                <th className="text-right font-medium pb-2">Total</th>
-                <th className="text-right font-medium pb-2">Avg / Deal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const avg = row.deals > 0 ? row.revenue / row.deals : 0
-                return (
-                  <tr key={row.industry} className="border-b border-border/20 last:border-0">
-                    <td className="py-1.5 text-muted-foreground truncate max-w-[160px]">{row.industry}</td>
-                    <td className="py-1.5 text-right font-mono text-foreground">{row.deals}</td>
-                    <td className="py-1.5 text-right font-mono text-foreground">{formatCurrency(row.revenue)}</td>
-                    <td className="py-1.5 text-right font-mono text-muted-foreground">{formatCurrency(avg)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-border/40 text-[11px]">
-                <td className="pt-2 text-[12px] text-foreground/80 font-semibold">Total</td>
-                <td className="pt-2 text-right font-mono font-bold text-foreground">{totalDeals}</td>
-                <td className="pt-2 text-right font-mono font-bold text-foreground">{formatCurrency(totalRevenue)}</td>
-                <td className="pt-2 text-right font-mono font-bold text-foreground">{formatCurrency(avgDealSize)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Industry</TableHead>
+              <TableHead className="text-right">Deals</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="text-right">Avg / Deal</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => {
+              const avg = row.deals > 0 ? row.revenue / row.deals : 0
+              return (
+                <TableRow key={row.industry}>
+                  <TableCell className="text-muted-foreground truncate max-w-[160px]">{row.industry}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{row.deals}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{formatCurrency(row.revenue)}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums text-muted-foreground">{formatCurrency(avg)}</TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell className="font-semibold">Total</TableCell>
+              <TableCell className="text-right font-mono font-bold tabular-nums">{totalDeals}</TableCell>
+              <TableCell className="text-right font-mono font-bold tabular-nums">{formatCurrency(totalRevenue)}</TableCell>
+              <TableCell className="text-right font-mono font-bold tabular-nums">{formatCurrency(avgDealSize)}</TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
       )}
     </div>
   )

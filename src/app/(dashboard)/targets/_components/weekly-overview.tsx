@@ -45,7 +45,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: Props) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-4 border border-border/40">
+      <div className="section-card">
         <Skeleton className="h-4 w-40 mb-4" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -54,8 +54,10 @@ export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: 
 
   if (!data.length) {
     return (
-      <div className="bg-card rounded-lg p-4 border border-border/40">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Weekly Overview</h3>
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">Weekly Overview</div>
+        </div>
         <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
           No weekly data available
         </div>
@@ -66,8 +68,10 @@ export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: 
   const chartData = data.map((w) => ({ ...w, label: weekLabel(w.weekStart) }))
 
   return (
-    <div className="bg-card rounded-lg p-5 border border-border/40 h-full flex flex-col">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Weekly Overview</h3>
+    <div className="section-card h-full flex flex-col">
+      <div className="section-head">
+        <div className="section-title">Weekly Overview</div>
+      </div>
       <ResponsiveContainer width="100%" className="flex-1" minHeight={280}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

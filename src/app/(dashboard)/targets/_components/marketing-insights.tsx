@@ -10,9 +10,9 @@ import { deriveTargets } from "@/lib/targets/calculations"
 import type { MondayTargetsData, MetaTargetsData, TargetsConfig, DateRange } from "@/types/targets"
 
 const STATUS_ICON: Record<"positive" | "warning" | "critical", { icon: LucideIcon; color: string }> = {
-  positive: { icon: CheckCircle2, color: "text-green-500" },
-  warning: { icon: AlertCircle, color: "text-yellow-500" },
-  critical: { icon: AlertOctagon, color: "text-red-500" },
+  positive: { icon: CheckCircle2, color: "text-[var(--st-live)]" },
+  warning: { icon: AlertCircle, color: "text-[var(--st-warn)]" },
+  critical: { icon: AlertOctagon, color: "text-[var(--st-error)]" },
 }
 
 interface Props {
@@ -245,7 +245,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {Array.from({ length: 2 }).map((_, idx) => (
-          <div key={idx} className="bg-card rounded-lg p-5 border border-border/40">
+          <div key={idx} className="section-card">
             <Skeleton className="h-4 w-32 mb-4" />
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}</div>
           </div>
@@ -260,10 +260,13 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {/* Key Insights */}
-      <div className="bg-card rounded-lg p-5 border border-border/40">
-        <div className="flex items-center gap-2 mb-4">
-          <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Key Insights</h3>
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">
+            <Lightbulb className="h-3.5 w-3.5" />
+            Key Insights
+            {insights.length > 0 && <span className="count">{insights.length}</span>}
+          </div>
         </div>
         <div className="space-y-3">
           {insights.map((insight, i) => {
@@ -282,10 +285,13 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
       </div>
 
       {/* Optimisation Proposal */}
-      <div className="bg-card rounded-lg p-5 border border-border/40">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Optimisation Proposal</h3>
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Optimisation Proposal
+            {proposals.length > 0 && <span className="count">{proposals.length}</span>}
+          </div>
         </div>
         <div className="space-y-3">
           {proposals.map((proposal, i) => (
