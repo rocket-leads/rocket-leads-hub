@@ -8,6 +8,7 @@ import { useDateRange } from "../_hooks/use-date-range"
 import { useDeliveryData } from "../_hooks/use-delivery-data"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { DateRangePicker } from "./date-range-picker"
+import { DeliveryHero } from "./delivery-hero"
 import { KpiCard } from "./kpi-card"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
 import { useLocale } from "@/lib/i18n/client"
@@ -63,6 +64,23 @@ export function DeliveryTab() {
           ))}
         </div>
       </div>
+
+      {/* Hero - MRR headline + revenue mix */}
+      <DeliveryHero
+        mrr={data?.mrr ?? 0}
+        newBusiness={data?.newBusiness ?? 0}
+        serviceFeeRevenue={data?.serviceFeeRevenue ?? 0}
+        adBudget={data?.adBudget ?? 0}
+        totalRevenue={data?.totalRevenue ?? 0}
+        serviceFeePerCustomer={data?.serviceFeePerCustomer ?? 0}
+        churnRate={data?.churnRate ?? 0}
+        customers={data?.currentPeriodCustomers ?? 0}
+        mrrTarget={tgt?.mrr ?? 0}
+        newBusinessTarget={tgt?.newBusiness ?? 0}
+        serviceFeePerCustomerTarget={tgt?.serviceFeePerCustomer ?? 0}
+        maxChurnRate={tgt?.maxChurnRate ?? 0}
+        isLoading={loading}
+      />
 
       {/* Revenue */}
       <div className="space-y-3">

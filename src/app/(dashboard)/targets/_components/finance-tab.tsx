@@ -6,6 +6,7 @@ import { useFinanceData } from "../_hooks/use-finance-data"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { DateRangePicker } from "./date-range-picker"
+import { FinanceHero } from "./finance-hero"
 import { KpiCard } from "./kpi-card"
 import { RevenueProgressBar } from "./revenue-progress-bar"
 import { InvoiceDetailModal } from "./invoice-detail-modal"
@@ -113,6 +114,11 @@ export function FinanceTab() {
   const teamCosts = teamEst && teamCostsTarget > 0 ? teamCostsTarget : teamCostsActual
   const totalCosts = teamCosts + marketingCosts + hqCosts
 
+  // ── Profit (hoisted so the hero + the Profit section share one calc) ──
+  const revenueForProfit = projectedServiceFee
+  const netProfit = revenueForProfit - totalCosts
+  const margin = revenueForProfit > 0 ? netProfit / revenueForProfit : 0
+
   return (
     <div className="space-y-6">
       {/* Date picker - same component as Marketing/Sales + Delivery */}
@@ -135,6 +141,19 @@ export function FinanceTab() {
           ))}
         </div>
       </div>
+
+      {/* Hero - net profit margin + where revenue goes */}
+      <FinanceHero
+        revenue={revenueForProfit}
+        totalCosts={totalCosts}
+        netProfit={netProfit}
+        margin={margin}
+        marginTarget={profitMargin}
+        netProfitTarget={netProfitTarget}
+        maxTotalCostsTarget={maxTotalCostsTarget}
+        isEstimated={isCurrentRange || anyEstimated}
+        isLoading={loading}
+      />
 
       {/* Service Fee Invoiced progress bar */}
       {totalRevenueTarget > 0 && (
@@ -238,10 +257,6 @@ export function FinanceTab() {
 
       {/* ── PROFIT ── */}
       {(() => {
-        const revenueForProfit = projectedServiceFee
-        const netProfit = revenueForProfit - totalCosts
-        const margin = revenueForProfit > 0 ? netProfit / revenueForProfit : 0
-
         return (
           <div className="space-y-3">
             <div className="section-title">{t("targets.finance.section.profit", locale)}</div>
