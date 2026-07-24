@@ -270,6 +270,16 @@ export function CalendarView({ initialConnected }: Props) {
     },
   })
 
+  // Today's items for the rail - always the real "today", filtered from the
+  // fetched range (populated whenever today is in view, i.e. the default week).
+  const todayKey = format(new Date(), "yyyy-MM-dd")
+  const todayEvents = (data?.events ?? []).filter(
+    (ev) => (ev.allDay ? ev.start.slice(0, 10) : format(parseISO(ev.start), "yyyy-MM-dd")) === todayKey,
+  )
+  const todayTasks = (data?.tasks ?? []).filter(
+    (tk) => (tk.scheduled_at ? format(parseISO(tk.scheduled_at), "yyyy-MM-dd") : tk.displayDate) === todayKey,
+  )
+
   return (
     <div className="space-y-4">
       {/* Toolbar — week navigator + today button + range label */}
@@ -305,17 +315,6 @@ export function CalendarView({ initialConnected }: Props) {
 
         <div className="flex items-center gap-2">
           <ViewModeSwitcher view={view} onChange={updateView} />
-          <CalendarSelector
-            disabled={!connected}
-            on={visibility.meetings}
-            onMeetingsToggle={() => toggleVisibility("meetings")}
-          />
-          <VisibilityToggle
-            label="Tasks"
-            color="#f59e0b"
-            on={visibility.tasks}
-            onClick={() => toggleVisibility("tasks")}
-          />
           <Button
             size="sm"
             onClick={() => setDialog({ kind: "create" })}
@@ -333,53 +332,67 @@ export function CalendarView({ initialConnected }: Props) {
 
       {data?.error && <CalendarErrorBanner error={data.error} />}
 
-      {visibility.tasks && (data?.undatedTaskCount ?? 0) > 0 && (
-        <UndatedTasksBanner count={data!.undatedTaskCount} />
-      )}
+      {/* Calendar grid (left) + Today / Sources rail (right), 187N-style. */}
+      <div className="flex gap-5 items-start">
+        <div className="flex-1 min-w-0 space-y-4">
+          {visibility.tasks && (data?.undatedTaskCount ?? 0) > 0 && (
+            <UndatedTasksBanner count={data!.undatedTaskCount} />
+          )}
 
-      {view === "month" ? (
-        <MonthGrid
-          days={days}
-          anchor={anchor}
-          eventsByDay={timedByDay}
-          allDayByDay={allDayByDay}
-          tasksByDay={tasksAllDayByDay}
-          tasksTimedByDay={tasksTimedByDay}
-          onOpenEvent={(id, calendarId) =>
-            setDialog({ kind: "view", eventId: id, calendarId })
-          }
-          onOpenTask={(id) => setTaskDialogId(id)}
-          onJumpToDay={(d) => {
-            setAnchor(d)
-            updateView("day")
-          }}
-        />
-      ) : (
-        <TimeGrid
-          days={days}
-          timedByDay={timedByDay}
-          allDayByDay={allDayByDay}
-          tasksAllDayByDay={tasksAllDayByDay}
-          tasksTimedByDay={tasksTimedByDay}
-          onOpenEvent={(id, calendarId) =>
-            setDialog({ kind: "view", eventId: id, calendarId })
-          }
-          onOpenTask={(id) => setTaskDialogId(id)}
-          onCreateAt={(when) => setDialog({ kind: "create", initialStart: when })}
-          onRescheduleTask={(taskId, when) =>
-            rescheduleTaskMut.mutate({
-              taskId,
-              scheduledAt: when ? when.toISOString() : null,
-            })
-          }
-        />
-      )}
+          {view === "month" ? (
+            <MonthGrid
+              days={days}
+              anchor={anchor}
+              eventsByDay={timedByDay}
+              allDayByDay={allDayByDay}
+              tasksByDay={tasksAllDayByDay}
+              tasksTimedByDay={tasksTimedByDay}
+              onOpenEvent={(id, calendarId) =>
+                setDialog({ kind: "view", eventId: id, calendarId })
+              }
+              onOpenTask={(id) => setTaskDialogId(id)}
+              onJumpToDay={(d) => {
+                setAnchor(d)
+                updateView("day")
+              }}
+            />
+          ) : (
+            <TimeGrid
+              days={days}
+              timedByDay={timedByDay}
+              allDayByDay={allDayByDay}
+              tasksAllDayByDay={tasksAllDayByDay}
+              tasksTimedByDay={tasksTimedByDay}
+              onOpenEvent={(id, calendarId) =>
+                setDialog({ kind: "view", eventId: id, calendarId })
+              }
+              onOpenTask={(id) => setTaskDialogId(id)}
+              onCreateAt={(when) => setDialog({ kind: "create", initialStart: when })}
+              onRescheduleTask={(taskId, when) =>
+                rescheduleTaskMut.mutate({
+                  taskId,
+                  scheduledAt: when ? when.toISOString() : null,
+                })
+              }
+            />
+          )}
 
-      {query.isError && (
-        <p className="text-sm text-destructive">
-          Couldn&apos;t load calendar. Try refreshing.
-        </p>
-      )}
+          {query.isError && (
+            <p className="text-sm text-destructive">
+              Couldn&apos;t load calendar. Try refreshing.
+            </p>
+          )}
+        </div>
+
+        <aside className="hidden xl:flex w-[340px] shrink-0 flex-col gap-4">
+          <TodayPanel events={todayEvents} tasks={todayTasks} />
+          <SourcesPanel
+            visibility={visibility}
+            onToggle={toggleVisibility}
+            connected={connected}
+          />
+        </aside>
+      </div>
 
       {dialog && (
         <EventDialog
@@ -396,6 +409,153 @@ export function CalendarView({ initialConnected }: Props) {
           onOpenChange={(o) => !o && setTaskDialogId(null)}
         />
       )}
+    </div>
+  )
+}
+
+const MEETING_COLOR = "#8967F3"
+const TASK_COLOR = "#f59e0b"
+
+/** 187N "TODAY" rail panel: today's meetings + tasks as a chronological list. */
+function TodayPanel({
+  events,
+  tasks,
+}: {
+  events: CalendarEventsResponse["events"]
+  tasks: CalendarEventsResponse["tasks"]
+}) {
+  const items = useMemo(() => {
+    type Item = { key: string; time: string | null; sort: number; title: string; type: "meeting" | "task" }
+    const out: Item[] = []
+    for (const ev of events) {
+      const timed = !ev.allDay
+      out.push({
+        key: `e:${ev.id}`,
+        time: timed ? format(parseISO(ev.start), "HH:mm") : null,
+        sort: timed ? parseISO(ev.start).getTime() : -1,
+        title: ev.title,
+        type: "meeting",
+      })
+    }
+    for (const tk of tasks) {
+      const timed = !!tk.scheduled_at
+      out.push({
+        key: `t:${tk.id}`,
+        time: timed ? format(parseISO(tk.scheduled_at as string), "HH:mm") : null,
+        sort: timed ? parseISO(tk.scheduled_at as string).getTime() : -1,
+        title: tk.title,
+        type: "task",
+      })
+    }
+    return out.sort((a, b) => a.sort - b.sort)
+  }, [events, tasks])
+
+  const dateLabel = format(new Date(), "EEE dd MMM")
+
+  return (
+    <div className="section-card">
+      <div className="section-title mb-3">
+        Today
+        <span className="count">
+          {items.length} {items.length === 1 ? "event" : "events"} · {dateLabel}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground/60 py-2">Nothing scheduled today.</p>
+      ) : (
+        <div className="space-y-3.5">
+          {items.map((it) => (
+            <div key={it.key} className="flex items-start gap-3">
+              <span className="font-mono text-[11px] text-muted-foreground/55 w-12 shrink-0 pt-0.5 tabular-nums">
+                {it.time ?? "All-day"}
+              </span>
+              <span
+                className="mt-[7px] h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ background: it.type === "meeting" ? MEETING_COLOR : TASK_COLOR }}
+              />
+              <div className="min-w-0">
+                <div className="text-[13.5px] font-medium text-foreground leading-snug">{it.title}</div>
+                <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50 mt-0.5">
+                  {it.type}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 187N "SOURCES" rail panel: stream toggles with switch controls. */
+function SourcesPanel({
+  visibility,
+  onToggle,
+  connected,
+}: {
+  visibility: Visibility
+  onToggle: (key: keyof Visibility) => void
+  connected: boolean
+}) {
+  return (
+    <div className="section-card">
+      <div className="section-title mb-1">
+        Sources
+        <span className="count">Google sync</span>
+      </div>
+      <div>
+        <SwitchRow
+          color={MEETING_COLOR}
+          label="Meetings"
+          status={connected ? "Google Cal" : "not linked"}
+          on={visibility.meetings}
+          disabled={!connected}
+          onToggle={() => onToggle("meetings")}
+        />
+        <SwitchRow
+          color={TASK_COLOR}
+          label="Tasks"
+          status="Hub"
+          on={visibility.tasks}
+          onToggle={() => onToggle("tasks")}
+        />
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground/50 mt-3">
+        Toggling a source hides its events from the grid.
+      </p>
+    </div>
+  )
+}
+
+function SwitchRow({
+  color,
+  label,
+  status,
+  on,
+  onToggle,
+  disabled,
+}: {
+  color: string
+  label: string
+  status: string
+  on: boolean
+  onToggle: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
+      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
+      <span className="text-[14px] font-medium text-foreground flex-1">{label}</span>
+      <span className="font-mono text-[11px] text-muted-foreground/50">{status}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        disabled={disabled}
+        onClick={onToggle}
+        className={cn("switch", on && "on", disabled && "opacity-40 cursor-not-allowed")}
+      />
     </div>
   )
 }
