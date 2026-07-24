@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query"
 import { FilePlus, Search, Loader2, X } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 
 /**
@@ -91,20 +90,19 @@ export function GlobalCreateInvoice() {
             <DialogTitle>New invoice - pick a client</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
-              <Input
+            <div className="search-pill w-full">
+              <Search />
+              <input
                 autoFocus
                 placeholder="Search clients…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-8 h-9 text-sm"
               />
               {query.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
+                  className="text-muted-foreground/60 hover:text-foreground"
                   aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
