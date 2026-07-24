@@ -35,12 +35,13 @@ const STATUS_FILTER_TABS: TopTab<StatusFilter>[] = [
   { id: "void", label: "Void" },
 ]
 
-const STATUS_PILL: Record<PastInvoiceRow["status"], { label: string; cls: string }> = {
-  paid: { label: "Paid", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
-  open: { label: "Open", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
-  overdue: { label: "Overdue", cls: "bg-red-500/10 text-red-600 dark:text-red-400" },
-  draft: { label: "Draft", cls: "bg-muted text-muted-foreground" },
-  void: { label: "Void", cls: "bg-muted text-muted-foreground/70" },
+// 187N status tones (bare .st-label dot + mono uppercase, no fill).
+const STATUS_PILL: Record<PastInvoiceRow["status"], { label: string; tone: string }> = {
+  paid: { label: "Paid", tone: "live" },
+  open: { label: "Open", tone: "warn" },
+  overdue: { label: "Overdue", tone: "error" },
+  draft: { label: "Draft", tone: "idle" },
+  void: { label: "Void", tone: "idle" },
 }
 
 function fmtEuro(amount: number): string {
@@ -210,7 +211,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                 <SortableHead label="Date" k="date" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[130px]" />
                 <SortableHead label="Amount" k="amount" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
                 <SortableHead label="Status" k="status" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Open</TableHead>
+                <TableHead className="w-[100px]">Open</TableHead>
                 <TableHead className="w-[48px]" />
               </TableRow>
             </TableHeader>
@@ -245,12 +246,8 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                       {fmtEuro(inv.amountDue)}
                     </TableCell>
                     <TableCell className="py-2.5">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                          pill.cls,
-                        )}
-                      >
+                      <span className={`st-label ${pill.tone}`}>
+                        <span className="sd" />
                         {pill.label}
                       </span>
                     </TableCell>
@@ -356,13 +353,13 @@ function SortableHead({
   const active = current === k
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown
   return (
-    <TableHead className={cn("text-[12px] text-foreground/80 font-semibold", className)}>
+    <TableHead className={className}>
       <button
         type="button"
         onClick={() => onSort(k)}
         className={cn(
-          "inline-flex items-center gap-1 hover:text-foreground transition-colors",
-          active ? "text-foreground" : "text-foreground/80",
+          "inline-flex items-center gap-1 uppercase hover:text-foreground transition-colors",
+          active ? "text-foreground" : "text-muted-foreground/70",
         )}
       >
         {label}

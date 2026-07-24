@@ -287,18 +287,18 @@ export function BillingOverview({
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
-                <TableHead className="text-[12px] text-foreground/80 font-semibold">Client</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[150px]">Action</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Admin</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">AM</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment date</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice out</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Fee</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[110px]">Ad budget</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment (Stripe)</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[180px]">AI check</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Stripe</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead className="w-[150px]">Action</TableHead>
+                <TableHead className="w-[140px]">Status</TableHead>
+                <TableHead className="w-[160px]">Admin</TableHead>
+                <TableHead className="w-[140px]">AM</TableHead>
+                <TableHead className="w-[160px]">Payment date</TableHead>
+                <TableHead className="w-[140px]">Invoice out</TableHead>
+                <TableHead className="w-[100px]">Fee</TableHead>
+                <TableHead className="w-[110px]">Ad budget</TableHead>
+                <TableHead className="w-[160px]">Payment (Stripe)</TableHead>
+                <TableHead className="w-[180px]">AI check</TableHead>
+                <TableHead className="w-[100px]">Stripe</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
