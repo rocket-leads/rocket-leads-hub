@@ -119,6 +119,24 @@ export function FinanceTab() {
   const netProfit = revenueForProfit - totalCosts
   const margin = revenueForProfit > 0 ? netProfit / revenueForProfit : 0
 
+  // ── Month-end projection: only when viewing the current month-to-date (range
+  // starts on the 1st of the current month). Extrapolates invoiced service fee
+  // at the current daily pace to the full calendar month. ──
+  const monthProjection = (() => {
+    const today = new Date()
+    const start = range.startDate
+    const end = range.endDate
+    const inCurrentMonth = end.getFullYear() === today.getFullYear() && end.getMonth() === today.getMonth()
+    const startsAtMonthStart =
+      start.getDate() === 1 && start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
+    if (!inCurrentMonth || !startsAtMonthStart) return null
+    const daysElapsed = end.getDate()
+    const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate()
+    const invoicedSf = sf?.invoiced ?? 0
+    if (daysElapsed <= 0 || invoicedSf <= 0) return null
+    return { value: invoicedSf * (daysInMonth / daysElapsed), daysElapsed, daysInMonth }
+  })()
+
   return (
     <div className="space-y-6">
       {/* Date picker - same component as Marketing/Sales + Delivery */}
@@ -148,6 +166,7 @@ export function FinanceTab() {
         newBusiness={nb?.invoiced ?? 0}
         mrr={mrr?.invoiced ?? 0}
         invoicedTarget={totalRevenueTarget}
+        projection={monthProjection}
         isLoading={loading}
       />
 

@@ -10,6 +10,9 @@ interface Props {
   newBusiness: number
   mrr: number
   invoicedTarget: number
+  /** Month-end projection when viewing the current month-to-date - extrapolates
+   *  the invoiced-so-far at the current daily pace to the full calendar month. */
+  projection: { value: number; daysElapsed: number; daysInMonth: number } | null
   isLoading: boolean
 }
 
@@ -46,7 +49,7 @@ function CompositionBar({ segments }: { segments: Array<{ label: string; value: 
   )
 }
 
-export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mrr, invoicedTarget, isLoading }: Props) {
+export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mrr, invoicedTarget, projection, isLoading }: Props) {
   if (isLoading) {
     return (
       <div className="section-card">
@@ -129,6 +132,18 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
           </div>
         </div>
       </div>
+
+      {projection && (
+        <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-border/40 pt-4">
+          <div className="flex items-baseline gap-2.5">
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">Projected month-end</span>
+            <span className="font-mono text-[22px] font-bold tabular-nums text-foreground">{formatCurrency(projection.value)}</span>
+          </div>
+          <span className="font-mono text-[11px] text-muted-foreground/60">
+            Day {projection.daysElapsed} of {projection.daysInMonth} · {formatCurrency(invoiced)} invoiced so far, at current pace
+          </span>
+        </div>
+      )}
     </div>
   )
 })
