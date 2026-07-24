@@ -9,11 +9,13 @@ import type { InboxItem, TaskStatus } from "@/types/inbox"
 
 export type RowUser = { id: string; name: string | null; email: string }
 
-const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
-  open: { label: "Open", cls: "bg-blue-500/10 text-blue-400" },
-  in_progress: { label: "In progress", cls: "bg-amber-500/10 text-amber-400" },
-  done: { label: "Done", cls: "bg-emerald-500/10 text-emerald-400" },
-  cancelled: { label: "Cancelled", cls: "bg-muted text-muted-foreground" },
+// 187N status tone per task status → rendered as a bare `.st-label` (dot + mono
+// uppercase, no fill) instead of a filled pill.
+const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; tone: string }> = {
+  open: { label: "Open", tone: "idle" },
+  in_progress: { label: "In progress", tone: "warn" },
+  done: { label: "Done", tone: "live" },
+  cancelled: { label: "Cancelled", tone: "idle" },
 }
 
 /**
@@ -287,7 +289,7 @@ export function InboxListRow({
               compete visually. */}
           <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/75 flex-wrap">
             <span
-              className="inline-flex items-center gap-1.5 font-medium uppercase tracking-wide text-[10px] text-muted-foreground/80 shrink-0"
+              className="inline-flex items-center gap-1.5 font-mono font-medium uppercase tracking-wide text-[10px] text-muted-foreground/80 shrink-0"
               title={kindTreatment.label}
             >
               <span
@@ -300,13 +302,7 @@ export function InboxListRow({
               source={item.source}
               channelKind={item.channelKind}
             />
-            {taskStatus && (
-              <span
-                className={`text-[10px] px-1.5 py-px rounded-full font-medium ${taskStatus.cls}`}
-              >
-                {taskStatus.label}
-              </span>
-            )}
+            {taskStatus && <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span>}
             {!showClient && isHighPriority && (
               <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
             )}
@@ -315,13 +311,13 @@ export function InboxListRow({
             <span className="text-muted-foreground/30">→</span>
             <span>{item.assigneeName}</span>
             <span className="text-muted-foreground/30">·</span>
-            <span>{fmtDate(item.createdAt)}</span>
+            <span className="font-mono tabular-nums">{fmtDate(item.createdAt)}</span>
             {item.dueDate && (
               <>
                 <span className="text-muted-foreground/30">·</span>
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1",
+                    "inline-flex items-center gap-1 font-mono tabular-nums",
                     fmtDueDate(item.dueDate).overdue && "text-red-400",
                   )}
                 >
@@ -333,7 +329,7 @@ export function InboxListRow({
             {item.commentCount > 0 && (
               <>
                 <span className="text-muted-foreground/30">·</span>
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 font-mono tabular-nums">
                   <MessageCircle className="h-3 w-3" />
                   {item.commentCount}
                 </span>

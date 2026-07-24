@@ -132,10 +132,10 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
                 {item.assigneeName}
               </span>
             )}
-            <span className="text-xs text-muted-foreground/60">· {fmtRelative(item.createdAt)}</span>
+            <span className="font-mono text-[11px] text-muted-foreground/50 tabular-nums">· {fmtRelative(item.createdAt)}</span>
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide">
               <span className={cn("h-1.5 w-1.5 rounded-full", kind.dot)} />
               {kindLabel}
             </span>

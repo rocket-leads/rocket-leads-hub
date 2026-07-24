@@ -140,10 +140,10 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
           )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className="text-xs text-muted-foreground/70 tabular-nums">{fmtRelative(row.sortAt)}</span>
+          <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{fmtRelative(row.sortAt)}</span>
           <div className="flex items-center gap-1.5">
             {row.unreadCount > 0 && (
-              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-500/15 px-1.5 text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+              <span className="nav-badge">
                 {row.unreadCount > 99 ? "99+" : row.unreadCount}
               </span>
             )}
