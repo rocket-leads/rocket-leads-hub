@@ -1,6 +1,6 @@
 import { Sidebar } from "@/components/sidebar"
 import { Providers } from "@/components/providers"
-import { ClientSearch } from "@/components/client-search"
+import { GlobalSearch } from "@/components/global-search"
 import { CommandBar } from "@/components/copilot/command-bar"
 import { ApiHealthBanner } from "@/components/api-health-banner"
 import { GlobalClientSlideOver } from "@/components/global-client-slide-over"
@@ -33,8 +33,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="topbar">
             <TopbarBreadcrumb />
             <div className="topbar-right">
+              <GlobalSearch />
               <CommandBar />
-              <ClientSearch />
             </div>
           </div>
           {/* Global API health banner - visible on every page when any
