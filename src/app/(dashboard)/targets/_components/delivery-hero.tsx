@@ -2,10 +2,10 @@
 
 import { memo } from "react"
 import { Trophy, AlertTriangle } from "lucide-react"
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/targets/formatters"
+import { ShareDonut } from "./share-donut"
 import type { AccountManagerRevenue } from "@/types/targets"
 
 interface Props {
@@ -47,7 +47,6 @@ export const DeliveryHero = memo(function DeliveryHero({ teams, unassigned, isLo
     ...ranked.map((t, i) => ({ name: t.name, value: Math.max(0, t.serviceFee), color: TEAM_COLORS[i % TEAM_COLORS.length] })),
     ...(showUnassigned ? [{ name: "Unassigned", value: Math.max(0, unassigned!.serviceFee), color: UNASSIGNED_COLOR }] : []),
   ].filter((d) => d.value > 0)
-  const donutTotal = donut.reduce((s, d) => s + d.value, 0) || 1
 
   return (
     <div className="section-card overflow-hidden">
@@ -124,45 +123,7 @@ export const DeliveryHero = memo(function DeliveryHero({ teams, unassigned, isLo
         </div>
 
         {/* ── Share donut ── */}
-        <div className="min-w-0">
-          <div className="relative mx-auto h-[168px] w-[168px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={donut}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius="66%"
-                  outerRadius="100%"
-                  paddingAngle={1.5}
-                  strokeWidth={0}
-                  startAngle={90}
-                  endAngle={-270}
-                >
-                  {donut.map((d) => <Cell key={d.name} fill={d.color} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-mono text-[20px] font-bold leading-none tabular-nums text-foreground">{formatCurrency(donutTotal)}</span>
-              <span className="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/60">Service fee</span>
-            </div>
-          </div>
-
-          {/* Legend with percentages */}
-          <div className="mt-4 space-y-1.5">
-            {donut.map((d) => (
-              <div key={d.name} className="flex items-center gap-2 text-[12px]">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: d.color }} />
-                <span className="min-w-0 flex-1 truncate text-foreground/80">{d.name}</span>
-                <span className="font-mono tabular-nums text-muted-foreground/60">{formatCurrency(d.value)}</span>
-                <span className="w-9 text-right font-mono font-semibold tabular-nums">{((d.value / donutTotal) * 100).toFixed(0)}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ShareDonut segments={donut} centerLabel="Service fee" />
       </div>
     </div>
   )

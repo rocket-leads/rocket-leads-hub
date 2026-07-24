@@ -4,6 +4,7 @@ import { memo } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/targets/formatters"
+import { ShareDonut } from "./share-donut"
 
 interface Props {
   invoiced: number
@@ -15,6 +16,9 @@ interface Props {
   projection: { value: number; daysElapsed: number; daysInMonth: number } | null
   isLoading: boolean
 }
+
+const NB_COLOR = "#8967F3"
+const MRR_COLOR = "#B7A6F5"
 
 /** vs-target delta pill (higher is better). Inline white-space so it never wraps. */
 function Delta({ current, target }: { current: number; target: number }) {
@@ -33,22 +37,6 @@ function Delta({ current, target }: { current: number; target: number }) {
   )
 }
 
-function CompositionBar({ segments }: { segments: Array<{ label: string; value: number; className: string }> }) {
-  const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0) || 1
-  return (
-    <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-      {segments.map((s) => (
-        <div
-          key={s.label}
-          className={cn("h-full", s.className)}
-          style={{ width: `${(Math.max(0, s.value) / total) * 100}%` }}
-          title={`${s.label}: ${formatCurrency(s.value)}`}
-        />
-      ))}
-    </div>
-  )
-}
-
 export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mrr, invoicedTarget, projection, isLoading }: Props) {
   if (isLoading) {
     return (
@@ -59,20 +47,18 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
             <Skeleton className="h-14 w-40" />
             <Skeleton className="h-4 w-56" />
           </div>
-          <Skeleton className="h-24 w-full" />
+          <Skeleton className="mx-auto h-40 w-40 rounded-full" />
         </div>
       </div>
     )
   }
 
   const onTarget = invoicedTarget > 0 && invoiced >= invoicedTarget
-  const nbShare = invoiced > 0 ? (newBusiness / invoiced) * 100 : 0
-  const mrrShare = invoiced > 0 ? (mrr / invoiced) * 100 : 0
 
-  const SEGMENTS = [
-    { label: "New Business", value: newBusiness, className: "bg-[var(--teal)]" },
-    { label: "MRR", value: mrr, className: "bg-[var(--teal)]/45" },
-  ]
+  const segments = [
+    { name: "New Business", value: newBusiness, color: NB_COLOR },
+    { name: "MRR", value: mrr, color: MRR_COLOR },
+  ].filter((s) => s.value > 0)
 
   return (
     <div className="section-card overflow-hidden">
@@ -95,42 +81,14 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
             <span className="font-medium text-foreground/80">{formatCurrency(mrr)}</span> recurring.
           </p>
           <Delta current={invoiced} target={invoicedTarget} />
-
-          <div className="mt-6 grid grid-cols-2 gap-4">
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">New Business</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(newBusiness)}</p>
-              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground/60">{nbShare.toFixed(0)}% of invoiced</p>
-            </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">MRR</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(mrr)}</p>
-              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground/60">{mrrShare.toFixed(0)}% of invoiced</p>
-            </div>
-          </div>
         </div>
 
-        {/* ── Right: new business vs recurring split ── */}
-        <div className="min-w-0">
-          <div className="flex items-baseline justify-between mb-2">
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">New business vs recurring</p>
-            <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70">
-              {nbShare.toFixed(0)}% new · {mrrShare.toFixed(0)}% recurring
-            </p>
-          </div>
-          <CompositionBar segments={SEGMENTS} />
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            {SEGMENTS.map((s) => (
-              <div key={s.label} className="flex items-start gap-2">
-                <span className={cn("mt-1 h-2.5 w-2.5 rounded-sm shrink-0", s.className)} />
-                <div className="min-w-0">
-                  <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">{s.label}</p>
-                  <p className="font-mono text-sm font-semibold tabular-nums">{formatCurrency(s.value)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* ── Right: new business vs recurring donut ── */}
+        {segments.length > 0 ? (
+          <ShareDonut segments={segments} centerLabel="Invoiced" />
+        ) : (
+          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">No invoiced revenue this period</div>
+        )}
       </div>
 
       {projection && (
