@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, PanelLeftClose, PanelLeftOpen, Circle, User, CircleCheck, Search, X } from "lucide-react"
+import { Plus, Circle, User, CircleCheck, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -237,30 +237,6 @@ export function InboxShell({
   )
   const isExternal = scope === "external"
 
-  // Collapsible left rail (channels / filters). Mirrors the main sidebar's
-  // PanelLeft toggle: default expanded so SSR + first client paint agree, then
-  // the effect applies the persisted choice. Collapsing hands the reclaimed
-  // width to the feed / chat - Roy's ask.
-  const [railCollapsed, setRailCollapsed] = useState(false)
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (window.localStorage.getItem("inbox-rail-collapsed") === "1") setRailCollapsed(true)
-    } catch {
-      // localStorage unavailable - stay expanded.
-    }
-  }, [])
-  const toggleRail = useCallback(() => {
-    setRailCollapsed((v) => {
-      const next = !v
-      try {
-        window.localStorage.setItem("inbox-rail-collapsed", next ? "1" : "0")
-      } catch {
-        // ignore write failures (private mode / full storage)
-      }
-      return next
-    })
-  }, [])
 
   // --- Data sources ----------------------------------------------------------
   const clientQ = locked ? `&clientId=${encodeURIComponent(locked.id)}` : "&assignedToMe=true"
@@ -939,18 +915,6 @@ export function InboxShell({
       onSelectMentioned={selectMentioned}
     />
   )
-  const railToggle = (
-    <button
-      type="button"
-      onClick={toggleRail}
-      title={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
-      aria-label={railCollapsed ? t("inbox.shell.rail.show", locale) : t("inbox.shell.rail.hide", locale)}
-      className="icon-btn shrink-0"
-    >
-      {railCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-    </button>
-  )
-
   const emptyHint = isExternal
     ? searching
       ? t("inbox.shell.empty.search", locale)
@@ -979,10 +943,6 @@ export function InboxShell({
       )}
 
       <div className="flex items-center gap-2">
-        {/* Rail toggle only lives on the internal scope now — it collapses the
-            Type/Deadline picker. The external rail folded into the ChannelPicker
-            dropdown, which is never collapsed. Roy 2026-07-24. */}
-        {!isExternal && railToggle}
         {(!locked || canViewComms) && (
           <div className="flex items-center gap-1.5" role="group" aria-label="Scope">
             {scopeItems.map((it) => (
@@ -1142,7 +1102,7 @@ export function InboxShell({
             </div>
             {/* Type/Deadline selector (folds the old rail into the list header).
                 Hidden while searching or when the rail toggle collapses it. */}
-            {!intSearching && !railCollapsed && internalPicker}
+            {!intSearching && internalPicker}
             <div className="min-h-0 min-w-0 flex-1">
               <UnifiedFeed
                 rows={visibleInternalRows}
