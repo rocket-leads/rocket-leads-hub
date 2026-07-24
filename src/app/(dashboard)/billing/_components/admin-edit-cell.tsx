@@ -5,11 +5,17 @@ import { useMutation } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Check, X } from "lucide-react"
-import { cn } from "@/lib/utils"
-import {
-  administrationToneClass,
-  viewAdministration,
-} from "@/lib/clients/administration"
+import { viewAdministration, type AdministrationTone } from "@/lib/clients/administration"
+
+// Map the Administration domain tone → 187N .st-label tone (dot + mono
+// uppercase, no fill). Local to billing so the shared lib stays untouched.
+const ADMIN_ST_TONE: Record<AdministrationTone, string> = {
+  neutral: "idle",
+  warn: "warn",
+  danger: "error",
+  success: "live",
+  muted: "idle",
+}
 
 type Props = {
   mondayItemId: string
@@ -60,16 +66,14 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
       <span className="text-[11px] text-muted-foreground/40">-</span>
     ) : (
       <span
-        className={cn(
-          "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-          administrationToneClass(view.tone),
-        )}
+        className={`st-label ${ADMIN_ST_TONE[view.tone]}`}
         title={
           view.originalLabel && view.originalLabel.toLowerCase() !== view.label.toLowerCase()
             ? `Monday: ${view.originalLabel}`
             : undefined
         }
       >
+        <span className="sd" />
         {view.label}
       </span>
     )
@@ -101,12 +105,8 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
               }}
               className="w-full flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-[12px] hover:bg-muted transition-colors disabled:opacity-50"
             >
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium",
-                  administrationToneClass(optView.tone),
-                )}
-              >
+              <span className={`st-label ${ADMIN_ST_TONE[optView.tone]}`}>
+                <span className="sd" />
                 {optView.label}
               </span>
               {isSelected && <Check className="h-3.5 w-3.5 text-foreground/70" />}

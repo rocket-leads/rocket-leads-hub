@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Sparkles, Loader2, RefreshCw, MessageSquareText } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 
 type Props = {
@@ -20,27 +19,12 @@ type Props = {
   mondayItemUrl: string | null
 }
 
+// 187N status tones for the bare .st-label verdict (dot + mono uppercase).
 const VERDICT_TONES = {
-  send: {
-    pill: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    dot: "bg-emerald-500",
-    label: "Send",
-  },
-  check: {
-    pill: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    dot: "bg-amber-500",
-    label: "Check",
-  },
-  hold: {
-    pill: "bg-red-500/10 text-red-600 dark:text-red-400",
-    dot: "bg-red-500",
-    label: "Hold",
-  },
-  error: {
-    pill: "bg-muted text-muted-foreground",
-    dot: "bg-muted-foreground/50",
-    label: "AI failed",
-  },
+  send: { st: "live", label: "Send" },
+  check: { st: "warn", label: "Check" },
+  hold: { st: "error", label: "Hold" },
+  error: { st: "idle", label: "AI failed" },
 } as const
 
 /**
@@ -101,18 +85,20 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial, monday
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         type="button"
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-80",
-          tone.pill,
-        )}
+        className="inline-flex items-center gap-2 transition-opacity hover:opacity-80"
         title={
           data.verdict === "error"
             ? "AI check failed - open to retry"
             : `${tone.label} · ${data.confidence}% confidence`
         }
       >
-        <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-        {data.verdict === "error" ? tone.label : `${tone.label} · ${data.confidence}%`}
+        <span className={`st-label ${tone.st}`}>
+          <span className="sd" />
+          {tone.label}
+        </span>
+        {data.verdict !== "error" && (
+          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{data.confidence}%</span>
+        )}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] p-0">
         <div className="px-4 py-3 border-b border-border/40">
@@ -133,9 +119,9 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial, monday
             </Button>
           </div>
           <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground/70">
-            <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5", tone.pill)}>
-              <span className={cn("h-1 w-1 rounded-full", tone.dot)} />
-              {data.verdict === "error" ? tone.label : `${tone.label} · ${data.confidence}%`}
+            <span className={`st-label ${tone.st}`}>
+              <span className="sd" />
+              {tone.label}{data.verdict !== "error" ? ` · ${data.confidence}%` : ""}
             </span>
             <span>{new Date(data.computedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
           </div>
