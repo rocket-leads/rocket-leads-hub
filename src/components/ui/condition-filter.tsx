@@ -25,8 +25,12 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
   const activeCount = filters.filter(isActive).length
 
   // Visible rows = ordered list of filter keys. Seeded from whatever is already
-  // active so re-opening reflects current state.
-  const [rows, setRows] = useState<string[]>(() => filters.filter(isActive).map((f) => f.key))
+  // active; if nothing is active we still show one empty "Where" row so the
+  // builder is never a blank slate.
+  const [rows, setRows] = useState<string[]>(() => {
+    const active = filters.filter(isActive).map((f) => f.key)
+    return active.length ? active : filters[0] ? [filters[0].key] : []
+  })
 
   const usedKeys = new Set(rows)
   const addable = filters.filter((f) => !usedKeys.has(f.key))
@@ -39,7 +43,11 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
   const removeRow = (key: string) => {
     const f = byKey.get(key)
     if (f) f.onChange(f.options[0].value)
-    setRows((r) => r.filter((k) => k !== key))
+    // Never drop below one row - keep the first "Where" always visible.
+    setRows((r) => {
+      const next = r.filter((k) => k !== key)
+      return next.length ? next : filters[0] ? [filters[0].key] : []
+    })
   }
 
   const changeField = (oldKey: string, newKey: string) => {
@@ -102,7 +110,7 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
 
                   {/* Field */}
                   <Select value={key} onValueChange={(v) => { if (v) changeField(key, v) }}>
-                    <SelectTrigger className="h-9 flex-1 min-w-0">
+                    <SelectTrigger size="sm" className="flex-1 min-w-0 bg-[var(--surface)] text-[13px] shadow-[var(--shadow-xs)]">
                       <SelectValue>{f.label}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -114,8 +122,8 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
                     </SelectContent>
                   </Select>
 
-                  {/* Operator (equality only) */}
-                  <span className="shrink-0 inline-flex h-9 items-center rounded-md border border-border bg-muted/40 px-3 text-[13px] text-muted-foreground">
+                  {/* Operator (equality only) - styled to match the fields. */}
+                  <span className="shrink-0 inline-flex h-9 items-center rounded-md border border-input bg-[var(--surface-2)] px-3 text-[13px] text-muted-foreground">
                     is
                   </span>
 
@@ -124,7 +132,7 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
                     value={f.value === cleared ? "" : f.value}
                     onValueChange={(v) => f.onChange(v ?? f.options[0].value)}
                   >
-                    <SelectTrigger className="h-9 flex-1 min-w-0">
+                    <SelectTrigger size="sm" className="flex-1 min-w-0 bg-[var(--surface)] text-[13px] shadow-[var(--shadow-xs)]">
                       <SelectValue placeholder="Select a value">
                         {f.value === cleared
                           ? undefined
