@@ -37,22 +37,24 @@ type LeadAnalysis = {
   quality: LeadAnalysisSection
 }
 
-const VERDICT_STYLES: Record<LeadAnalysisVerdict, { label: string; pill: string; border: string; bg: string }> = {
+// Verdict → 187N .st-label tone for the label; border/bg keep the semantic
+// card tint per verdict.
+const VERDICT_STYLES: Record<LeadAnalysisVerdict, { label: string; st: string; border: string; bg: string }> = {
   good: {
     label: "Good",
-    pill: "bg-green-500/10 text-green-500",
+    st: "live",
     border: "border-green-500/20",
     bg: "bg-green-500/5",
   },
   neutral: {
     label: "Neutral",
-    pill: "bg-amber-500/10 text-amber-500",
+    st: "warn",
     border: "border-amber-500/20",
     bg: "bg-amber-500/5",
   },
   concerning: {
     label: "Concerning",
-    pill: "bg-red-500/10 text-red-500",
+    st: "error",
     border: "border-red-500/20",
     bg: "bg-red-500/5",
   },
@@ -157,7 +159,8 @@ function LeadAnalysisSectionRow({
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</span>
-            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${v.pill}`}>
+            <span className={`st-label ${v.st}`}>
+              <span className="sd" />
               {v.label}
             </span>
           </div>

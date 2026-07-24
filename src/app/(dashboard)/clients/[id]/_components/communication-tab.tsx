@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChevronDown, ChevronRight, Mail, MessageCircle, Phone } from "lucide-react"
 import type { TrengoConversation, TrengoMessage } from "@/lib/integrations/trengo"
@@ -156,12 +155,10 @@ function ConversationMessage({ conv, mondayItemId }: { conv: TrengoConversation;
               <span className="text-xs text-muted-foreground/60">→ {conv.assignee.name}</span>
             )}
             {isOpen && (
-              <Badge
-                variant="outline"
-                className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px] px-1.5 py-0"
-              >
+              <span className="st-label live">
+                <span className="sd" />
                 open
-              </Badge>
+              </span>
             )}
           </div>
         </div>

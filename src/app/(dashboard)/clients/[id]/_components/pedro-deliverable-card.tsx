@@ -181,7 +181,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
               key={label}
               className={`text-[10px] tabular-nums px-2 py-0.5 rounded-full border ${
                 v != null
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  ? "border-[color:var(--st-live)]/30 bg-[var(--st-live)]/10 text-[color:var(--st-live)]"
                   : "border-border/40 bg-muted/40 text-muted-foreground/60"
               }`}
               title={v != null ? `${label}: opgeslagen versie ${v}` : `${label}: geen versie opgeslagen`}

@@ -68,8 +68,8 @@ function fmtDate(iso: string, locale: Locale): string {
 function StatusPill({ state, locale }: { state: ClientState | null; locale: Locale }) {
   if (!state) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
-        <AlertCircle className="h-3 w-3" />
+      <span className="st-label idle">
+        <span className="sd" />
         {t("client.pedro.status.not_started", locale)}
       </span>
     )
@@ -81,15 +81,15 @@ function StatusPill({ state, locale }: { state: ClientState | null; locale: Loca
       : false
   if (isAutoDraft && !wasEdited) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
-        <Sparkles className="h-3 w-3" />
+      <span className="st-label pending">
+        <span className="sd" />
         {t("client.pedro.status.auto_draft", locale)}
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-      <Sparkles className="h-3 w-3" />
+    <span className="st-label live">
+      <span className="sd" />
       {t("client.pedro.status.active", locale, { n: String(state.campaign_number) })}
     </span>
   )
