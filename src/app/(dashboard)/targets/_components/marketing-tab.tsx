@@ -23,22 +23,25 @@ import { AlertTriangle } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
-import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
+import type { CountryKey, PlatformKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { ConditionFilter } from "@/components/ui/condition-filter"
 import { type FilterConfig } from "@/components/ui/filters-popover"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
-import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
-/** Country segmented control. NL/BE/DE are country codes - no translation -
- *  but "All" / "Other" flip with locale. */
-const COUNTRY_SHAPE: Array<{ key: CountryKey; labelKey: DictionaryKey | null; label: string }> = [
-  { key: "all", labelKey: "targets.country.all", label: "All" },
-  { key: "nl", labelKey: null, label: "NL" },
-  { key: "be", labelKey: null, label: "BE" },
-  { key: "de", labelKey: null, label: "DE" },
-  { key: "other", labelKey: "targets.country.other", label: "Other" },
+/** Static filter options for the condition-filter popover. Country + Platform
+ *  are code values (no translation); "All …" is the cleared/options[0] value. */
+const COUNTRY_FILTER_OPTIONS = [
+  { value: "all", label: "All countries" },
+  { value: "nl", label: "Netherlands" },
+  { value: "be", label: "Belgium" },
+  { value: "de", label: "Germany" },
+]
+const PLATFORM_FILTER_OPTIONS = [
+  { value: "all", label: "All platforms" },
+  { value: "meta", label: "Meta" },
+  { value: "google", label: "Google" },
 ]
 
 /** Pro-rata a monthly target to where we should be in the current range */
@@ -54,11 +57,12 @@ function proRata(monthlyTarget: number, range: DateRange): number {
 export function MarketingTab() {
   const locale = useLocale()
   const [country, setCountry] = useState<CountryKey>("all")
+  const [platform, setPlatform] = useState<PlatformKey>("all")
   const [closer, setCloser] = useState<string>("All")
   const [stripeGapOpen, setStripeGapOpen] = useState(false)
   const { range, setRange, presets, applyPreset } = useDateRange()
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
-  const data = useTargetsData(range, country, closer)
+  const data = useTargetsData(range, country, closer, platform)
   const { data: targets } = useTargetsConfig()
   const { kpiGroups, closedProgress, collectedProgress } = useKpiCalculations(
     data.monday, data.meta, range,
@@ -156,6 +160,20 @@ export function MarketingTab() {
 
   const filters: FilterConfig[] = [
     {
+      key: "platform",
+      label: "Platform",
+      value: platform,
+      onChange: (v) => setPlatform(v as PlatformKey),
+      options: PLATFORM_FILTER_OPTIONS,
+    },
+    {
+      key: "country",
+      label: "Country",
+      value: country,
+      onChange: (v) => setCountry(v as CountryKey),
+      options: COUNTRY_FILTER_OPTIONS,
+    },
+    {
       key: "closer",
       label: t("targets.filter.closer", locale),
       value: closer,
@@ -175,24 +193,7 @@ export function MarketingTab() {
           maxDate={maxPickerDate}
         />
         <ConditionFilter filters={filters} />
-        {closerActive && (() => {
-          // Bold the closer name inside the pill text - sentinel split keeps
-          // the dictionary entry natural ("Filteren op closer: {name}").
-          const pillText = t("targets.filter.active_closer", locale, { name: "__CLOSER__" })
-          const [before, after] = pillText.split("__CLOSER__")
-          return (
-            <button
-              type="button"
-              onClick={() => setCloser("All")}
-              className="chip active h-9"
-              title={t("targets.filter.clear_closer", locale)}
-            >
-              <span>{before}<span className="font-semibold">{closer}</span>{after}</span>
-              <span className="opacity-70">×</span>
-            </button>
-          )
-        })()}
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap ml-auto">
           {presets.map((preset) => (
             <button
               key={preset.label}
@@ -203,18 +204,18 @@ export function MarketingTab() {
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5 flex-wrap ml-auto">
-          {COUNTRY_SHAPE.map(({ key, labelKey, label }) => (
-            <button
-              key={key}
-              onClick={() => setCountry(key)}
-              className={cn("chip h-9", country === key && "active")}
-            >
-              {labelKey ? t(labelKey, locale) : label}
-            </button>
-          ))}
-        </div>
       </div>
+
+      {/* Platform / spend-source notes - Google spend can't be country-split, and
+          the sheet may not be shared with the service account yet. */}
+      {(data.googleAdsError || data.googleExcludedForCountry) && (
+        <div className="-mt-5 text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          {data.googleAdsError
+            ? "Google Ads spend unavailable - share the Actual sheet tab (Viewer) with the Hub's Google service account."
+            : `Google Ads spend (${formatCurrency(data.googleSpend)}) is hidden under a single-country filter - it has no country attribution. Switch Country to "All" to include it.`}
+        </div>
+      )}
 
       {/* ── HERO - the money story up top (ROAS + weekly revenue trend) ── */}
       <MarketingHero monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
@@ -360,8 +361,8 @@ export function MarketingTab() {
             <div className="text-[11px] text-amber-600 dark:text-amber-400 px-1 inline-flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3" />
               {data.metaError
-                ? `Meta data niet geladen: ${data.metaError}`
-                : "Meta ad spend = 0 voor deze periode. Cost-per metrics zijn niet betrouwbaar tot Meta data refreshed."}
+                ? `Ad spend data not loaded: ${data.metaError}`
+                : "Ad spend = 0 for this period. Cost-per metrics aren't reliable until spend data refreshes."}
             </div>
           )}
         </div>

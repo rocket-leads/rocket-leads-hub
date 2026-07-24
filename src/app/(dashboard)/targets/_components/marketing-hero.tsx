@@ -121,7 +121,7 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
                 )}
               </>
             ) : (
-              "No Meta ad spend for this period — ROAS unavailable."
+              "No ad spend for this period — ROAS unavailable."
             )}
           </p>
 

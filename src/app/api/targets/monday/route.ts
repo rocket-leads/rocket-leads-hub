@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, readCache, writeCache } from "@/lib/cache"
 import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems, invalidateOptInsBoardItems } from "@/lib/targets/fetchers"
-import type { MondayTargetsByCountry } from "@/types/targets"
+import type { MondayTargetsByCountry, PlatformKey } from "@/types/targets"
 
 // The Targets board is huge; a cold pagination can run a couple of minutes.
 // Without an explicit budget the function hits Vercel's short default timeout
@@ -63,13 +63,21 @@ export async function GET(request: Request) {
   // person. Cache is unfiltered (cron-warmed for the team), so a filtered request
   // always live-fetches; that's cheap enough since it's a power-user toggle.
   const closer = searchParams.get("closer")?.trim() || null
+  // `platform` filter (meta | google) - like `closer`, it scopes the funnel and
+  // bypasses every cache layer (the cron-warmed caches are platform-agnostic).
+  const platformParam = searchParams.get("platform")?.trim().toLowerCase()
+  const platform: PlatformKey | null =
+    platformParam === "meta" || platformParam === "google" ? platformParam : null
+  // Any active filter (closer OR platform) must skip the shared caches and never
+  // be stored, so a scoped slice can't leak into the team-wide warm cache.
+  const filtered = !!closer || !!platform
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
   }
 
   const mtd = getMtdRange()
-  if (!closer && startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
+  if (!filtered && startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
     const cached = await readCache<MondayTargetsByCountry>("targets_marketing_monday")
     if (cached && hasFreshSchema(cached)) {
       return NextResponse.json(cached, {
@@ -81,7 +89,7 @@ export async function GET(request: Request) {
   // Historical month: cache forever in cache_store under `targets_monday:YYYY-MM`.
   // Skipped when a closer filter is active - historical cache is unfiltered.
   const periodMonth = getRangeCalendarMonth(startDate, endDate)
-  if (!closer && periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
+  if (!filtered && periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
     try {
       // baseKey bumped to _v2 on 2026-07-07: closed-month entries are cached
       // forever and hasFreshSchema can't detect the appointment-funnel logic
@@ -112,7 +120,7 @@ export async function GET(request: Request) {
   // free even when the first paid for it.
   const rangeCacheKey = `targets_monday:${startDate}:${endDate}`
   const RANGE_CACHE_TTL_MS = 5 * 60 * 1000
-  if (!closer && !forceRefresh) {
+  if (!filtered && !forceRefresh) {
     const cached = await readCache<MondayTargetsByCountry>(rangeCacheKey, RANGE_CACHE_TTL_MS)
     if (cached && hasFreshSchema(cached)) {
       return NextResponse.json(cached, {
@@ -129,24 +137,24 @@ export async function GET(request: Request) {
       invalidateTargetsBoardItems()
       invalidateOptInsBoardItems()
     }
-    console.log("[targets/monday] live fetch:", { startDate, endDate, closer })
-    const result = await fetchMondayTargets(startDate, endDate, closer)
+    console.log("[targets/monday] live fetch:", { startDate, endDate, closer, platform })
+    const result = await fetchMondayTargets(startDate, endDate, closer, platform)
     // Refresh the cron cache when this is the current MTD range, so the next
     // request hits warm cache instead of paying for another live fetch.
-    // Only when no closer filter is active - the cache stores team-wide data.
-    if (!closer && startDate === mtd.startDate && endDate === mtd.endDate) {
+    // Only when no filter is active - the cache stores team-wide, all-platform data.
+    if (!filtered && startDate === mtd.startDate && endDate === mtd.endDate) {
       void writeCache("targets_marketing_monday", result)
     }
     // Also warm the per-range cache so subsequent loads of the same window are instant.
-    if (!closer) {
+    if (!filtered) {
       void writeCache(rangeCacheKey, result)
     }
-    // Filtered responses must not be cached at any layer - switching closers
-    // cycles through them quickly and a stale slice would silently lie. The
-    // unfiltered response keeps the short s-maxage so the cron-warmed cache
-    // still serves bursts of dashboard loads efficiently.
+    // Filtered responses (closer or platform) must not be cached at any layer -
+    // switching filters cycles through them quickly and a stale slice would
+    // silently lie. The unfiltered response keeps the short s-maxage so the
+    // cron-warmed cache still serves bursts of dashboard loads efficiently.
     return NextResponse.json(result, {
-      headers: closer
+      headers: filtered
         ? { "Cache-Control": "private, no-store" }
         : { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120" },
     })
