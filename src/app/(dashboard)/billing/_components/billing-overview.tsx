@@ -285,7 +285,10 @@ export function BillingOverview({
             </span>
           </div>
           <div className="px-3 pb-1.5">
-          <Table>
+          {/* table-fixed so the column widths below are authoritative and every
+              bucket lines its columns up identically (auto-layout let each
+              table size independently → drift between groups). */}
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
                 <TableHead>Client</TableHead>
