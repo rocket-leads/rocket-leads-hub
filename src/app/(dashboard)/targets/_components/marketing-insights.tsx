@@ -1,6 +1,6 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useState } from "react"
 import { startOfMonth, differenceInDays, getDaysInMonth, max as dateMax } from "date-fns"
 import { AlertCircle, AlertOctagon, CheckCircle2, Lightbulb, TrendingUp } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -258,6 +258,19 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
   const proposals = generateProposals(insights, monday, meta, targets, range)
 
   return (
+    <InsightCards insights={insights} proposals={proposals} />
+  )
+})
+
+const LIMIT = 3
+
+function InsightCards({ insights, proposals }: { insights: Insight[]; proposals: string[] }) {
+  const [showAllInsights, setShowAllInsights] = useState(false)
+  const [showAllProposals, setShowAllProposals] = useState(false)
+  const visibleInsights = showAllInsights ? insights : insights.slice(0, LIMIT)
+  const visibleProposals = showAllProposals ? proposals : proposals.slice(0, LIMIT)
+
+  return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {/* Key Insights */}
       <div className="section-card">
@@ -269,7 +282,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
           </div>
         </div>
         <div className="space-y-3">
-          {insights.map((insight, i) => {
+          {visibleInsights.map((insight, i) => {
             const { icon: Icon, color } = STATUS_ICON[insight.type]
             return (
               <div key={i} className="flex items-start gap-2.5">
@@ -280,6 +293,15 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
           })}
           {insights.length === 0 && (
             <p className="text-sm text-muted-foreground leading-relaxed">Set targets in Settings to enable insights.</p>
+          )}
+          {insights.length > LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllInsights((v) => !v)}
+              className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+            >
+              {showAllInsights ? "Show less" : `Show all ${insights.length}`}
+            </button>
           )}
         </div>
       </div>
@@ -294,7 +316,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
           </div>
         </div>
         <div className="space-y-3">
-          {proposals.map((proposal, i) => (
+          {visibleProposals.map((proposal, i) => (
             <div key={i} className="flex items-start gap-2.5">
               <span className="text-xs font-mono font-medium text-muted-foreground/60 shrink-0 mt-[3px] tabular-nums w-5">
                 {String(i + 1).padStart(2, "0")}
@@ -302,8 +324,17 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
               <p className="text-sm text-foreground leading-relaxed">{proposal}</p>
             </div>
           ))}
+          {proposals.length > LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllProposals((v) => !v)}
+              className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+            >
+              {showAllProposals ? "Show less" : `Show all ${proposals.length}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
-})
+}

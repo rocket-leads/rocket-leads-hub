@@ -1,6 +1,6 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useState } from "react"
 import { AlertCircle, AlertOctagon, CheckCircle2, Lightbulb } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -131,7 +131,10 @@ interface Props {
   isLoading: boolean
 }
 
+const LIMIT = 3
+
 export const CloserInsights = memo(function CloserInsights({ data, isLoading }: Props) {
+  const [showAll, setShowAll] = useState(false)
   if (isLoading) {
     return (
       <div className="section-card">
@@ -149,6 +152,7 @@ export const CloserInsights = memo(function CloserInsights({ data, isLoading }: 
   }
 
   const insights = generateCloserInsights(data)
+  const visible = showAll ? insights : insights.slice(0, LIMIT)
 
   return (
     <div className="section-card">
@@ -163,7 +167,7 @@ export const CloserInsights = memo(function CloserInsights({ data, isLoading }: 
         <p className="text-sm text-muted-foreground leading-relaxed">Not enough closer data this period to surface patterns.</p>
       ) : (
         <div className="space-y-3">
-          {insights.map((insight, i) => {
+          {visible.map((insight, i) => {
             const { icon: Icon, color } = STATUS_ICON[insight.type]
             return (
               <div key={i} className="flex items-start gap-2.5">
@@ -172,6 +176,15 @@ export const CloserInsights = memo(function CloserInsights({ data, isLoading }: 
               </div>
             )
           })}
+          {insights.length > LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+            >
+              {showAll ? "Show less" : `Show all ${insights.length}`}
+            </button>
+          )}
         </div>
       )}
     </div>

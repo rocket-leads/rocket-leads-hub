@@ -16,6 +16,8 @@ import { CloserInsights } from "./closer-insights"
 import { MarketingInsights } from "./marketing-insights"
 import { PulseBanner } from "./pulse-banner"
 import { HeroPillars } from "./hero-pillars"
+import { MarketingHero } from "./marketing-hero"
+import { MarketingStatRow } from "./marketing-stat-row"
 import { cn } from "@/lib/utils"
 import { AlertTriangle } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
@@ -214,11 +216,15 @@ export function MarketingTab() {
         </div>
       </div>
 
+      {/* ── HERO - the money story up top (ROAS + weekly revenue trend) ── */}
+      <MarketingHero monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
+
       {/* ── SECTION 1 - SUMMARY ── */}
       <section className="space-y-3">
         <SectionHeader title={t("targets.section.summary.title", locale)} />
-        <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
+        <MarketingStatRow monday={m} targets={tgt} range={range} isLoading={data.mondayLoading} />
         <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
+        <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Cash collected - the money actually in the door. */}
           <RevenueProgressBar

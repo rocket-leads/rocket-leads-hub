@@ -5,7 +5,7 @@ import type { WeeklyData } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
 
@@ -73,24 +73,21 @@ export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: 
         <div className="section-title">Weekly Overview</div>
       </div>
       <ResponsiveContainer width="100%" className="flex-1" minHeight={280}>
-        <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <BarChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }} barGap={2} barCategoryGap="26%">
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
           <XAxis dataKey="label" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} />
-          <YAxis yAxisId="left" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} />
-          <YAxis yAxisId="right" orientation="right" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `€${Math.round(v / 1000)}k`} />
-          <Tooltip content={<CustomTooltip />} />
+          <YAxis tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: "var(--teal-wash)" }} />
           <Legend
             wrapperStyle={{ fontSize: 10 }}
             iconType="circle"
             iconSize={6}
             formatter={(value: string) => <span style={{ color: "hsl(var(--muted-foreground))" }}>{value}</span>}
           />
-          <Bar yAxisId="left" dataKey="calls" name="Calls" fill="hsl(var(--muted))" radius={[2, 2, 0, 0]} barSize={18} />
-          <Bar yAxisId="left" dataKey="qualified" name="Qualified" fill="#8967F3" radius={[2, 2, 0, 0]} barSize={18} />
-          <Bar yAxisId="left" dataKey="taken" name="Taken" fill="#8967F366" radius={[2, 2, 0, 0]} barSize={18} />
-          <Bar yAxisId="left" dataKey="deals" name="Deals" fill="#22c55e" radius={[2, 2, 0, 0]} barSize={18} />
-          <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#8967F3" strokeWidth={2} dot={{ fill: "#8967F3", r: 4 }} />
-        </ComposedChart>
+          <Bar dataKey="calls" name="Booked" fill="#8967F3" radius={[2, 2, 0, 0]} barSize={16} />
+          <Bar dataKey="taken" name="Taken" fill="#8967F366" radius={[2, 2, 0, 0]} barSize={16} />
+          <Bar dataKey="deals" name="Deals" fill="#22c55e" radius={[2, 2, 0, 0]} barSize={16} />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   )
