@@ -118,12 +118,28 @@
   color: var(--ink-faint);
   flex: none;
 }
+/* Explicit resets (not `all: unset`, which some CSS pipelines drop) so the
+   inner field is bare inside the pill and the container owns the focus ring. */
 .search-pill input {
-  all: unset;
   flex: 1;
   min-width: 0;
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  outline: none;
+  font: inherit;
   font-size: 13px;
   color: var(--ink);
+}
+.search-pill input:focus,
+.search-pill input:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: none;
 }
 .search-pill input::placeholder {
   color: var(--ink-faint);
