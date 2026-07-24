@@ -3,9 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -110,33 +107,62 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
 
 
   return (
-    <div className="space-y-4">
-      {SERVICES.map((svc) => (
-        <Card key={svc.id}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <StatusDot status={statuses[svc.id]} locale={locale} />
-              <CardTitle className="text-base">{svc.label}</CardTitle>
+    <div className="section-card">
+      <div className="section-head">
+        <div className="section-title">
+          {t("settings.tab.tokens", locale)}
+          <span className="count">{SERVICES.length}</span>
+        </div>
+      </div>
+
+      {SERVICES.map((svc) => {
+        const result = testResults[svc.id]
+        return (
+          <div key={svc.id} className="set-row">
+            <div className="set-row-text">
+              <div className="set-row-name inline-flex items-center gap-2">
+                <StatusDot status={statuses[svc.id]} locale={locale} />
+                {svc.label}
+              </div>
+              <div className="set-row-desc">
+                {svc.description}
+                {statuses[svc.id]?.last_verified && (
+                  <span className="mono">
+                    {" · "}
+                    {t("settings.tokens.last_tested", locale, {
+                      time: new Date(statuses[svc.id].last_verified!).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB"),
+                    })}
+                  </span>
+                )}
+              </div>
+              {saved[svc.id] && (
+                <div className="mt-1.5 text-[12px] font-medium text-[var(--st-live)]">
+                  {t("settings.tokens.saved_success", locale)}
+                </div>
+              )}
+              {result && (
+                <div className={`mt-1.5 text-[12px] ${result.ok ? "text-[var(--st-live)]" : "text-destructive"}`}>
+                  {result.message}
+                </div>
+              )}
+              {svc.id === "slack" && statuses.slack?.is_valid && (
+                <div className="mt-1.5 text-[12px] text-muted-foreground">
+                  {t("settings.tokens.slack.live_hint_before", locale)}
+                  <span className="font-medium text-foreground">{t("settings.tokens.slack.live_hint_tab", locale)}</span>
+                  {t("settings.tokens.slack.live_hint_after", locale)}
+                </div>
+              )}
             </div>
-            <CardDescription>{svc.description}</CardDescription>
-            {statuses[svc.id]?.last_verified && (
-              <p className="text-xs text-muted-foreground">
-                {t("settings.tokens.last_tested", locale, { time: new Date(statuses[svc.id].last_verified!).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB") })}
-              </p>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor={svc.id}>{t("settings.tokens.input.new_label", locale)}</Label>
-              <Input
+            <div className="set-row-control">
+              <input
                 id={svc.id}
                 type="password"
                 placeholder={t("settings.tokens.input.placeholder", locale)}
                 value={tokens[svc.id] ?? ""}
                 onChange={(e) => setTokens((tt) => ({ ...tt, [svc.id]: e.target.value }))}
+                className="h-9 w-[210px]"
+                aria-label={`${svc.label} ${t("settings.tokens.input.new_label", locale)}`}
               />
-            </div>
-            <div className="flex gap-2">
               <Button
                 size="sm"
                 onClick={() => handleSave(svc.id)}
@@ -153,26 +179,9 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
                 {testing[svc.id] ? t("settings.tokens.action.testing", locale) : t("settings.tokens.action.test", locale)}
               </Button>
             </div>
-            {saved[svc.id] && (
-              <p className="text-sm text-green-500">{t("settings.tokens.saved_success", locale)}</p>
-            )}
-            {testResults[svc.id] && (
-              <p className={`text-sm ${testResults[svc.id].ok ? "text-green-500" : "text-red-500"}`}>
-                {testResults[svc.id].message}
-              </p>
-            )}
-            {svc.id === "slack" && statuses.slack?.is_valid && (
-              <div className="pt-2 border-t border-border/40">
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.tokens.slack.live_hint_before", locale)}
-                  <span className="font-medium text-foreground">{t("settings.tokens.slack.live_hint_tab", locale)}</span>
-                  {t("settings.tokens.slack.live_hint_after", locale)}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+        )
+      })}
     </div>
   )
 }
