@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { type FilterConfig } from "@/components/ui/filters-popover"
+import { ConditionFilter } from "@/components/ui/condition-filter"
 import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown, Search } from "lucide-react"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -743,7 +744,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <FiltersPopover filters={filters} />
+        <ConditionFilter filters={filters} />
         {dateRangeControl && (
           <>
             <DateRangePicker
