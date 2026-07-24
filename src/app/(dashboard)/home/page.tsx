@@ -20,6 +20,7 @@ import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
 import { ChannelsBlock } from "./_components/channels-block"
 import { BillingBlock } from "./_components/billing-block"
+import { HomeStatRow } from "./_components/home-stat-row"
 import { safeFetch } from "@/lib/safe-fetch"
 
 function HomeLoading() {
@@ -180,7 +181,17 @@ async function HomeData() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {/* 187N stat-card KPI row - the four summary metrics from the data pass. */}
+      <HomeStatRow
+        actionCount={action.length}
+        unreadInbox={unreadInboxCount}
+        totalOutstanding={totalOutstanding}
+        outstandingCount={overdueClients.length}
+        teamMrr={teamMrr}
+        teamMrrClientCount={teamMrrClientCount}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ActionBlock
           items={topAction.map((c) => ({
             mondayItemId: c.client.mondayItemId,

@@ -3,14 +3,11 @@ import { ArrowRight } from "lucide-react"
 import type { ReactNode } from "react"
 
 /**
- * Shared shell for the home dashboard sections. Keeps the four blocks visually
- * aligned: same header height, same divider rules, same footer button styling.
- * If a block has zero items it shows a single muted line rather than a big
- * empty state - keeps the layout from collapsing.
- *
- * Footer "Open X →" used to be a faded text link (text-[11px] muted/60) which
- * Roy flagged as ambiguous - "I don't know where to click". Now it's a real
- * secondary-style button so the affordance is unambiguous.
+ * Shared shell for the home dashboard sections, styled to the 187N
+ * `.section-card`: mono uppercase `.section-title` with an inline count, a
+ * `.ghost-link` "open" affordance on the right, then the block body. If a
+ * block has zero items it shows a single muted line rather than a big empty
+ * state so the grid doesn't collapse.
  */
 export function BlockShell({
   title,
@@ -31,25 +28,19 @@ export function BlockShell({
   empty?: boolean
   /** Plain text empty state - used when no `emptyContent` slot is provided. */
   emptyMessage?: string
-  /** Override the entire empty body when a block wants something richer than a
-   *  one-liner (e.g. an icon + rotating motivational line on Inbox Zero). */
+  /** Override the entire empty body when a block wants something richer. */
   emptyContent?: ReactNode
   children: ReactNode
 }) {
   return (
-    <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40">
-        <div className="flex items-center gap-2.5">
+    <div className="section-card flex flex-col">
+      <div className="section-head">
+        <div className="section-title">
           {icon}
-          <h2 className="text-base font-semibold leading-none">{title}</h2>
-          {count > 0 && (
-            <span className="text-sm text-muted-foreground/70 tabular-nums">{count}</span>
-          )}
+          {title}
+          {count > 0 && <span className="count">{count}</span>}
         </div>
-        <Link
-          href={footerHref}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border/70 bg-card text-xs font-medium text-foreground/80 hover:bg-muted/60 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
-        >
+        <Link href={footerHref} className="ghost-link inline-flex items-center gap-1.5">
           {footerLabel}
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
