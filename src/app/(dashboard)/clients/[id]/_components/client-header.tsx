@@ -74,24 +74,21 @@ function PaymentInline({ summary, locale }: { summary: PaymentSummary | null; lo
   if (!summary) return <span className="text-muted-foreground/40">-</span>
   if (summary.kind === "complete") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-emerald-500 font-medium">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      <span className="st-label live">
+        <span className="sd" />
         {t("client.header.payment.paid", locale)}
       </span>
     )
   }
-  if (summary.kind === "open") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-amber-500 font-medium">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        {t("client.header.payment.open", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })}
-      </span>
-    )
-  }
+  const tone = summary.kind === "overdue" ? "error" : "warn"
+  const label =
+    summary.kind === "open"
+      ? t("client.header.payment.open", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })
+      : t("client.header.payment.overdue", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })
   return (
-    <span className="inline-flex items-center gap-1.5 text-red-500 font-medium">
-      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-      {t("client.header.payment.overdue", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })}
+    <span className={`st-label ${tone}`}>
+      <span className="sd" />
+      {label}
     </span>
   )
 }
@@ -165,9 +162,10 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                   status={hubStatus}
                   readOnly={client.boardType === "onboarding"}
                 />
-                {/* Board type pill - same shape/size as the Live status pill, just a
-                    neutral grey + lowercase label so it reads as a passive tag. */}
-                <span className="inline-flex items-center rounded-md px-2.5 py-1 text-[13px] font-medium bg-muted/60 text-muted-foreground">
+                {/* Board type - 187N bare label (mono, muted "idle" tone) so it
+                    reads as a passive tag next to the live status label. */}
+                <span className="st-label idle">
+                  <span className="sd" />
                   {client.boardType}
                 </span>
               </div>

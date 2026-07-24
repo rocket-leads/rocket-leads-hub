@@ -635,18 +635,19 @@ export function InboxShell({
     if (openRow?.thread) {
       // Show the message we just sent in the open pane.
       queryClient.invalidateQueries({ queryKey: ["inbox-thread", openRow.thread.threadKey] })
-      // Auto pick-up: replying to an untouched (Open) ticket moves it to
-      // Opgepakt, instantly + optimistically (markThread patches the cache).
-      // Open = nothing done yet; the moment you reply, you've picked it up.
-      // Roy 2026-07-22. We deliberately do NOT invalidate the thread list here:
+      // Auto pick-up: replying = taking the ticket. An untouched (Open) ticket
+      // moves to Opgepakt; a CLOSED ticket is reopened AND picked up (you can't
+      // answer something you haven't taken back). Both instant + optimistic.
+      // Roy 2026-07-24. We deliberately do NOT invalidate the thread list here:
       // that refetch races the async assign and would clobber the optimistic
       // Opgepakt back to Open. The 5s poll reconciles the preview.
-      if (!openRow.thread.isArchived && !openRow.thread.isAssigned) {
+      if (!openRow.thread.isAssigned) {
+        if (openRow.thread.isArchived) markThread(openRow.thread, "unarchive")
         markThread(openRow.thread, "assign")
         // Follow the ticket to the Assigned tab so you stay on the conversation
-        // (and see your reply land) instead of the Open-tab auto-advance jumping
-        // you to the next ticket right after you send.
-        setExtState((s) => (s === "open" ? "assigned" : s))
+        // (and see your reply land) instead of the Open/Closed-tab auto-advance
+        // jumping you to the next ticket right after you send.
+        setExtState((s) => (s === "open" || s === "closed" ? "assigned" : s))
       }
     }
   }, [queryClient, openRow, markThread])
