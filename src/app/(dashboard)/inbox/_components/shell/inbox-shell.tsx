@@ -12,14 +12,15 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { ComposerDialog } from "../composer-dialog"
 import { type ChannelEntry, type ExternalGroup } from "./external-rail"
-import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
+import { type InternalType, type DeadlineFilter } from "./internal-rail"
 import { UnifiedFeed } from "./unified-feed"
 import { InboxHero } from "./inbox-hero"
 import { ChannelPicker } from "./channel-picker"
-import { UpdateFeed } from "./update-feed"
+import { InternalPicker } from "./internal-picker"
 import { DetailPane } from "./detail-pane"
 import {
   threadToFeedRow,
+  itemToFeedRow,
   type FeedRow,
   type CurrentUser,
   type InboxUser,
@@ -48,6 +49,38 @@ function mentionThreadKey(item: InboxItem): string | null {
   const ref = item.sourceRef
   const key = ref && typeof ref === "object" ? (ref as Record<string, unknown>).trengo_mention_in_thread_key : null
   return typeof key === "string" ? key : null
+}
+
+/** Internal ticket lifecycle, mirroring the external Open / Assigned / Closed so
+ *  both scopes read identically in the 2-column list:
+ *   - Open     : untouched (update unread, task open)
+ *   - Assigned : picked up (task in_progress)
+ *   - Closed   : checked off (update read, task done/cancelled) */
+function internalStateOf(item: InboxItem): TicketState {
+  if (item.kind === "update") return item.status === "unread" ? "open" : "closed"
+  if (item.status === "done" || item.status === "cancelled") return "closed"
+  if (item.status === "in_progress") return "assigned"
+  return "open"
+}
+
+/** Local YYYY-MM-DD for deadline comparisons (client-only, so real Date is fine). */
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+function plusDaysStr(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+function matchesDeadline(item: InboxItem, deadline: DeadlineFilter, today: string, weekEnd: string): boolean {
+  if (deadline === "all") return true
+  if (deadline === "none") return !item.dueDate
+  if (!item.dueDate) return false
+  if (deadline === "overdue") return item.dueDate < today
+  if (deadline === "today") return item.dueDate === today
+  if (deadline === "week") return item.dueDate >= today && item.dueDate <= weekEnd
+  return true
 }
 
 /** External ticket lifecycle:
@@ -308,6 +341,42 @@ export function InboxShell({
     })
   }, [])
   const selectAllTypes = useCallback(() => setInternalTypes(new Set(ALL_TYPES)), [])
+
+  // Internal list = same 2-column model as external (search + Open/Assigned/
+  // Closed chip tabs + docked detail). The Type/Deadline rail folds into the
+  // InternalPicker dropdown in the list header, mirroring the ChannelPicker on
+  // the external side. Roy 2026-07-24.
+  const [intState, setIntState] = useState<TicketState>("open")
+  const [intSearch, setIntSearch] = useState("")
+  const intToday = todayStr()
+  const intWeekEnd = plusDaysStr(7)
+  const intScoped = useMemo(
+    () =>
+      items
+        .filter((it) => (it.kind === "task" || it.kind === "update") && internalTypes.has(it.kind as InternalType))
+        .filter((it) => matchesDeadline(it, deadline, intToday, intWeekEnd)),
+    [items, internalTypes, deadline, intToday, intWeekEnd],
+  )
+  const intStateCounts = useMemo(() => {
+    const c: Record<TicketState, number> = { open: 0, assigned: 0, closed: 0 }
+    for (const it of intScoped) c[internalStateOf(it)] += 1
+    return c
+  }, [intScoped])
+  const intSearching = intSearch.trim().length > 0
+  const visibleInternalRows = useMemo(() => {
+    const q = intSearch.trim().toLowerCase()
+    // While searching, span every state (you're hunting a specific item, not
+    // triaging) - matches the external search behaviour.
+    const base = intScoped.filter((it) =>
+      intSearching
+        ? `${it.title} ${it.clientName ?? ""} ${it.body ?? ""} ${it.authorName ?? ""}`.toLowerCase().includes(q)
+        : internalStateOf(it) === intState,
+    )
+    return base
+      .map(itemToFeedRow)
+      .filter((r): r is FeedRow => r != null)
+      .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+  }, [intScoped, intSearching, intSearch, intState])
 
   // --- External scope --------------------------------------------------------
   // Single-select channel (Trengo-style): exactly one channel in focus at a
@@ -571,17 +640,25 @@ export function InboxShell({
         { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
       ]
 
-  // Auto-open the top ticket on the external side (Roy: don't land on an empty
-  // "select an item" state). Re-selects when the current one leaves the list
-  // (channel/tab switch, or it got replied-to and moved tabs). No-op while the
-  // open ticket is still visible, so it doesn't fight manual selection.
+  const intFilterTabs: TopTab<TicketState>[] = [
+    { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: intStateCounts.open, accent: "primary" },
+    { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: intStateCounts.assigned },
+    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: intStateCounts.closed },
+  ]
+
+  // Auto-open the top row of the active scope (Roy: don't land on an empty
+  // "select an item" state). Both scopes now use the same 2-column list +
+  // docked detail, so this drives internal and external identically.
+  // Re-selects when the current one leaves the list (scope/channel/tab switch,
+  // or it got replied-to and moved tabs). No-op while the open row is still
+  // visible, so it doesn't fight manual selection.
+  const activeVisibleRows = isExternal ? visibleExternalRows : visibleInternalRows
   useEffect(() => {
-    if (!isExternal) return
-    const stillVisible = openRow != null && visibleExternalRows.some((r) => r.id === openRow.id)
+    const stillVisible = openRow != null && activeVisibleRows.some((r) => r.id === openRow.id)
     if (stillVisible) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpenRow(visibleExternalRows[0] ?? null)
-  }, [isExternal, visibleExternalRows, openRow])
+    setOpenRow(activeVisibleRows[0] ?? null)
+  }, [activeVisibleRows, openRow])
 
   const markThread = useCallback(
     (thread: ChatThreadSummary, action: string, payload?: { until?: string | null }) => {
@@ -833,13 +910,16 @@ export function InboxShell({
     { id: "external", label: t("inbox.shell.scope.external", locale) },
   ]
 
-  const internalRail = (
-    <InternalRail
+  // Compact Type/Deadline selector — the 187N 2-column fold of the internal
+  // rail into the list header, mirroring the ChannelPicker on the external
+  // side. Roy 2026-07-24.
+  const internalPicker = (
+    <InternalPicker
       types={internalTypes}
       counts={internalCounts}
+      deadline={deadline}
       onToggleType={toggleType}
       onSelectAllTypes={selectAllTypes}
-      deadline={deadline}
       onDeadlineChange={setDeadline}
     />
   )
@@ -881,7 +961,9 @@ export function InboxShell({
           : viewMode === "all"
             ? t("inbox.shell.empty.view", locale)
             : t("inbox.shell.empty.view_channel", locale)
-    : null
+    : intSearching
+      ? t("inbox.shell.empty.search", locale)
+      : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -897,7 +979,10 @@ export function InboxShell({
       )}
 
       <div className="flex items-center gap-2">
-        {railToggle}
+        {/* Rail toggle only lives on the internal scope now — it collapses the
+            Type/Deadline picker. The external rail folded into the ChannelPicker
+            dropdown, which is never collapsed. Roy 2026-07-24. */}
+        {!isExternal && railToggle}
         {(!locked || canViewComms) && (
           <div className="flex items-center gap-1.5" role="group" aria-label="Scope">
             {scopeItems.map((it) => (
@@ -924,15 +1009,6 @@ export function InboxShell({
           closedCount={extCounts.closed}
           channels={channelStats}
         />
-      )}
-
-      {/* Internal scope keeps its Type/Deadline rail above the feed below xl (and
-          always in locked mode). The external scope folds its channel rail into
-          the ChannelPicker in the list header instead. Roy 2026-07-24. */}
-      {!isExternal && !railCollapsed && (
-        <div className={cn(locked ? "block" : "xl:hidden")}>
-          <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60 p-2">{internalRail}</div>
-        </div>
       )}
 
       {isExternal ? (
@@ -1035,25 +1111,70 @@ export function InboxShell({
           </div>
         </div>
       ) : (
-        <div className={cn("grid min-w-0 gap-4", containerH, railCollapsed ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-[230px_1fr]")}>
-          {!locked && !railCollapsed && (
-            <aside className="hidden min-h-0 overflow-y-auto xl:block">{internalRail}</aside>
-          )}
-          <div className="w-full min-h-0 min-w-0 max-w-3xl">
-            <UpdateFeed
-              items={items}
-              currentUserId={currentUser.id}
-              types={internalTypes}
-              deadline={deadline}
-              loading={internalLoading}
+        // Internal scope: the SAME 2-column model as external — a compact list
+        // column (search + Type/Deadline picker + Open/Assigned/Closed chip
+        // tabs + rows) beside a docked detail pane. Roy 2026-07-24.
+        <div className={cn("flex min-w-0 flex-col gap-4 lg:flex-row", containerH)}>
+          <div
+            className={cn(
+              "flex w-full min-w-0 flex-col gap-3",
+              locked ? "lg:w-[360px]" : "lg:w-[360px] xl:w-[400px]",
+            )}
+          >
+            <div className="search-pill w-full shrink-0">
+              <Search />
+              <input
+                type="text"
+                value={intSearch}
+                onChange={(e) => setIntSearch(e.target.value)}
+                placeholder={t("inbox.shell.search.placeholder", locale)}
+              />
+              {intSearch && (
+                <button
+                  type="button"
+                  onClick={() => setIntSearch("")}
+                  aria-label={t("inbox.shell.search.clear", locale)}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {/* Type/Deadline selector (folds the old rail into the list header).
+                Hidden while searching or when the rail toggle collapses it. */}
+            {!intSearching && !railCollapsed && internalPicker}
+            <div className="min-h-0 min-w-0 flex-1">
+              <UnifiedFeed
+                rows={visibleInternalRows}
+                loading={internalLoading}
+                activeId={openRow?.id ?? null}
+                showClient={!locked}
+                filterTabs={intFilterTabs}
+                filterValue={intState}
+                onFilterChange={setIntState}
+                onOpen={openItem}
+                onAction={handleRowAction}
+                users={users}
+                emptyHint={emptyHint}
+              />
+            </div>
+          </div>
+          <div className="hidden min-h-0 min-w-0 flex-1 lg:block">
+            <DetailPane
+              row={openRow}
+              currentUser={currentUser}
+              users={users}
+              onClose={() => setOpenRow(null)}
               onChanged={refreshItems}
+              onReplied={onReplied}
+              onMakeTaskFromMessage={openComposerFromChat}
             />
           </div>
         </div>
       )}
 
-      {/* External detail overlay below lg */}
-      {isExternal && openRow && (
+      {/* Detail overlay below lg — both scopes (DetailPane renders chat OR item). */}
+      {openRow && (
         <div className="fixed inset-0 z-50 bg-background p-3 lg:hidden">
           <div className="h-full">
             <DetailPane
