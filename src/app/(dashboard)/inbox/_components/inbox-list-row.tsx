@@ -148,21 +148,13 @@ export function InboxListRow({
       }}
       data-inbox-row-id={item.id}
       className={cn(
-        "group relative w-full text-left rounded-xl border border-border/60 bg-card transition-all px-5 py-3.5 cursor-pointer overflow-hidden",
-        // Subtle lift on hover - slightly darker border + soft shadow so
-        // the row feels interactive without a heavy state flip. Faster
-        // duration than the default so the response feels snappy.
-        "hover:border-border hover:bg-muted/30 hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.04)] duration-150",
-        // Slight inset on the left so the rail (w-1) doesn't collide with
-        // the title/checkbox at small viewport widths. The rail itself is
-        // absolute-positioned so this padding sits above it.
-        "pl-6",
-        selected && "ring-2 ring-primary/60 bg-primary/[0.06] border-primary/40",
-        // Keyboard focus ring also denotes "this row's detail is open" in
-        // docked mode - see inbox-view.tsx where setFocusedItemId follows
-        // setDetailItem on every click. Distinct violet ring so it doesn't
-        // collide with the type rail colour.
-        keyboardFocused && "ring-2 ring-violet-500/60 bg-violet-500/[0.04]",
+        // 187N compact row (Roy 2026-07-24): no heavy card/border/shadow, tight
+        // padding, soft wash on hover/active. The type rail (left) stays as the
+        // task-vs-update signal; pl-5 keeps content clear of it.
+        "group relative w-full cursor-pointer overflow-hidden rounded-lg px-3 py-2.5 pl-5 text-left transition-colors",
+        "hover:bg-muted/50",
+        selected && "bg-primary/[0.07]",
+        keyboardFocused && "bg-primary/[0.07]",
         isCompleted && "opacity-60",
       )}
     >
