@@ -350,7 +350,7 @@ export const DICTIONARY = {
   "clients.col.leads": { nl: "Leads", en: "Leads" },
   "clients.col.cpl": { nl: "CPL", en: "CPL" },
   "clients.col.client_update": { nl: "Client update", en: "Client update" },
-  "clients.client_update.sent_this_week": { nl: "Deze week verstuurd", en: "Sent this week" },
+  "clients.client_update.sent_this_week": { nl: "Verstuurd", en: "Sent" },
   "clients.client_update.last": { nl: "Laatste: {date}", en: "Last: {date}" },
 
   // Health / payment status labels

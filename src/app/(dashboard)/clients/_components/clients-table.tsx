@@ -854,7 +854,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   currentKey={sortKey}
                   currentDir={sortDir}
                   onSort={handleSort}
-                  className="text-center w-[140px]"
+                  className="text-center w-[104px]"
                 />
               )}
             </TableRow>

@@ -186,9 +186,9 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   // the table instead of inside a tab strip.
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-3 -mb-2">
+      <div className="flex items-center justify-end gap-3">
         {lastUpdatedLabel && (
-          <span className="font-mono text-[11px] text-muted-foreground/50">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
+          <span className="font-mono text-[11px] text-muted-foreground/50 leading-none">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
         )}
         <button
           className="icon-btn disabled:opacity-50"
