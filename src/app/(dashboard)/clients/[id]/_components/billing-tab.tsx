@@ -5,8 +5,6 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarClock, Check, ExternalLink, FileText, Loader2, Megaphone, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { buttonVariants } from "@/components/ui/button"
@@ -41,15 +39,13 @@ type Props = {
 
 /** Invoice status pill - label flips via dictionary, class + icon stay
  *  constant since the visual treatment is independent of language. */
-const STATUS_CONFIG: Record<
-  InvoiceRow["status"],
-  { labelKey: DictionaryKey; className: string; icon: string }
-> = {
-  paid: { labelKey: "client.billing.status.paid", className: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✓" },
-  open: { labelKey: "client.billing.status.open", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", icon: "○" },
-  overdue: { labelKey: "client.billing.status.overdue", className: "bg-red-500/20 text-red-400 border-red-500/30", icon: "!" },
-  void: { labelKey: "client.billing.status.void", className: "bg-muted text-muted-foreground", icon: "-" },
-  draft: { labelKey: "client.billing.status.draft", className: "bg-muted text-muted-foreground", icon: "~" },
+// 187N status tones for the bare .st-label (dot + mono uppercase, no fill).
+const STATUS_CONFIG: Record<InvoiceRow["status"], { labelKey: DictionaryKey; tone: string }> = {
+  paid: { labelKey: "client.billing.status.paid", tone: "live" },
+  open: { labelKey: "client.billing.status.open", tone: "warn" },
+  overdue: { labelKey: "client.billing.status.overdue", tone: "error" },
+  void: { labelKey: "client.billing.status.void", tone: "idle" },
+  draft: { labelKey: "client.billing.status.draft", tone: "idle" },
 }
 
 function fmt(amount: number): string {
@@ -80,15 +76,13 @@ function StripeLinkButton({ stripeCustomerId }: { stripeCustomerId: string }) {
 
 function SummaryCard({ title, value, sub }: { title: string; value: string; sub?: string }) {
   return (
-    <Card>
-      <CardHeader className="pb-1 pt-4 px-4">
-        <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="px-4 pb-4">
-        <p className="text-2xl font-bold">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
+    <div className="rev-card">
+      <div className="rc-label">{title}</div>
+      <div className="rc-row">
+        <span className="rc-value">{value}</span>
+      </div>
+      {sub && <div className="rc-sub">{sub}</div>}
+    </div>
   )
 }
 
@@ -371,9 +365,10 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                     </TableCell>
                     <TableCell className="text-sm font-medium">{fmt(inv.amountDue)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cfg.className}>
-                        {cfg.icon} {t(cfg.labelKey, locale)}
-                      </Badge>
+                      <span className={`st-label ${cfg.tone}`}>
+                        <span className="sd" />
+                        {t(cfg.labelKey, locale)}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {inv.invoicePdf ? (
