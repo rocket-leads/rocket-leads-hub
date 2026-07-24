@@ -141,6 +141,39 @@
 .pill.p3 { background: var(--st-idle-tint); color: var(--ink-muted); } .pill.p3 .pdot { background: var(--st-idle); }
 .pill.newpill { background: var(--teal-wash-2); color: var(--teal); } .pill.newpill .pdot { background: var(--teal); }
 
+/* ============================================================================
+   187N Settings — left section-rail + section-cards with .set-row rows
+   (lifted from the Settings page's inline styles).
+   ============================================================================ */
+.set-grid { display: grid; grid-template-columns: 230px 1fr; gap: 28px; align-items: start; }
+.set-rail { position: sticky; top: 26px; display: flex; flex-direction: column; gap: 2px; }
+.set-rail-label { font-family: var(--f-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint); padding: 0 12px 10px; }
+.set-rail-item { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: var(--r-sm); color: var(--ink-muted); font-size: 13px; font-weight: 500; text-align: left; width: 100%; transition: background var(--t-fast), color var(--t-fast); }
+.set-rail-item:hover { color: var(--ink); background: var(--teal-wash); }
+.set-rail-item.active { background: var(--teal-wash-2); color: var(--ink); font-weight: 600; }
+.set-rail-item.active svg { color: var(--teal); }
+.set-rail-item svg { width: 16px; height: 16px; flex: none; opacity: .85; }
+.set-rail-item .sr-count { margin-left: auto; font-family: var(--f-mono); font-size: 10px; color: var(--ink-faint); padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-3); border: 1px solid var(--line); }
+.set-rail-item.active .sr-count { color: var(--teal); background: var(--teal-wash); border-color: color-mix(in srgb, var(--teal) 22%, transparent); }
+.set-stack { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.section-card .sc-sub { font-family: var(--f-sans); font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-muted); margin-top: 5px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.set-row:last-child { border-bottom: none; padding-bottom: 2px; }
+.set-row-text { min-width: 0; }
+.set-row-name { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.set-row-desc { font-size: 12px; color: var(--ink-muted); margin-top: 3px; line-height: 1.45; }
+.set-row-desc .mono { font-family: var(--f-mono); color: var(--ink-muted); }
+.set-row-control { flex: none; display: flex; align-items: center; gap: 12px; }
+.set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 22px; }
+.set-fields .field.full { grid-column: 1 / -1; }
+.field .hint { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0; text-transform: none; }
+.save-note { display: flex; align-items: center; gap: 9px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-faint); }
+.save-note svg { width: 13px; height: 13px; color: var(--st-live); }
+.danger-card { border-color: color-mix(in srgb, var(--st-error) 30%, transparent); box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--st-error) 10%, transparent); }
+.danger-card .section-title { color: var(--st-error); }
+.set-row.danger { border-bottom-color: color-mix(in srgb, var(--st-error) 14%, transparent); }
+@media (max-width: 1080px) { .set-grid { grid-template-columns: 1fr; } .set-rail { position: static; flex-direction: row; flex-wrap: wrap; } }
+
 /* Sortable table headers wrap their label in a <button>; form controls don't
    inherit text-transform/font, so those headers rendered mixed-case next to the
    plain <th> cells. Force inheritance so every header matches the 187N mono

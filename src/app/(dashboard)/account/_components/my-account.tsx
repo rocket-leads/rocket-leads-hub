@@ -56,7 +56,7 @@ export function MyAccount({
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Signed in as</p>
+        <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60 font-medium">Signed in as</p>
         <div className="mt-2 flex items-center gap-4">
           <AvatarEditor userName={userName} avatarUrl={avatarUrl} />
           <div className="min-w-0">
@@ -67,7 +67,7 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-3">Platform connections</h2>
+        <h2 className="section-title mb-4">Platform connections</h2>
         <div className="space-y-3">
           <GoogleCalendarCard
             connection={googleCalendar}
@@ -80,12 +80,12 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-3">Browser notifications</h2>
+        <h2 className="section-title mb-4">Browser notifications</h2>
         <BrowserNotificationsCard />
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-3">Inbox subscriptions</h2>
+        <h2 className="section-title mb-4">Inbox subscriptions</h2>
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
       </div>
     </div>

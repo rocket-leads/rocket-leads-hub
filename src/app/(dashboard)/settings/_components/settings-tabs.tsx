@@ -2,8 +2,8 @@
 
 import { useMemo } from "react"
 import { KeyRound, Database, Users, Zap, Building2, UserCircle2, Activity, Sparkles } from "lucide-react"
-import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
+import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { useUrlState } from "@/lib/use-url-state"
@@ -101,32 +101,54 @@ export function SettingsTabs(props: Props) {
   }, [locale, isAdmin])
 
   return (
-    <div className="mt-6 space-y-6">
-      <TopTabs<SettingsTabId> tabs={tabs} value={activeTab} onChange={setActiveTab} />
+    <div className="set-grid mt-6">
+      {/* 187N settings section-rail (left) */}
+      <nav className="set-rail" aria-label="Settings sections">
+        <div className="set-rail-label">Sections</div>
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={active ? "page" : undefined}
+              className={cn("set-rail-item", active && "active")}
+            >
+              {Icon && <Icon />}
+              {tab.label}
+            </button>
+          )
+        })}
+      </nav>
 
-      {activeTab === "me" && <MeTab data={meTab} />}
+      {/* Active section content */}
+      <div className="set-stack">
+        {activeTab === "me" && <MeTab data={meTab} />}
 
-      {isAdmin && activeTab === "users" && (
-        <UsersTab users={props.users} currentUserId={props.currentUserId} />
-      )}
-      {isAdmin && activeTab === "tokens" && <ApiTokensTab statuses={props.tokenStatuses} />}
-      {isAdmin && activeTab === "automations" && (
-        <AutomationsTab
-          inboxRules={props.inboxAutomationRules}
-          slackConnected={props.notifications.slackConnected}
-          recipients={props.notifications.recipients}
-          teamChannelId={props.notifications.teamChannelId}
-          salesChannelId={props.notifications.salesChannelId}
-          closers={props.notifications.closers}
-          notificationConfigs={props.notifications.configs}
-        />
-      )}
-      {isAdmin && activeTab === "clients" && <ClientsTab />}
-      {isAdmin && activeTab === "board" && (
-        <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
-      )}
-      {isAdmin && activeTab === "pedro" && <PedroTab />}
-      {isAdmin && activeTab === "health" && <HealthTab />}
+        {isAdmin && activeTab === "users" && (
+          <UsersTab users={props.users} currentUserId={props.currentUserId} />
+        )}
+        {isAdmin && activeTab === "tokens" && <ApiTokensTab statuses={props.tokenStatuses} />}
+        {isAdmin && activeTab === "automations" && (
+          <AutomationsTab
+            inboxRules={props.inboxAutomationRules}
+            slackConnected={props.notifications.slackConnected}
+            recipients={props.notifications.recipients}
+            teamChannelId={props.notifications.teamChannelId}
+            salesChannelId={props.notifications.salesChannelId}
+            closers={props.notifications.closers}
+            notificationConfigs={props.notifications.configs}
+          />
+        )}
+        {isAdmin && activeTab === "clients" && <ClientsTab />}
+        {isAdmin && activeTab === "board" && (
+          <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
+        )}
+        {isAdmin && activeTab === "pedro" && <PedroTab />}
+        {isAdmin && activeTab === "health" && <HealthTab />}
+      </div>
     </div>
   )
 }
