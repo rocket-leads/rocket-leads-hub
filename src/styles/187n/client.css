@@ -1,0 +1,27 @@
+/* ============================================================================
+   ROCKET LEADS — brand override of the 187N design system.
+   Loaded AFTER theme.css. This is the ONLY file that re-brands the system:
+   it re-points the client-override slots that theme.css consumes via
+   var(--client-*, <187N default>). Structural tokens stay locked (theme.css).
+
+   The one brand change from 187N: coral #FF6301 -> Rocket Leads purple #8967F3.
+   Fonts are loaded by next/font (layout.tsx) and handed in through their vars.
+   ============================================================================ */
+
+:root {
+  /* accent = Rocket Leads purple (re-points every --teal / accent moment) */
+  --client-accent:      #8967F3;
+  --client-accent-ink:  #6D4FD0;   /* darker purple for text on a purple tint */
+  --client-accent-glow: rgba(137, 103, 243, 0.16);
+  --client-gradient:    linear-gradient(110deg, #8967F3, #A78BFA);
+
+  /* fonts — the next/font families come in as CSS vars (layout.tsx) */
+  --client-font-display: var(--font-schibsted), "Schibsted Grotesk", "Inter", system-ui, sans-serif;
+  --client-font-sans:    var(--font-schibsted), "Schibsted Grotesk", "Inter", system-ui, sans-serif;
+  --client-font-mono:    var(--font-geist-mono), "Geist Mono", ui-monospace, "SF Mono", monospace;
+
+  /* --f-serif isn't a client slot in theme.css, but Instrument Serif is loaded
+     by next/font under a hashed family name, so re-point it to the var. Used
+     for the italic emphasis phrases in sublines. */
+  --f-serif: var(--font-instrument-serif), "Instrument Serif", "Newsreader", Georgia, serif;
+}
