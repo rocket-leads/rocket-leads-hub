@@ -105,7 +105,7 @@ export const KpiCard = memo(function KpiCard({
         : "border border-border/60",
     )}>
       <div className="flex items-start justify-between gap-3 mb-3">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
+        <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">
           {label}
         </span>
         <div className="flex items-center gap-1 shrink-0">
@@ -138,7 +138,7 @@ export const KpiCard = memo(function KpiCard({
           should stay in the brand foreground so the page doesn't read as
           a sea of grey while the real range loads. */}
       <p className={cn(
-        "font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none transition-colors",
+        "font-mono text-[26px] font-bold tracking-tight tabular-nums leading-none transition-colors",
         colorClass || "text-foreground",
       )}>
         {formatted}

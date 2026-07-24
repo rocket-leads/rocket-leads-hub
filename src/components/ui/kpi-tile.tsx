@@ -89,7 +89,7 @@ export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone
       )}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
-        <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">
           {icon && (
             <span className="inline-flex items-center text-muted-foreground/60 [&_svg]:h-3.5 [&_svg]:w-3.5">
               {icon}
@@ -124,7 +124,7 @@ export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone
       ) : (
         <p
           className={cn(
-            "font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none",
+            "font-mono text-[26px] font-bold tracking-tight tabular-nums leading-none",
             VALUE_TONE_CLASSES[valueTone],
           )}
         >
