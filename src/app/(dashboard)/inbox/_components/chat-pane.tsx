@@ -893,7 +893,7 @@ function EmailListRowBody({
           >
             {thread.primaryName}
           </span>
-          <span className="text-[10px] text-muted-foreground/60 shrink-0">
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50 shrink-0">
             · {fmtRelative(thread.latestAt)}
           </span>
         </div>
@@ -978,7 +978,7 @@ function ChatListRowBody({
       >
         {thread.latestPreview || <span className="italic">{t("inbox.chat.no_preview", locale)}</span>}
       </p>
-      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+      <p className="font-mono text-[10px] tabular-nums text-muted-foreground/40 mt-0.5">
         {fmtRelative(thread.latestAt)}
       </p>
     </div>
@@ -1898,7 +1898,7 @@ function ThreadMessages({
                   : thread.clientName
                 : `${t("inbox.chat.via", locale)} ${thread.channelName}`}
               {thread.totalCount > 0 && (
-                <span className="ml-1.5 text-muted-foreground/50 tabular-nums">
+                <span className="ml-1.5 font-mono text-muted-foreground/50 tabular-nums">
                   · {thread.totalCount}{" "}
                   {thread.totalCount === 1 ? t("inbox.chat.message", locale) : t("inbox.chat.messages", locale)}
                 </span>
@@ -3371,7 +3371,7 @@ function MessageBubble({
             <span className="rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
               {t("inbox.chat.tab_internal", locale)}
             </span>
-            <span className="text-[11px] tabular-nums text-muted-foreground/70">
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
               {fmtTime(msg.at)}
             </span>
             {hasMention && (
@@ -3429,12 +3429,12 @@ function MessageBubble({
           )}
           <span
             className={cn(
-              "text-[10px] tabular-nums",
+              "font-mono text-[10px] tabular-nums",
               isInternal
-                ? "text-muted-foreground/70"
+                ? "text-muted-foreground/60"
                 : isUs
                   ? "text-primary-foreground/70"
-                  : "text-muted-foreground/70",
+                  : "text-muted-foreground/60",
             )}
           >
             {fmtTime(msg.at)}
@@ -3609,7 +3609,7 @@ function EmailMessageCard({
             )}
           </div>
         </div>
-        <span className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0 mt-0.5">
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60 shrink-0 mt-0.5">
           {fmtTime(msg.at)}
         </span>
       </div>

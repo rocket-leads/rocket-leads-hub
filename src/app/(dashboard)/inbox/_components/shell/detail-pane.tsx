@@ -83,9 +83,11 @@ function StateSwitch({ current, onSetState }: { current: TicketState; onSetState
             )}
           >
             <Icon className="h-3.5 w-3.5" strokeWidth={s === "closed" ? 3 : 2} />
-            {/* Only the active segment shows its label - keeps the control compact
-                while making the current state unmistakable. */}
-            {isCurrent && <span>{label}</span>}
+            {/* Only the active segment shows its label (mono micro-caps, 187N
+                status feel) - keeps the control compact + the state unmistakable. */}
+            {isCurrent && (
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wide">{label}</span>
+            )}
           </button>
         )
       })}
