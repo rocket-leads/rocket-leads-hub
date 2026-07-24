@@ -470,9 +470,9 @@ function StripeGapModal({
     : t("targets.stripe.count.split", locale, { unmatched: String(visibleInvoices.length), matched: String(matchedCount) })
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-foreground/25 supports-backdrop-filter:backdrop-blur-sm" onClick={onClose} />
       <div
-        className="bg-card border border-border rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden"
+        className="bg-popover ring-1 ring-foreground/10 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
         style={{ position: "fixed", top: "10vh", left: "50%", transform: "translateX(-50%)", width: "92vw", maxWidth: "60rem", maxHeight: "80vh" }}
       >
         <div className="px-5 py-4 border-b border-border/40">
@@ -523,9 +523,9 @@ function StripeGapModal({
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
                     <tr>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.date", locale)}</th>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.lead_company_closer", locale)}</th>
-                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.value", locale)}</th>
+                      <th className="text-left py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.date", locale)}</th>
+                      <th className="text-left py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.lead_company_closer", locale)}</th>
+                      <th className="text-right py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.value", locale)}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -559,9 +559,9 @@ function StripeGapModal({
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
                     <tr>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.date", locale)}</th>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.customer_invoice", locale)}</th>
-                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.amount", locale)}</th>
+                      <th className="text-left py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.date", locale)}</th>
+                      <th className="text-left py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.customer_invoice", locale)}</th>
+                      <th className="text-right py-2 px-4 font-mono text-[10.5px] uppercase tracking-wider font-medium text-muted-foreground/70">{t("targets.stripe.col.amount", locale)}</th>
                     </tr>
                   </thead>
                   <tbody>
