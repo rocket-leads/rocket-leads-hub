@@ -2372,19 +2372,15 @@ function ThreadMessages({
                 sending ||
                 uploadingCount > 0
               }
+              size="icon"
+              title={t("inbox.chat.send", locale)}
+              aria-label={t("inbox.chat.send", locale)}
               className={cn(
-                "h-10 px-5 text-sm font-medium gap-2",
+                "h-10 w-10 shrink-0",
                 isInternal && "bg-amber-500 hover:bg-amber-600 text-amber-950",
               )}
             >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  {t("inbox.chat.send", locale)}
-                </>
-              )}
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
 
             {mentionStart != null && mentionMatches.length > 0 && (
