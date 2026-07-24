@@ -17,8 +17,8 @@ interface Props {
   isLoading: boolean
 }
 
-const NB_COLOR = "#8967F3"
-const MRR_COLOR = "#B7A6F5"
+const MRR_COLOR = "#8967F3"
+const NB_COLOR = "#B7A6F5"
 
 /** vs-target delta pill (higher is better). Inline white-space so it never wraps. */
 function Delta({ current, target }: { current: number; target: number }) {
@@ -56,8 +56,8 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
   const onTarget = invoicedTarget > 0 && invoiced >= invoicedTarget
 
   const segments = [
-    { name: "New Business", value: newBusiness, color: NB_COLOR },
     { name: "MRR", value: mrr, color: MRR_COLOR },
+    { name: "New Business", value: newBusiness, color: NB_COLOR },
   ].filter((s) => s.value > 0)
 
   return (
@@ -77,8 +77,8 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
           </p>
           <div className="mt-3 h-0.5 w-16 rounded-full bg-[var(--teal)]" />
           <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
-            <span className="font-medium text-foreground/80">{formatCurrency(newBusiness)}</span> new business ·{" "}
-            <span className="font-medium text-foreground/80">{formatCurrency(mrr)}</span> recurring.
+            <span className="font-medium text-foreground/80">{formatCurrency(mrr)}</span> recurring ·{" "}
+            <span className="font-medium text-foreground/80">{formatCurrency(newBusiness)}</span> new business.
           </p>
           <Delta current={invoiced} target={invoicedTarget} />
         </div>
