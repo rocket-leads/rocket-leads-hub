@@ -266,7 +266,7 @@ export default async function BillingPage() {
       <PageHeader
         title="Billing"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <GlobalCreateInvoice />
             <RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />
           </div>

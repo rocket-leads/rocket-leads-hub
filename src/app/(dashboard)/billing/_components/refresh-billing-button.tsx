@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, RefreshCw, Check } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { RefreshCw, Check } from "lucide-react"
 
 type RefreshResponse = {
   ok?: boolean
@@ -85,38 +84,35 @@ export function RefreshBillingButton({ lastRefreshedAt }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       {msg ? (
         <span
-          className={
-            state === "err" ? "text-xs text-destructive" : "text-xs text-muted-foreground"
-          }
+          className={`font-mono text-[11px] leading-none ${state === "err" ? "text-destructive" : "text-muted-foreground/50"}`}
         >
           {msg}
         </span>
       ) : (
         age && (
-          <span className="text-xs text-muted-foreground/70">
+          <span className="font-mono text-[11px] text-muted-foreground/50 leading-none">
             Last updated {age}
           </span>
         )
       )}
-      <Button
-        variant="outline"
-        size="sm"
+      <button
+        className="icon-btn disabled:opacity-50"
         onClick={run}
         disabled={state === "running"}
         title="Pull fresh data from Monday + Stripe"
+        aria-label="Refresh billing data"
       >
         {state === "running" ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <RefreshCw className="animate-spin" />
         ) : state === "ok" ? (
-          <Check className="h-3.5 w-3.5 text-emerald-500" />
+          <Check className="text-emerald-500" />
         ) : (
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw />
         )}
-        Refresh
-      </Button>
+      </button>
     </div>
   )
 }

@@ -284,6 +284,7 @@ export function BillingOverview({
               {bucket.groups.length} {bucket.groups.length === 1 ? "client" : "clients"}
             </span>
           </div>
+          <div className="px-3 pb-1.5">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
@@ -307,6 +308,7 @@ export function BillingOverview({
               ))}
             </TableBody>
           </Table>
+          </div>
         </Panel>
       ))}
     </div>
@@ -419,20 +421,24 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
         </TableCell>
         <TableCell className="py-2.5">
           {/* Payment date (cycle start) - the single editable source of truth.
-              Everything else (invoice-out date, period) derives from this. */}
-          <NextInvoiceDateCell
-            mondayItemId={primary.mondayItemId}
-            value={primary.cycleStartDate}
-            fieldKey="cycle_start_date"
-            placeholder="Set payment date"
-          />
-          {isMulti && (
-            <ApplyDateToSiblingsButton
+              Everything else (invoice-out date, period) derives from this.
+              Column stacks the optional "align siblings" action below the date
+              so it never collides with the next cell. */}
+          <div className="flex flex-col items-start gap-1">
+            <NextInvoiceDateCell
               mondayItemId={primary.mondayItemId}
-              disabled={!primary.cycleStartDate}
-              count={group.siblings.length}
+              value={primary.cycleStartDate}
+              fieldKey="cycle_start_date"
+              placeholder="Set payment date"
             />
-          )}
+            {isMulti && (
+              <ApplyDateToSiblingsButton
+                mondayItemId={primary.mondayItemId}
+                disabled={!primary.cycleStartDate}
+                count={group.siblings.length}
+              />
+            )}
+          </div>
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground/70">
           {/* Invoice-out date is derived (payment date − 7d) - read-only. The
@@ -699,10 +705,10 @@ function ApplyDateToSiblingsButton({
           ? "Set a payment date first"
           : `Apply this payment date to all ${count} campaigns of this client`
       }
-      className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40"
+      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40 whitespace-nowrap"
     >
       {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Link2 className="h-2.5 w-2.5" />}
-      Align all campaigns
+      Align dates
     </button>
   )
 }
