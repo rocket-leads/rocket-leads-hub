@@ -44,14 +44,12 @@ export function FiltersPopover({ filters, align = "start" }: Props) {
   return (
     <Popover>
       <PopoverTrigger
-        className={`inline-flex items-center gap-1.5 h-10 rounded-lg border border-border bg-card px-4 text-sm font-medium transition-colors hover:bg-muted/40 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-          activeCount > 0 ? "text-foreground" : "text-muted-foreground"
-        }`}
+        className={`chip h-9 px-3.5 outline-none ${activeCount > 0 ? "active" : ""}`}
       >
         <Filter className="h-3.5 w-3.5" />
         Filters
         {activeCount > 0 && (
-          <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold tabular-nums text-primary">
+          <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--teal-wash-2)] px-1 text-[10px] font-semibold tabular-nums text-[var(--teal)]">
             {activeCount}
           </span>
         )}

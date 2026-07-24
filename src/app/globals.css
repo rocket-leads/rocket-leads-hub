@@ -93,6 +93,42 @@
   color: inherit;
 }
 
+/* 187N search pill: rounded-pill surface + magnifier, focus ring in teal.
+   `all: unset` on the inner input strips the global form styling so the field
+   reads as a bare input inside the pill (the campaign-performance search). */
+.search-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.search-pill:focus-within {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--teal-wash-2);
+}
+.search-pill > svg {
+  width: 15px;
+  height: 15px;
+  color: var(--ink-faint);
+  flex: none;
+}
+.search-pill input {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.search-pill input::placeholder {
+  color: var(--ink-faint);
+}
+
 /* 187N bare status label: a coloured dot + mono uppercase label with NO fill -
    the campaign-performance "● LIVE" treatment. Replaces filled status pills in
    the tables. Tones map to the design-system status tokens. */

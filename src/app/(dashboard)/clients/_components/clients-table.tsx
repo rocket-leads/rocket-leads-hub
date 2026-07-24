@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
-import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown, Search } from "lucide-react"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
@@ -750,12 +750,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     <div className="space-y-5">
       {/* Search + filters */}
       <div className="flex items-center gap-2 flex-wrap">
-        <input
-          placeholder={t("clients.search_placeholder", locale)}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-60 h-10 border border-border bg-card rounded-lg text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3.5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
-        />
+        <div className="search-pill w-60">
+          <Search />
+          <input
+            placeholder={t("clients.search_placeholder", locale)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <FiltersPopover filters={filters} />
         {dateRangeControl && (
           <>
@@ -771,7 +773,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   key={preset.label}
                   type="button"
                   onClick={() => dateRangeControl.applyPreset(preset)}
-                  className="h-8 px-2.5 text-[11px] rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors font-medium"
+                  className="chip h-9"
                 >
                   {preset.label}
                 </button>
@@ -822,11 +824,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   title={active
                     ? t("clients.groups.hide", locale, { name: t(GROUP_LABEL_KEYS[key], locale) })
                     : t("clients.groups.show", locale, { name: t(GROUP_LABEL_KEYS[key], locale) })}
-                  className={`h-8 px-2.5 text-[11px] rounded-lg font-medium transition-colors border ${
-                    active
-                      ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
-                      : "bg-transparent text-muted-foreground/60 border-border hover:bg-muted/60 hover:text-foreground"
-                  }`}
+                  className={`chip h-9 ${active ? "active" : ""}`}
                 >
                   {t(GROUP_LABEL_KEYS[key], locale)}
                 </button>
