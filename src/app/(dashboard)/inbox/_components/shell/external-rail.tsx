@@ -34,20 +34,11 @@ const GROUP_META: Record<ExternalGroup, { label: string; icon: typeof Mail; acce
   email: { label: "Email", icon: Mail, accent: "text-violet-600 dark:text-violet-400" },
 }
 
-/** Small, fixed-width count pill so the channel name gets the room (Roy: badges
- *  narrower, name field wider). */
-function CountPill({ n, active }: { n: number; active?: boolean }) {
+/** 187N count badge (mono, purple-wash) — same treatment as the shell sidebar's
+ *  nav badges so the rail reads consistently. Roy's 187N re-skin. */
+function CountPill({ n }: { n: number }) {
   if (n <= 0) return null
-  return (
-    <span
-      className={cn(
-        "ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-        active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-      )}
-    >
-      {n > 99 ? "99+" : n}
-    </span>
-  )
+  return <span className="nav-badge ml-auto">{n > 99 ? "99+" : n}</span>
 }
 
 export function ExternalRail({
@@ -86,7 +77,7 @@ export function ExternalRail({
       >
         <AtSign className="h-4 w-4 shrink-0" />
         <span>Mentioned</span>
-        <CountPill n={mentionedCount} active={mentionedOnly} />
+        <CountPill n={mentionedCount} />
       </button>
 
       {/* All channels - every line merged into one feed. The only way to see
@@ -104,7 +95,7 @@ export function ExternalRail({
       >
         <Inbox className="h-4 w-4 shrink-0" />
         <span>All channels</span>
-        <CountPill n={allCount} active={allActive} />
+        <CountPill n={allCount} />
       </button>
 
       {loading && whatsapp.length === 0 && email.length === 0 ? (
@@ -128,7 +119,7 @@ export function ExternalRail({
               <button
                 type="button"
                 onClick={() => onToggleExpand(key)}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70 hover:text-foreground"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70 hover:text-foreground"
               >
                 <Icon className={cn("h-4 w-4 shrink-0", meta.accent)} />
                 <span>{meta.label}</span>
@@ -159,7 +150,7 @@ export function ExternalRail({
                         )}
                       >
                         <span className="truncate">{c.name}</span>
-                        <CountPill n={c.unread} active={active} />
+                        <CountPill n={c.unread} />
                       </button>
                     )
                   })}

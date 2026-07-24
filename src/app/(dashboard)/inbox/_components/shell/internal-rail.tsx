@@ -40,7 +40,7 @@ export function InternalRail({
   return (
     <div className="flex flex-col gap-1" role="group" aria-label="Filters">
       <div className="px-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">Type</p>
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">Type</p>
       </div>
 
       <button
@@ -90,22 +90,13 @@ export function InternalRail({
             <span className={cn("h-2 w-2 rounded-full shrink-0", meta.dot)} />
             <Icon className="h-4 w-4 shrink-0 opacity-70" />
             <span>{meta.label}</span>
-            {count > 0 && (
-              <span
-                className={cn(
-                  "ml-auto inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums",
-                  on ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                )}
-              >
-                {count > 99 ? "99+" : count}
-              </span>
-            )}
+            {count > 0 && <span className="nav-badge ml-auto">{count > 99 ? "99+" : count}</span>}
           </button>
         )
       })}
 
       <div className="mt-3 px-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">Deadline</p>
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">Deadline</p>
       </div>
 
       {DEADLINE_OPTIONS.map((opt) => {
