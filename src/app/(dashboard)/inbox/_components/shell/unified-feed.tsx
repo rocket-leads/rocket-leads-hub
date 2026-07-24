@@ -106,7 +106,7 @@ export function UnifiedFeed<T extends string>({
         </button>
       )}
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
         {loading && rows.length === 0 ? (
           <InboxRowSkeletonList />
         ) : rows.length === 0 ? (

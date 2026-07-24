@@ -59,14 +59,11 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
 
   const thread = row.thread
   if (!thread) return null
-  // One accent hue per row = its channel. The rail AND the unread wash use the
-  // same hue so an unread row reads as a single coherent colour statement
-  // (email rows no longer get a violet rail under an emerald wash). Roy 2026-07-20.
-  const isWhatsApp = row.channel === "whatsapp"
-  const railColor = isWhatsApp ? "bg-emerald-500" : "bg-violet-500"
-  const unreadTint = isWhatsApp ? "bg-emerald-500/[0.05]" : "bg-violet-500/[0.05]"
   const isClosed = closed ?? thread.isArchived
 
+  // 187N Chats-style row: compact, hairline-separated, no per-row card/rail. The
+  // channel avatar carries the medium; unread = bold name + a small filled
+  // badge; active = a soft purple wash (no heavy ring). Roy 2026-07-24.
   return (
     <div
       role="button"
@@ -80,23 +77,14 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
       }}
       data-inbox-row-id={row.id}
       className={cn(
-        "group relative w-full text-left rounded-xl border border-border/60 bg-card transition-all pl-6 pr-5 py-3.5 cursor-pointer overflow-hidden",
-        "hover:border-border hover:bg-muted/30 hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.04)] duration-150",
-        active && "ring-2 ring-violet-500/60 bg-violet-500/[0.04]",
+        "group relative w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors",
+        active ? "bg-primary/[0.07]" : "hover:bg-muted/50",
       )}
     >
-      <span aria-hidden className={cn("absolute left-0 top-0 bottom-0 w-1", railColor, !row.unread && "opacity-40")} />
-      {row.unread && <span aria-hidden className={cn("absolute inset-0 pointer-events-none", unreadTint)} />}
-
-      {/* Simplified row (Roy 2026-07-15): channel icon + contact name + message,
-          date top-right, pending count on the right. Channel view: the left
-          icon doubles as a multi-select checkbox (Roy 2026-07-21). No channel
-          badge, no linked/unlinked, no duplicate name line. */}
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-2.5">
         {selectable ? (
-          // Left control: vertically centred, shows the channel icon by default
-          // and morphs into a checkbox on hover / when selected. Click selects
-          // (Shift-click range-selects via the shell) instead of opening.
+          // Channel avatar that morphs into a select checkbox on hover / when
+          // selected. Click selects (Shift-click range-selects via the shell).
           <button
             type="button"
             onClick={(e) => {
@@ -105,7 +93,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
             }}
             aria-pressed={selected}
             aria-label="Select ticket"
-            className="relative flex h-6 w-6 shrink-0 items-center justify-center self-center"
+            className="relative flex h-9 w-9 shrink-0 items-center justify-center self-start"
           >
             <span
               className={cn(
@@ -119,7 +107,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
             </span>
             <span
               className={cn(
-                "pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground/80 transition-opacity",
+                "pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-muted/70 text-muted-foreground/80 transition-opacity",
                 selected ? "opacity-0" : "opacity-100 group-hover:opacity-0",
               )}
             >
@@ -127,29 +115,32 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
             </span>
           </button>
         ) : (
-          <span className="mt-0.5 shrink-0 text-muted-foreground/80">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-lg bg-muted/70 text-muted-foreground/80">
             <SourceIcon thread={thread} />
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className={cn("truncate text-sm", row.unread ? "font-semibold text-foreground" : "font-medium text-foreground/90")}>
-            {row.title}
-          </p>
-          {row.preview && (
-            <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{row.preview}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{fmtRelative(row.sortAt)}</span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-baseline gap-2">
+            <p className={cn("min-w-0 truncate text-[13.5px]", row.unread ? "font-semibold text-foreground" : "font-medium text-foreground/85")}>
+              {row.title}
+            </p>
+            <span className="ml-auto shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/45">
+              {fmtRelative(row.sortAt)}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2">
+            {row.preview ? (
+              <p className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground/70">{row.preview}</p>
+            ) : (
+              <span className="flex-1" />
+            )}
             {row.unreadCount > 0 && (
-              <span className="nav-badge">
+              <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground">
                 {row.unreadCount > 99 ? "99+" : row.unreadCount}
               </span>
             )}
             {/* Mentioned view keeps its per-user "mention done" checkbox on the
-                right (square + primary + @). Channel tickets no longer have a
-                right close bolletje — they close in bulk via the selection bar. */}
+                right. Channel tickets close in bulk via the selection bar. */}
             {!selectable && onClose && checkboxKind === "mention" && (
               <button
                 type="button"
@@ -160,13 +151,13 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
                 aria-pressed={isClosed}
                 title={isClosed ? t("inbox.shell.checkbox.mention_todo", locale) : t("inbox.shell.checkbox.mention_done", locale)}
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-md border transition-colors",
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors",
                   isClosed
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-muted-foreground/40 text-transparent hover:border-primary/60 hover:text-primary/50",
                 )}
               >
-                {isClosed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <AtSign className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                {isClosed ? <Check className="h-3 w-3" strokeWidth={3} /> : <AtSign className="h-3 w-3" strokeWidth={2.5} />}
               </button>
             )}
           </div>

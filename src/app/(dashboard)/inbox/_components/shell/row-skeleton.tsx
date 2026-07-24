@@ -10,16 +10,15 @@ import { Skeleton } from "@/components/ui/skeleton"
  */
 export function InboxRowSkeleton() {
   return (
-    <div className="w-full rounded-xl border border-border/60 bg-card pl-6 pr-5 py-3.5">
-      <div className="flex items-start gap-3">
-        <Skeleton className="mt-0.5 h-4 w-4 shrink-0 rounded-full" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <Skeleton className="h-3.5 w-1/2" />
-          <Skeleton className="h-3 w-4/5" />
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <Skeleton className="h-3 w-10" />
-          <Skeleton className="h-5 w-5 rounded-full" />
+    <div className="w-full rounded-lg px-2.5 py-2">
+      <div className="flex items-center gap-2.5">
+        <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-baseline gap-2">
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="ml-auto h-2.5 w-8" />
+          </div>
+          <Skeleton className="h-2.5 w-3/4" />
         </div>
       </div>
     </div>
@@ -29,7 +28,7 @@ export function InboxRowSkeleton() {
 /** A short stack of row skeletons for a loading feed. */
 export function InboxRowSkeletonList({ count = 6 }: { count?: number }) {
   return (
-    <div className="space-y-2" aria-hidden>
+    <div className="space-y-0.5" aria-hidden>
       {Array.from({ length: count }).map((_, i) => (
         <InboxRowSkeleton key={i} />
       ))}
