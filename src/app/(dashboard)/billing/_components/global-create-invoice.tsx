@@ -22,9 +22,9 @@ type Seed = {
   name: string
   stripeCustomerId: string | null
   cycleStartDate: string | null
-  fee: number
+  serviceFee: number
+  followUpFee: number
   adBudget: number
-  usesRocketLeadsAdAccount: boolean
 }
 
 export function GlobalCreateInvoice() {
@@ -154,9 +154,9 @@ export function GlobalCreateInvoice() {
           mondayItemId={seed.mondayItemId}
           stripeCustomerId={seed.stripeCustomerId}
           clientName={seed.name}
-          fee={seed.fee}
+          serviceFee={seed.serviceFee}
+          followUpFee={seed.followUpFee}
           adBudget={seed.adBudget}
-          usesRocketLeadsAdAccount={seed.usesRocketLeadsAdAccount}
           cycleStartDate={seed.cycleStartDate}
           onClose={() => setSeed(null)}
         />

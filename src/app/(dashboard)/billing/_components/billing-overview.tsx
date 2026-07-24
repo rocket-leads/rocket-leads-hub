@@ -72,9 +72,12 @@ export type UpcomingInvoice = {
    *  as "what we charge for managing the campaign", not "monthly recurring
    *  revenue projection". The number is the same. */
   fee: number
-  /** Total ad budget across the agreement's campaigns. Only meaningful when
-   *  the client runs ads via Rocket Leads' own ad account - otherwise the
-   *  client is paying Meta directly and we don't invoice it. */
+  /** Service fee = sum of platform fees (its own invoice line). */
+  serviceFee: number
+  /** Follow-up (lead opvolging) fee (its own invoice line). */
+  followUpFee: number
+  /** Ad budget RL fronts (the "Adbudget RL" amount). Invoiced as its own line
+   *  whenever > 0 - finance clears it on the client for direct-pay clients. */
   adBudget: number
   /** True when the client's Meta ad account ID matches Rocket Leads'. When
    *  false, the ad-budget cell renders as "-" and the create-invoice dialog
@@ -473,15 +476,12 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
             <AgreementAmountCell
               mondayItemId={primary.mondayItemId}
               field="ad_budget"
-              value={primary.usesRocketLeadsAdAccount ? primary.adBudget : 0}
-              // Always editable, even for clients running on their own ad account.
-              // Roy 2026-06-03: typing an amount here implies "RL is now invoicing
-              // for ad budget" which only makes sense if ads run through the RL ad
-              // account. The PATCH handler auto-flips meta_ad_account_id to the RL
-              // account when this field transitions from 0/empty → > 0 for a client
-              // not already on RL - so a single edit moves them over without the
-              // user having to also touch the ad-account field separately.
-              placeholder={primary.usesRocketLeadsAdAccount ? "0" : "-"}
+              // Show the ad budget whenever there's an amount - it's the
+              // "Adbudget RL" value RL invoices, independent of the meta
+              // ad-account-id match (which was unreliable). Finance clears it
+              // for direct-pay clients.
+              value={primary.adBudget}
+              placeholder="0"
             />
           )}
         </TableCell>
@@ -581,10 +581,8 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               <AgreementAmountCell
                 mondayItemId={sib.mondayItemId}
                 field="ad_budget"
-                value={sib.usesRocketLeadsAdAccount ? sib.adBudget : 0}
-                // Sibling-row cells follow the same edit-always rule as the
-                // primary row above (see comment there).
-                placeholder={sib.usesRocketLeadsAdAccount ? "0" : "-"}
+                value={sib.adBudget}
+                placeholder="0"
               />
             </TableCell>
             {/* Payment + AI check + Stripe - all on the parent row */}
@@ -597,17 +595,17 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
           mondayItemId={primary.mondayItemId}
           stripeCustomerId={primary.stripeCustomerId}
           clientName={displayName}
-          fee={primary.fee}
+          serviceFee={primary.serviceFee}
+          followUpFee={primary.followUpFee}
           adBudget={primary.adBudget}
-          usesRocketLeadsAdAccount={primary.usesRocketLeadsAdAccount}
           cycleStartDate={primary.cycleStartDate || null}
           siblingCampaigns={
             isMulti
               ? group.siblings.map((s) => ({
                   name: s.name,
-                  fee: s.fee,
+                  serviceFee: s.serviceFee,
+                  followUpFee: s.followUpFee,
                   adBudget: s.adBudget,
-                  usesRocketLeadsAdAccount: s.usesRocketLeadsAdAccount,
                 }))
               : undefined
           }
