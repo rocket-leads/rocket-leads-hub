@@ -2480,18 +2480,14 @@ function WhatsAppWindowBanner({
           </>
         )}
       </span>
-      <span className="inline-flex items-center rounded-md border border-border bg-card p-0.5 shrink-0 shadow-sm">
+      {/* 187N chip toggle - same vocabulary as the Reply / Internal note
+          switch above so the composer reads as one system. */}
+      <span className="inline-flex items-center gap-1.5 shrink-0">
         <button
           type="button"
           onClick={() => windowOpen && onModeChange("default")}
           disabled={!windowOpen}
-          className={cn(
-            "px-3 h-7 rounded text-xs font-medium transition-colors",
-            mode === "default"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted",
-            !windowOpen && "opacity-40 cursor-not-allowed",
-          )}
+          className={cn("chip", mode === "default" && "active", !windowOpen && "opacity-40 cursor-not-allowed")}
           title={!windowOpen ? t("inbox.chat.freetext_disabled", locale) : t("inbox.chat.default_message", locale)}
         >
           {t("inbox.chat.default", locale)}
@@ -2499,12 +2495,7 @@ function WhatsAppWindowBanner({
         <button
           type="button"
           onClick={() => onModeChange("template")}
-          className={cn(
-            "px-3 h-7 rounded text-xs font-medium transition-colors",
-            mode === "template"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted",
-          )}
+          className={cn("chip", mode === "template" && "active")}
           title={t("inbox.chat.template_send_title", locale)}
         >
           {t("inbox.chat.template", locale)}
