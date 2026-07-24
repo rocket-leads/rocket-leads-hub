@@ -342,8 +342,8 @@ tr[data-slot="table-row"].row-hover {
   transition: all 150ms ease;
 }
 tr[data-slot="table-row"].row-hover:hover {
-  background: var(--muted);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: var(--teal-wash);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 /* Smooth scrollbar - defaults for nested scroll containers (lists,

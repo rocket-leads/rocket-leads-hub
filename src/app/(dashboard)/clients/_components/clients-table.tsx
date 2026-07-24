@@ -847,51 +847,51 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           <TableHeader>
             <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
               {/* Client section */}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">{t("clients.col.client", locale)}</TableHead>
+              <TableHead className="w-[220px] border-r border-border/60">{t("clients.col.client", locale)}</TableHead>
               {/* Onboarding-only columns (Phase / Meta / Kick-off) - not
                   part of any toggleable group, always shown on the
                   onboarding board. */}
               {boardType === "onboarding" && (
                 <>
-                  <SortableHead label={t("clients.col.phase", locale)} sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[150px]" />
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[120px]">{t("clients.col.meta", locale)}</TableHead>
-                  <SortableHead label={t("clients.col.kick_off", locale)} sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
+                  <SortableHead label={t("clients.col.phase", locale)} sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[150px]" />
+                  <TableHead className="w-[120px]">{t("clients.col.meta", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.kick_off", locale)} sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[100px]" />
                 </>
               )}
               {/* Status group: Status + Health + Payment (current board) */}
               {boardType === "current" && showStatusGroup && (
                 <>
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.status", locale)}</TableHead>
-                  <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px] border-r border-border/60">{t("clients.col.payment", locale)}</TableHead>
+                  <TableHead className="w-[100px]">{t("clients.col.status", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-center w-[90px]" />
+                  <TableHead className="w-[95px] border-r border-border/60">{t("clients.col.payment", locale)}</TableHead>
                 </>
               )}
               {/* Invoice group: Overdue + MRR + Next */}
               {boardType === "current" && showInvoiceGroup && (
                 <>
-                  <SortableHead label={t("clients.col.overdue", locale)} sortKey="overdue" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
-                  <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
-                  <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
+                  <SortableHead label={t("clients.col.overdue", locale)} sortKey="overdue" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[110px]" />
+                  <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[110px]" />
+                  <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[80px] border-r border-border/60" />
                 </>
               )}
               {/* People group: AM + CM + AS */}
               {showPeopleGroup && (
                 <>
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
-                  <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
+                  <TableHead className="text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
+                  <TableHead className="text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
+                  <TableHead className={`text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
                 </>
               )}
               {/* KPI group: Ad Spend + Leads + CPL + CPL Δ (current only) */}
               {boardType === "current" && showKpiGroup && (
                 <>
-                  <SortableHead label={t("clients.col.adspend", locale)} sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[90px]" />
-                  <SortableHead label={t("clients.col.leads", locale)} sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
-                  <SortableHead label={t("clients.col.cpl", locale)} sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead label={t("clients.col.adspend", locale)} sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[90px]" />
+                  <SortableHead label={t("clients.col.leads", locale)} sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[65px]" />
+                  <SortableHead label={t("clients.col.cpl", locale)} sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[80px]" />
                   <SortableHead
                     label={<span className="inline-flex items-center gap-1.5">{t("clients.col.cpl", locale)} <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
                     sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
-                    className="text-[13px] text-foreground/80 font-semibold w-[90px] border-r border-border/60"
+                    className="w-[90px] border-r border-border/60"
                   />
                 </>
               )}
@@ -904,7 +904,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   currentKey={sortKey}
                   currentDir={sortDir}
                   onSort={handleSort}
-                  className="text-[13px] text-foreground/80 font-semibold text-center w-[140px]"
+                  className="text-center w-[140px]"
                 />
               )}
             </TableRow>

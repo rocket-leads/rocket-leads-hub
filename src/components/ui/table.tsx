@@ -57,7 +57,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        "border-b transition-colors hover:bg-accent data-[state=selected]:bg-muted",
         className
       )}
       {...props}
@@ -70,7 +70,10 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        // 187N table header: mono uppercase micro-label, hairline underline
+        // inherited from the row border. Individual tables can still override
+        // width/alignment via className.
+        "h-10 px-2 text-left align-middle whitespace-nowrap font-mono text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground/70 [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
