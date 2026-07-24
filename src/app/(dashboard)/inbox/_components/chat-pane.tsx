@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -1860,11 +1860,15 @@ function ThreadMessages({
         mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl",
       )}
     >
-      {/* Header */}
+      {/* Header — 187N Chats style: avatar badge + name + channel badge, with a
+          mono "client · via channel · N messages" meta line under it. */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/20 shrink-0">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-muted-foreground/80">
             <SourceIcon thread={thread} />
+          </span>
+          <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
             <EditableContactName
               key={thread.threadKey}
               displayName={thread.primaryName}
@@ -1918,6 +1922,7 @@ function ThreadMessages({
               }}
             />
           )}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {/* Quick "Generate update" - only when the thread is linked to a
@@ -3115,6 +3120,28 @@ function AttachmentChip({
  * Internal team notes (yellow) always render fully so the AM doesn't
  * miss a flag inside a long quoted thread.
  */
+/** 187N day divider between message groups: a mono micro-caps label centred
+ *  between two hairlines ("TODAY", "YESTERDAY", "24 JUL"). Roy 2026-07-24. */
+function DayDivider({ label }: { label: string }) {
+  return (
+    <div className="my-3 flex items-center gap-3" aria-hidden>
+      <span className="h-px flex-1 bg-border/60" />
+      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/45">{label}</span>
+      <span className="h-px flex-1 bg-border/60" />
+    </div>
+  )
+}
+
+function dayDividerLabel(iso: string): string {
+  const d = new Date(iso)
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diff = Math.round((startOf(new Date()) - startOf(d)) / 86400000)
+  if (diff === 0) return "Today"
+  if (diff === 1) return "Yesterday"
+  if (diff < 7) return d.toLocaleDateString("en-GB", { weekday: "long" })
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+}
+
 function ThreadMessagesList({
   messages,
   isEmailThread,
@@ -3156,20 +3183,29 @@ function ThreadMessagesList({
     }
   }
 
-  // Flat list for non-email threads + short email threads.
+  // Flat list for non-email threads + short email threads, with a day divider
+  // whenever the calendar day changes (187N Chats "TODAY ·" separator).
   if (!isEmailThread || messages.length <= 3) {
+    let prevDay: string | null = null
     return (
       <>
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isEmailThread={isEmailThread}
-            mentionNames={mentionNames}
-            noteMentions={noteMentions}
-            onMakeTask={makeTask(msg)}
-          />
-        ))}
+        {messages.map((msg) => {
+          const day = dayDividerLabel(msg.at)
+          const showDivider = day !== prevDay
+          prevDay = day
+          return (
+            <Fragment key={msg.id}>
+              {showDivider && <DayDivider label={day} />}
+              <MessageBubble
+                msg={msg}
+                isEmailThread={isEmailThread}
+                mentionNames={mentionNames}
+                noteMentions={noteMentions}
+                onMakeTask={makeTask(msg)}
+              />
+            </Fragment>
+          )
+        })}
       </>
     )
   }
