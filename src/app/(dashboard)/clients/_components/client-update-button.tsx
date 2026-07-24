@@ -673,15 +673,19 @@ export function ClientUpdateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[94vw] max-w-[760px] sm:max-w-[760px] max-h-[88vh] overflow-y-auto p-0 gap-0">
+      <DialogContent
+        showCloseButton={false}
+        className="w-[94vw] max-w-[760px] sm:max-w-[760px] max-h-[88vh] overflow-y-auto p-0 gap-0"
+      >
         <DialogHeader className="px-6 py-4 border-b border-border/50">
           <div className="flex items-center justify-between gap-3">
-            <DialogTitle className="flex items-center gap-2 text-[15px] font-semibold min-w-0 truncate">
+            <DialogTitle className="flex items-center gap-2 text-[15px] font-semibold min-w-0">
               <Sparkles className="h-4 w-4 text-primary shrink-0" />
               <span className="truncate">Client update · {clientName}</span>
             </DialogTitle>
-            <div className="shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <ChannelPill channel={channel} channelLabel={channelLabel} />
+              <DismissButton onClick={() => onOpenChange(false)} />
             </div>
           </div>
         </DialogHeader>
@@ -759,7 +763,7 @@ export function ClientUpdateDialog({
                   </code>
                 </p>
               ) : (
-                <p className="text-xs text-amber-500">
+                <p className="text-xs text-[var(--st-warn)]">
                   Kan WhatsApp template niet afleiden uit users.name. Verwacht{" "}
                   <code className="rounded bg-muted/60 px-1 font-mono text-[10px]">
                     rl_weekly_&lt;voornaam&gt;
@@ -780,7 +784,7 @@ export function ClientUpdateDialog({
                 </p>
               )}
               {!trengoLinked && (
-                <p className="text-xs text-amber-500">
+                <p className="text-xs text-[var(--st-warn)]">
                   Geen Trengo contact gekoppeld op deze klant, versturen is niet mogelijk.
                 </p>
               )}
@@ -801,12 +805,12 @@ export function ClientUpdateDialog({
               checked={testMode}
               onChange={(e) => setTestMode(e.target.checked)}
               disabled={inputsDisabled}
-              className="h-3.5 w-3.5 rounded border-border accent-amber-500"
+              className="h-4 w-4 rounded-[5px] border-border accent-[var(--teal)]"
             />
             Send as test (to me)
           </label>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSending}>
+            <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={isSending}>
               Annuleren
             </Button>
             <Button
