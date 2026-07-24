@@ -2,31 +2,37 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
-import { Sparkles, Check, X, Loader2 } from "lucide-react"
+import { Sparkles, Check, X, ArrowRight, Loader2 } from "lucide-react"
 import { buildPageContext } from "@/lib/copilot/context"
+import { executeAction } from "@/lib/copilot/executors"
 import { useQueueCommand, useCompleteDraft, useCopilotDrafts } from "./use-copilot-drafts"
+
+type DoneInfo = { summary: string; message: string; link: string | null }
 
 /**
  * AI Co-pilot. Rendered as the same 187N command-palette panel as the ⌘K
- * search (`.cmd-overlay` / `.cmd-panel`) so the two surfaces feel identical -
- * same width, backdrop, chrome. Opens via the `copilot:open` event (from the
- * palette's Actions group) or ⌘J; no standalone button.
+ * search (`.cmd-overlay` / `.cmd-panel`). Opens via the `copilot:open` event
+ * (palette Actions group) or ⌘J.
  *
- * Flow: type a command → ↵ → a quick loading bar in the panel → the proposed
- * action loads inline with a green ✓ (create) and a red ✗ (discard).
+ * Flow: type a command → ↵ → loading bar → the proposed action loads inline
+ * with a green ✓ (create) / red ✗ (discard). On ✓ the action actually runs
+ * client-side (executeAction creates the task), then a persistent confirmation
+ * shows what was created + a link to view it. No auto-close.
  */
 export function CommandBar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const qc = useQueryClient()
 
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [doneInfo, setDoneInfo] = useState<DoneInfo | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const queueCommand = useQueueCommand()
@@ -36,7 +42,6 @@ export function CommandBar() {
     ? draftsQ.data?.drafts.find((d) => d.id === activeDraftId) ?? null
     : null
 
-  // Opened from the ⌘K palette (with an optional prefill) or via ⌘J.
   const prefillRef = useRef("")
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -59,20 +64,17 @@ export function CommandBar() {
     return () => window.removeEventListener("copilot:open", onOpen as EventListener)
   }, [])
 
-  // Reset + focus per open, seeding any prefill from the palette.
   useEffect(() => {
     if (open) {
       setInput(prefillRef.current)
       prefillRef.current = ""
       setActiveDraftId(null)
       setSubmitError(null)
-      setDone(false)
+      setDoneInfo(null)
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open])
 
-  // Poll while the active draft is still processing (realtime broadcast usually
-  // beats this; the interval is a safety net so the ✓/✗ appears fast).
   const activeStatus = activeDraft?.status
   useEffect(() => {
     if (!activeDraftId) return
@@ -88,7 +90,7 @@ export function CommandBar() {
     const context = buildPageContext(pathname ?? "/", sp)
     setInput("")
     setSubmitError(null)
-    setDone(false)
+    setDoneInfo(null)
     setActiveDraftId(null)
     try {
       const res = await queueCommand.mutateAsync({ input: userInput, context })
@@ -105,22 +107,37 @@ export function CommandBar() {
     }
   }
 
+  // Approve = actually RUN the action (creates the task client-side), then
+  // record the draft as approved for the audit trail. Persistent confirmation.
   const approve = useCallback(async () => {
-    if (!activeDraftId) return
+    const draft = activeDraft
+    if (!draft?.draftAction || !activeDraftId || approving) return
+    setSubmitError(null)
+    setApproving(true)
     try {
-      await completeDraft.mutateAsync({ id: activeDraftId, status: "approved" })
+      const result = await executeAction(draft.draftAction, router)
+      if (!result.ok) {
+        setSubmitError(result.message)
+        return
+      }
+      void completeDraft.mutateAsync({ id: activeDraftId, status: "approved" }).catch(() => {})
+      setDoneInfo({
+        summary: draft.summary ?? result.message,
+        message: result.message,
+        link: result.navigateTo ?? null,
+      })
       setActiveDraftId(null)
-      setDone(true)
-      setTimeout(() => setOpen(false), 850)
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Aanmaken mislukt.")
+    } finally {
+      setApproving(false)
     }
-  }, [activeDraftId, completeDraft])
+  }, [activeDraft, activeDraftId, approving, completeDraft, router])
 
   const dismiss = useCallback(async () => {
     const id = activeDraftId
     setActiveDraftId(null)
-    setDone(false)
+    setDoneInfo(null)
     if (id) {
       try {
         await completeDraft.mutateAsync({ id, status: "dismissed" })
@@ -130,10 +147,18 @@ export function CommandBar() {
     }
   }, [activeDraftId, completeDraft])
 
+  const goto = useCallback(
+    (href: string) => {
+      setOpen(false)
+      router.push(href)
+    },
+    [router],
+  )
+
   const isProcessing = !!activeDraftId && (!activeDraft || activeDraft.status === "pending")
   const isReady = activeDraft?.status === "ready"
   const isFailed = activeDraft?.status === "failed"
-  const isIdle = !isProcessing && !isReady && !isFailed && !done && !submitError
+  const isIdle = !isProcessing && !isReady && !isFailed && !doneInfo && !submitError
 
   if (!open || typeof document === "undefined") return null
 
@@ -148,7 +173,7 @@ export function CommandBar() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onInputKeyDown}
             placeholder="Ask the AI Co-pilot — e.g. “Maak een taak voor Mike, vandaag”"
-            disabled={isProcessing}
+            disabled={isProcessing || approving}
           />
           <button type="button" className="esc" onClick={() => setOpen(false)}>
             ESC
@@ -182,17 +207,17 @@ export function CommandBar() {
                   type="button"
                   className="cmd-approve"
                   onClick={approve}
-                  disabled={completeDraft.isPending}
+                  disabled={approving}
                   aria-label="Aanmaken"
                 >
-                  <Check className="h-4 w-4" />
+                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   Aanmaken
                 </button>
                 <button
                   type="button"
                   className="cmd-reject"
                   onClick={dismiss}
-                  disabled={completeDraft.isPending}
+                  disabled={approving}
                   aria-label="Annuleer"
                 >
                   <X className="h-4 w-4" />
@@ -210,10 +235,33 @@ export function CommandBar() {
             </div>
           )}
 
-          {done && (
-            <div className="flex items-center gap-2 rounded-md bg-[var(--st-live-tint)] px-3 py-2.5 text-[13px] font-medium text-[var(--st-live)]">
-              <Check className="h-4 w-4" />
-              Aangemaakt
+          {/* Persistent confirmation - shows what was created + a link to it. */}
+          {doneInfo && (
+            <div className="rounded-md border border-[color-mix(in_srgb,var(--st-live)_22%,transparent)] bg-[var(--st-live-tint)] px-3.5 py-3">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--st-live)]">
+                <Check className="h-4 w-4" />
+                {doneInfo.message || "Aangemaakt"}
+              </div>
+              <div className="mt-1.5 text-[13px] leading-relaxed text-foreground">{doneInfo.summary}</div>
+              <div className="mt-3 flex items-center gap-2">
+                {doneInfo.link && (
+                  <button
+                    type="button"
+                    onClick={() => goto(doneInfo.link!)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--st-live)] px-3 text-[12px] font-semibold text-white hover:brightness-105"
+                  >
+                    Bekijk in Inbox
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex h-8 items-center rounded-md border border-border px-3 text-[12px] font-medium text-foreground/80 hover:bg-muted/60"
+                >
+                  Klaar
+                </button>
+              </div>
             </div>
           )}
 
@@ -225,9 +273,9 @@ export function CommandBar() {
         </div>
 
         <div className="cmd-foot">
-          {isProcessing ? (
+          {isProcessing || approving ? (
             <span className="inline-flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" /> processing
+              <Loader2 className="h-3 w-3 animate-spin" /> {approving ? "creating" : "processing"}
             </span>
           ) : (
             <span>
