@@ -673,16 +673,16 @@ export function ClientUpdateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[720px] w-[94vw] max-h-[88vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="w-[94vw] max-w-[760px] sm:max-w-[760px] max-h-[88vh] overflow-y-auto p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b border-border/50">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <DialogTitle className="flex items-center gap-2 text-[15px]">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Client update · {clientName}
-              </DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-[15px] font-semibold min-w-0 truncate">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+              <span className="truncate">Client update · {clientName}</span>
+            </DialogTitle>
+            <div className="shrink-0">
+              <ChannelPill channel={channel} channelLabel={channelLabel} />
             </div>
-            <ChannelPill channel={channel} channelLabel={channelLabel} />
           </div>
         </DialogHeader>
 
