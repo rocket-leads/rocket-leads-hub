@@ -13,7 +13,6 @@ import { WeeklyOverview } from "./weekly-overview"
 import { IndustryTable } from "./industry-table"
 import { ClosersTable } from "./closers-table"
 import { CloserInsights } from "./closer-insights"
-import { MarketingInsights } from "./marketing-insights"
 import { PulseBanner } from "./pulse-banner"
 import { HeroPillars } from "./hero-pillars"
 import { MarketingHero } from "./marketing-hero"
@@ -224,8 +223,8 @@ export function MarketingTab() {
       <section className="space-y-3">
         <SectionHeader title={t("targets.section.summary.title", locale)} />
         <MarketingStatRow monday={m} targets={tgt} range={range} isLoading={data.mondayLoading} />
-        <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
         <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
+        <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Cash collected - the money actually in the door. */}
           <RevenueProgressBar
@@ -246,13 +245,6 @@ export function MarketingTab() {
             onGapClick={() => setStripeGapOpen(true)}
           />
         </div>
-        <MarketingInsights
-          monday={m}
-          meta={meta}
-          targets={tgt}
-          range={range}
-          isLoading={loading}
-        />
       </section>
 
       {/* ── SECTION 2 - METRICS ── */}

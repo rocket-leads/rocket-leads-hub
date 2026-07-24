@@ -12,6 +12,15 @@ export interface PillarStatus {
   metric: string
   /** Formatted target value, for optional display. */
   target: string
+  /**
+   * Root-cause of an off-track OUTCOME pillar, one funnel step deeper. Cost per
+   * Booked Call is not itself a lever - it's CostPerOptIn ÷ BookingRate. When CBC
+   * is off we trace which of those two is actually to blame so the banner points
+   * at the real thing to fix, not the symptom. Null for leaf pillars (Booking /
+   * Show-up / Conversion are already root levers) or when it can't be decomposed
+   * (no opt-in data, e.g. under a country filter). Roy 2026-07-24.
+   */
+  driver?: { name: string; detail: string } | null
 }
 
 export interface ForecastInfo {
@@ -74,6 +83,40 @@ export function calculatePulse(
   const showUpCheck = calls > 3 && derived.showUpRate > 0 ? showUpRate >= derived.showUpRate : null
   const convCheck = taken > 3 && derived.convRate > 0 ? convRate >= derived.convRate : null
 
+  // ── CBC root-cause decomposition ──────────────────────────────────────────
+  // CBC = spend/booked = (spend/opt-ins) ÷ (booked/opt-ins) = CostPerOptIn ÷ BookingRate.
+  // So the only two ways to move CBC are cheaper opt-ins or a higher booking rate.
+  // When CBC is off we check which of the two is the culprit and name it - the
+  // banner then flags the real lever instead of the CBC symptom.
+  const cpo = safeDivide(spend, optIns)
+  const cpoTarget = targets.cpOptIn
+  const cpoOnTrack = optIns > 3 && cpoTarget > 0 ? cpo <= cpoTarget : null
+  const cbcDriver = (): PillarStatus["driver"] => {
+    if (cbcCheck !== false) return null // only decompose an off-track CBC
+    if (cpoOnTrack === null || bookingCheck === null) return null // no opt-in data to trace with
+    const cpoStr = `${formatCurrencyDecimal(cpo)} (target ${formatCurrencyDecimal(cpoTarget)})`
+    const brStr = `${formatPercent(bookingRate)} (target ${formatPercent(derived.bookingRate)})`
+    if (!cpoOnTrack && bookingCheck === true) {
+      return {
+        name: "Cost per Opt-in",
+        detail: `Opt-ins too expensive at ${cpoStr}; booking rate on track at ${formatPercent(bookingRate)}. Lower cost-per-opt-in via creatives / targeting.`,
+      }
+    }
+    if (cpoOnTrack && bookingCheck === false) {
+      return {
+        name: "Appointment Booking Rate",
+        detail: `Booking rate low at ${brStr}; opt-in cost on track at ${formatCurrencyDecimal(cpo)}. Fix the opt-in → call step: calendar friction, follow-up speed, form-to-booking handoff.`,
+      }
+    }
+    if (!cpoOnTrack && bookingCheck === false) {
+      return {
+        name: "Cost per Opt-in + Booking Rate",
+        detail: `Both off: opt-ins ${cpoStr} and booking ${brStr}. Cheaper opt-ins AND a smoother opt-in → call step both needed.`,
+      }
+    }
+    return null // both on track but CBC off (rounding) - no clear single lever
+  }
+
   const pillars: PillarStatus[] = [
     {
       name: "Cost per Booked Call",
@@ -81,6 +124,7 @@ export function calculatePulse(
       hint: cbcCheck === true ? HINTS.cbc.good : HINTS.cbc.bad,
       metric: calls > 0 ? formatCurrencyDecimal(cbc) : "-",
       target: targets.cbc > 0 ? formatCurrencyDecimal(targets.cbc) : "-",
+      driver: cbcDriver(),
     },
     {
       name: "Booking Rate",

@@ -80,7 +80,7 @@ function StatCard({ stat }: { stat: Stat }) {
       </div>
       <div className="hero-num">{stat.value}</div>
       {hasTarget && (
-        <span className={cn("delta", up ? "up" : "down")}>
+        <span className={cn("delta whitespace-nowrap", up ? "up" : "down")}>
           <span className="d-dot" />
           {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs target
         </span>
