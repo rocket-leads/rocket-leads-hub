@@ -64,7 +64,9 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   // `original = "hidden"`, leaving the page unscrollable on close. Removed
   // 2026-06-07.
 
-  const [showAll, setShowAll] = useState(false)
+  // Current clients default to active-only. The old "Alles tonen" toggle was
+  // removed (Roy 2026-07); we always show active clients now.
+  const [showAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   // The All Clients overview is the "is everyone OK?" surface - same
   // intent as the Watch List. KPI columns lock to the canonical 7d
@@ -184,17 +186,17 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   // the table instead of inside a tab strip.
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2 -mb-2">
+      <div className="flex items-center justify-end gap-3 -mb-2">
         {lastUpdatedLabel && (
-          <span className="text-[11px] text-muted-foreground/40">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
+          <span className="font-mono text-[11px] text-muted-foreground/50">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
         )}
         <button
-          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+          className="icon-btn disabled:opacity-50"
           onClick={handleRefresh}
           disabled={isFetching}
           aria-label={t("clients.refresh", locale)}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          <RefreshCw className={isFetching ? "animate-spin" : ""} />
         </button>
       </div>
 
@@ -208,11 +210,6 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
           mondayActiveMap={mondayActiveQuery.data}
           lastClientUpdates={lastClientUpdatesQuery.data?.lastUpdates}
           onSelectClient={handleSelectClient}
-          showAllToggle={{
-            showAll,
-            setShowAll,
-            totalCount: current.length,
-          }}
         />
       </Panel>
 

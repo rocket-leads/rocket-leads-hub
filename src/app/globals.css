@@ -93,6 +93,13 @@
   color: inherit;
 }
 
+/* Keep the app shell inset from the viewport edges so the sidebar doesn't sit
+   flush against the left border - the bg-field grid shows in the gutter, like
+   187N. theme.css only centers via margin-auto (no gap below the 1720 max). */
+.app {
+  padding-inline: clamp(16px, 2.2vw, 44px);
+}
+
 /* 187N search pill: rounded-pill surface + magnifier, focus ring in teal.
    `all: unset` on the inner input strips the global form styling so the field
    reads as a bare input inside the pill (the campaign-performance search). */
