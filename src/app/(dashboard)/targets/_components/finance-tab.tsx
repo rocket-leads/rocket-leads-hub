@@ -123,12 +123,12 @@ export function FinanceTab() {
           onChange={setRange}
           maxDate={maxPickerDate}
         />
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
           {presets.map((preset) => (
             <button
               key={preset.label}
               onClick={() => applyPreset(preset)}
-              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+              className="chip h-9"
             >
               {preset.label}
             </button>
@@ -149,7 +149,7 @@ export function FinanceTab() {
 
       {/* ── REVENUE - SERVICE FEE ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_service_fee", locale)}</h2>
+        <div className="section-title">{t("targets.finance.section.revenue_service_fee", locale)}</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee - Invoiced", (d) => d.category === "service_fee")}>
             <KpiCard label="Invoiced" value={sf?.invoiced ?? null} formatted={formatCurrency(sf?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
@@ -192,7 +192,7 @@ export function FinanceTab() {
 
       {/* ── REVENUE - AD BUDGET ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_ad_budget", locale)}</h2>
+        <div className="section-title">{t("targets.finance.section.revenue_ad_budget", locale)}</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="cursor-pointer" onClick={() => openDetail("Ad Budget - Invoiced", (d) => d.category === "ad_budget")}>
             <KpiCard label="Invoiced" value={finance?.adBudget?.invoiced ?? null} formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
@@ -211,7 +211,7 @@ export function FinanceTab() {
 
       {/* ── COSTS (full-month: actual from sheet or 3-month average) ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.costs", locale)}</h2>
+        <div className="section-title">{t("targets.finance.section.costs", locale)}</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <KpiCard
             label="Total Costs"
@@ -244,7 +244,7 @@ export function FinanceTab() {
 
         return (
           <div className="space-y-3">
-            <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.profit", locale)}</h2>
+            <div className="section-title">{t("targets.finance.section.profit", locale)}</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <KpiCard label="Revenue" value={revenueForProfit} formatted={formatCurrency(revenueForProfit)} isEstimated={isCurrentRange} variant="neutral" isLoading={loading} />
               <KpiCard

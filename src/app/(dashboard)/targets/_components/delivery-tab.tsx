@@ -188,7 +188,7 @@ export function DeliveryTab() {
           {(() => {
             const unassigned = data.byAccountManager.find((am) => am.name === "Unassigned")!
             return (
-              <div className="bg-card rounded-lg border border-border/40 overflow-hidden">
+              <div className="section-card !p-0 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setShowUnassigned((v) => !v)}
@@ -242,7 +242,7 @@ function TeamCard({ row, rank, locale }: { row: AccountManagerRevenue; rank: num
   const rankNumber = String(rank).padStart(2, "0")
 
   return (
-    <div className="bg-card rounded-lg border border-border/40 p-5 space-y-4 relative overflow-hidden">
+    <div className="section-card space-y-4 relative overflow-hidden">
       {rank === 1 && (
         <div
           aria-hidden
@@ -325,26 +325,28 @@ function RetentionCard({
 }) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40 h-full">
+      <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col gap-3 h-full">
         <div className="h-3 w-20 bg-muted rounded animate-pulse" />
         <div className="h-7 w-28 bg-muted rounded animate-pulse" />
       </div>
     )
   }
 
+  // Match the 187N KpiCard chrome so retention tiles line up with the KpiCards in
+  // the same grid. Tone maps to the design-system status tokens.
   const valueColor =
-    tone === "positive" ? "text-green-500" :
-    tone === "negative" ? "text-red-500" :
+    tone === "positive" ? "text-[var(--st-live)]" :
+    tone === "negative" ? "text-[var(--st-error)]" :
     "text-foreground"
 
   return (
-    <div className="bg-card rounded-lg p-3 flex flex-col h-full border border-border/40">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+    <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col h-full">
+      <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{label}</span>
       {sublabel && (
-        <span className="text-[9px] text-muted-foreground/60 mt-0.5">{sublabel}</span>
+        <span className="text-[9px] text-muted-foreground/50 mt-0.5">{sublabel}</span>
       )}
       <span className={cn(
-        "text-xl font-bold font-mono leading-tight tracking-tight mt-0.5",
+        "font-mono text-[22px] font-bold leading-none tracking-tight tabular-nums mt-2",
         valueColor,
       )}>
         {display}
