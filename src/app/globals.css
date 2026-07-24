@@ -80,6 +80,59 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ============================================================================
+   187N Kanban board (from the Tasks page's inline styles). Used by the Watch
+   List. Column colours re-keyed to the watch categories: action=red,
+   watch=amber, healthy=green, nodata=grey. Cards carry a per-category left bar.
+   ============================================================================ */
+.board { display: grid; grid-template-columns: repeat(var(--kb-cols, 4), 1fr); gap: 16px; align-items: start; }
+.kb-col { display: flex; flex-direction: column; min-width: 0; }
+.kb-head { display: flex; align-items: center; gap: 10px; padding: 0 4px 10px; }
+.kb-rail { width: 22px; height: 3px; border-radius: var(--r-pill); flex: none; background: var(--line-strong); }
+.kb-col[data-col="action"]  .kb-rail { background: var(--st-error); box-shadow: 0 0 10px var(--st-error-glow); }
+.kb-col[data-col="watch"]   .kb-rail { background: var(--st-warn); box-shadow: 0 0 10px var(--st-warn-glow); }
+.kb-col[data-col="healthy"] .kb-rail { background: var(--st-live); box-shadow: 0 0 10px var(--st-live-glow); }
+.kb-col[data-col="nodata"]  .kb-rail { background: var(--st-idle); }
+.kb-title { font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+.kb-count { font-family: var(--f-mono); font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.kb-wip { display: flex; align-items: center; gap: 8px; padding: 0 4px 12px; }
+.kb-wip-bar { flex: 1; height: 3px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+.kb-wip-bar > span { display: block; height: 100%; border-radius: var(--r-pill); }
+.kb-col[data-col="action"]  .kb-wip-bar > span { background: var(--st-error); }
+.kb-col[data-col="watch"]   .kb-wip-bar > span { background: var(--st-warn); }
+.kb-col[data-col="healthy"] .kb-wip-bar > span { background: var(--st-live); }
+.kb-col[data-col="nodata"]  .kb-wip-bar > span { background: var(--st-idle); }
+.kb-wip-cap { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .04em; color: var(--ink-faint); white-space: nowrap; }
+.kb-wip-cap b { color: var(--ink-muted); }
+.kb-body { display: flex; flex-direction: column; gap: 12px; padding: 7px; border-radius: var(--r-lg); border: 1px solid var(--line-faint); background: color-mix(in srgb, var(--surface-2) 55%, transparent); min-height: 130px; }
+.kb-col[data-col="action"]  .kb-body { border-color: color-mix(in srgb, var(--st-error) 16%, transparent); background: color-mix(in srgb, var(--st-error-tint) 55%, var(--surface-2)); }
+.kb-col[data-col="watch"]   .kb-body { border-color: color-mix(in srgb, var(--st-warn) 16%, transparent); background: color-mix(in srgb, var(--st-warn-tint) 50%, var(--surface-2)); }
+.kb-col[data-col="healthy"] .kb-body { border-color: color-mix(in srgb, var(--st-live) 14%, transparent); background: color-mix(in srgb, var(--st-live-tint) 45%, var(--surface-2)); }
+.kb-empty { padding: 22px 14px; text-align: center; font-size: 12px; color: var(--ink-faint); border: 1px dashed var(--line-strong); border-radius: var(--r-md); }
+
+.tcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-xs); padding: 13px 14px 12px; display: flex; flex-direction: column; gap: 9px; cursor: pointer; position: relative; text-align: left; width: 100%; transition: transform var(--t-med), box-shadow var(--t-med), border-color var(--t-med); }
+.tcard:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--line-strong); }
+.tcard[data-cat="action"]::before  { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--st-error); box-shadow: 0 0 8px var(--st-error-glow); }
+.tcard[data-cat="watch"]::before    { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--st-warn); box-shadow: 0 0 8px var(--st-warn-glow); }
+.tcard[data-cat="healthy"]::before  { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--st-live); }
+.tc-top { display: flex; align-items: center; gap: 8px; }
+.tc-top .pill { padding: 3px 8px; font-size: 9px; }
+.proj { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 10px; font-weight: 500; letter-spacing: .06em; color: var(--ink-muted); }
+.proj .pj-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.pj-dot.brand { background: var(--teal); }
+.tc-title { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.4; letter-spacing: -.005em; }
+.tc-desc { font-size: 11.5px; color: var(--ink-muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tc-labels { display: flex; flex-wrap: wrap; gap: 5px; }
+.tc-label { font-family: var(--f-mono); font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-pill); color: var(--ink-muted); background: var(--surface-3); border: 1px solid var(--line); white-space: nowrap; }
+.tc-foot { display: flex; align-items: center; gap: 9px; margin-top: 1px; padding-top: 10px; border-top: 1px solid var(--line-faint); }
+.tcard .avatar { width: 24px; height: 24px; border-radius: 7px; font-size: 9.5px; box-shadow: var(--shadow-xs); }
+.tc-foot .chip { padding: 3px 9px; font-size: 11px; gap: 5px; }
+.tc-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-faint); }
+.pill.p1 { background: var(--st-error-tint); color: var(--st-error); } .pill.p1 .pdot { background: var(--st-error); }
+.pill.p2 { background: var(--st-warn-tint); color: var(--st-warn); } .pill.p2 .pdot { background: var(--st-warn); }
+.pill.p3 { background: var(--st-idle-tint); color: var(--ink-muted); } .pill.p3 .pdot { background: var(--st-idle); }
+.pill.newpill { background: var(--teal-wash-2); color: var(--teal); } .pill.newpill .pdot { background: var(--teal); }
+
 /* Sortable table headers wrap their label in a <button>; form controls don't
    inherit text-transform/font, so those headers rendered mixed-case next to the
    plain <th> cells. Force inheritance so every header matches the 187N mono

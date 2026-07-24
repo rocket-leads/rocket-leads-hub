@@ -1446,6 +1446,159 @@ type Props = {
   currentUser: CurrentUser | null
 }
 
+// ─── 187N kanban card + column (Tasks-page layout) ─────────────────────────
+
+type BoardCol = "action" | "watch" | "healthy" | "nodata"
+
+function WatchCard({
+  item,
+  col,
+  createCategory,
+  onSelectClient,
+  locale,
+}: {
+  item: CategorizedClient
+  col: BoardCol
+  createCategory: "action" | "watch" | "good" | null
+  onSelectClient: (id: string) => void
+  locale: Locale
+}) {
+  const { client, insight, kpi, daysInBucket, isNewToday } = item
+  const id = client.mondayItemId
+  const owner = client.campaignManager?.trim() || client.accountManager?.trim() || ""
+  const initials =
+    (owner || client.name)
+      .split(/\s+/)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "—"
+  const prio = col === "action" ? "p1" : col === "watch" ? "p2" : "p3"
+
+  const kpiLabels: string[] = []
+  if (kpi) {
+    if (kpi.adSpend > 0) kpiLabels.push(`€${Math.round(kpi.adSpend)} spend`)
+    if (kpi.leads > 0) kpiLabels.push(`${kpi.leads} leads`)
+    if (kpi.cpl > 0) kpiLabels.push(`€${kpi.cpl.toFixed(0)} cpl`)
+  }
+
+  return (
+    <article
+      className="tcard"
+      data-cat={col === "nodata" ? undefined : col}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelectClient(id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onSelectClient(id)
+        }
+      }}
+    >
+      <div className="tc-top">
+        <span className="proj">
+          <span className="pj-dot brand" />
+          {owner || "—"}
+        </span>
+        {isNewToday ? (
+          <span className="pill newpill">
+            <span className="pdot" />
+            New
+          </span>
+        ) : daysInBucket != null ? (
+          <span className={`pill ${prio}`}>
+            <span className="pdot" />
+            {daysInBucket}d
+          </span>
+        ) : null}
+      </div>
+
+      <div className="tc-title">{client.name}</div>
+      {insight && <div className="tc-desc">{insight}</div>}
+      {kpiLabels.length > 0 && (
+        <div className="tc-labels">
+          {kpiLabels.map((l, i) => (
+            <span key={i} className="tc-label">
+              {l}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="tc-foot" onClick={(e) => e.stopPropagation()}>
+        <span className="avatar">{initials}</span>
+        {createCategory && (
+          <CreateTaskButton
+            mondayItemId={id}
+            clientName={client.companyName || client.name}
+            campaignManager={client.campaignManager || null}
+            category={createCategory}
+            insight={insight}
+            kpi={kpi}
+            locale={locale}
+            compact
+          />
+        )}
+      </div>
+    </article>
+  )
+}
+
+function KanbanColumn({
+  col,
+  title,
+  cap,
+  items,
+  createCategory,
+  onSelectClient,
+  locale,
+}: {
+  col: BoardCol
+  title: string
+  cap: string
+  items: CategorizedClient[]
+  createCategory: "action" | "watch" | "good" | null
+  onSelectClient: (id: string) => void
+  locale: Locale
+}) {
+  const n = items.length
+  const width = `${Math.min(100, 8 + n * 11)}%`
+  return (
+    <section className="kb-col" data-col={col}>
+      <header className="kb-head">
+        <span className="kb-rail" />
+        <span className="kb-title">{title}</span>
+        <span className="kb-count">{n}</span>
+      </header>
+      <div className="kb-wip">
+        <span className="kb-wip-bar">
+          <span style={{ width }} />
+        </span>
+        <span className="kb-wip-cap">
+          <b>{n}</b> {cap}
+        </span>
+      </div>
+      <div className="kb-body">
+        {n === 0 ? (
+          <div className="kb-empty">{locale === "nl" ? "Niks hier" : "All clear"}</div>
+        ) : (
+          items.map((item) => (
+            <WatchCard
+              key={item.client.mondayItemId}
+              item={item}
+              col={col}
+              createCategory={createCategory}
+              onSelectClient={onSelectClient}
+              locale={locale}
+            />
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function WatchListDashboard({ clients, currentUser }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -1771,37 +1924,44 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         {/* items-start so each section card sizes to its own content
             instead of being stretched to match the tallest column -
             Roy 2026-06-11 v4: "wit vlak onder Action Needed mag eruit". */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <WatchSection
-            category="action"
+        <div className="board">
+          <KanbanColumn
+            col="action"
+            title={t("watchlist.pill.action", locale)}
+            cap="to act"
             items={categorized.action}
-            defaultOpen={true}
+            createCategory="action"
             onSelectClient={handleSelectClient}
             locale={locale}
-            variant="compact"
           />
-          <WatchSection
-            category="watch"
+          <KanbanColumn
+            col="watch"
+            title={t("watchlist.pill.watch", locale)}
+            cap="watching"
             items={categorized.watch}
-            defaultOpen={true}
+            createCategory="watch"
             onSelectClient={handleSelectClient}
             locale={locale}
-            variant="compact"
+          />
+          <KanbanColumn
+            col="healthy"
+            title={t("watchlist.pill.good", locale)}
+            cap="stable"
+            items={categorized.good}
+            createCategory="good"
+            onSelectClient={handleSelectClient}
+            locale={locale}
+          />
+          <KanbanColumn
+            col="nodata"
+            title={t("watchlist.pill.no_data", locale)}
+            cap="no signal"
+            items={categorized.noData}
+            createCategory={null}
+            onSelectClient={handleSelectClient}
+            locale={locale}
           />
         </div>
-        <WatchSection
-          category="good"
-          items={categorized.good}
-          defaultOpen={true}
-          onSelectClient={handleSelectClient}
-          locale={locale}
-          variant="wide"
-        />
-        <NoDataSection
-          items={categorized.noData}
-          defaultOpen={false}
-          locale={locale}
-        />
       </div>
 
       {currentUser && (
