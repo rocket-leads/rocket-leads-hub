@@ -382,14 +382,16 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
 
   return (
     <div className="space-y-8">
-      <section>
-        <h2 className="text-sm font-medium mb-3">{t("settings.users.invite.action.add", locale)}</h2>
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">{t("settings.users.invite.action.add", locale)}</div>
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault()
             handleInvite()
           }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 rounded-xl border border-border/60 bg-card p-5"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3"
         >
           <FieldLabel className="lg:col-span-3" label={t("settings.users.invite.first_name", locale)}>
             <Input
@@ -486,12 +488,13 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
           </div>
           {error && <p className="lg:col-span-6 text-sm text-destructive">{error}</p>}
         </form>
-      </section>
+      </div>
 
-      <section>
-        <h2 className="text-sm font-medium mb-3">Team members</h2>
-
-        <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+      <div className="section-card">
+        <div className="section-head">
+          <div className="section-title">Team members</div>
+        </div>
+        <div className="overflow-x-auto -mx-1">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/50">
@@ -677,7 +680,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
             </tbody>
           </table>
         </div>
-      </section>
+      </div>
     </div>
   )
 }
