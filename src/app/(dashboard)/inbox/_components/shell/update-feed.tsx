@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Circle, User, CircleCheck, Inbox as InboxIcon } from "lucide-react"
-import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
+import type { TopTab } from "@/components/ui/top-tabs"
+import { ChipTabs } from "./chip-tabs"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { UpdateCard } from "./update-card"
@@ -100,7 +101,7 @@ export function UpdateFeed({ items, currentUserId, types, deadline, loading, onC
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <TopTabs tabs={filterTabs} value={state} onChange={setState} />
+      <ChipTabs tabs={filterTabs} value={state} onChange={setState} />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {loading && items.length === 0 ? (

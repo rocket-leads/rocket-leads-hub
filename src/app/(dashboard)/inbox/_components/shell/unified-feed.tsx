@@ -1,10 +1,11 @@
 "use client"
 
 import { Inbox as InboxIcon, Check } from "lucide-react"
-import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
+import type { TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { cn } from "@/lib/utils"
+import { ChipTabs } from "./chip-tabs"
 import { FeedRow } from "./feed-row"
 import { InboxRowSkeletonList } from "./row-skeleton"
 import type { RowAction } from "../inbox-list-row"
@@ -75,7 +76,7 @@ export function UnifiedFeed<T extends string>({
   const locale = useLocale()
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <TopTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} compact />
+      <ChipTabs tabs={filterTabs} value={filterValue} onChange={onFilterChange} />
 
       {/* Select-all header: only appears once ≥1 ticket is selected (Roy
           2026-07-22: permanent = ruis). Then one click extends to every visible
