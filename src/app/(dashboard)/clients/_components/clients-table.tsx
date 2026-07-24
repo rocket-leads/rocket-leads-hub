@@ -41,21 +41,24 @@ import { formatCurrency as formatCurrencyLocale } from "@/lib/i18n/format"
 import type { Locale } from "@/lib/i18n/types"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
-type PillTone = { dot: string; pill: string }
+// 187N bare status label (dot + mono uppercase, no fill) - the campaign-
+// performance "● LIVE" treatment. Tones map to design-system status tokens
+// via the `.st-label` classes in globals.css.
+type StTone = "live" | "warn" | "error" | "idle" | "pending"
 
-const PAYMENT_TONES: Record<string, PillTone> = {
-  complete: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
-  open: { dot: "bg-amber-500", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-  overdue: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
-}
-
-function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
+function StLabel({ tone, label }: { tone: StTone; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${tone.pill}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+    <span className={`st-label ${tone}`}>
+      <span className="sd" />
       {label}
     </span>
   )
+}
+
+const PAYMENT_TONE_KEYS: Record<string, StTone> = {
+  complete: "live",
+  open: "warn",
+  overdue: "error",
 }
 
 /**
@@ -94,25 +97,17 @@ const PAYMENT_LABEL_KEYS: Record<string, DictionaryKey> = {
   Overdue: "clients.payment.overdue",
 }
 
-const META_NEUTRAL_TONE: PillTone = { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300" }
-
-/** Heuristic colour mapping for the Meta-connected status pill. The exact set
+/** Heuristic tone mapping for the Meta-connected status label. The exact set
  *  of labels on Monday's `dup__of_status` column may evolve, so we recognise
  *  common signals (connected/yes/done · pending/waiting · no/missing/restricted)
  *  and fall back to a neutral grey for anything else. */
-function metaConnectedTone(label: string): PillTone {
+function metaConnectedToneKey(label: string): StTone {
   const n = label.trim().toLowerCase()
-  if (!n) return META_NEUTRAL_TONE
-  if (/^(connected|yes|done|live|ok|✓)/.test(n) || n === "rl") {
-    return { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" }
-  }
-  if (/(pending|waiting|in progress)/.test(n)) {
-    return { dot: "bg-amber-400", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }
-  }
-  if (/(no|not|missing|restricted|disabled|denied)/.test(n)) {
-    return { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" }
-  }
-  return META_NEUTRAL_TONE
+  if (!n) return "idle"
+  if (/^(connected|yes|done|live|ok|✓)/.test(n) || n === "rl") return "live"
+  if (/(pending|waiting|in progress)/.test(n)) return "warn"
+  if (/(no|not|missing|restricted|disabled|denied)/.test(n)) return "error"
+  return "idle"
 }
 
 // --- Campaign Health ---
@@ -177,11 +172,11 @@ function getCampaignHealth(kpi: KpiSummary | undefined, locale: Locale = "en"): 
   return { status, reasons }
 }
 
-const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: string; labelKey: DictionaryKey | null }> = {
-  critical: { dot: "bg-red-500", bg: "bg-red-500/10", text: "text-red-600 dark:text-red-400", labelKey: "clients.health.critical" },
-  warning: { dot: "bg-amber-500", bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", labelKey: "clients.health.warning" },
-  good: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", labelKey: "clients.health.good" },
-  "no-data": { dot: "bg-zinc-400", bg: "bg-zinc-500/10", text: "text-muted-foreground", labelKey: null },
+const HEALTH_STYLES: Record<HealthStatus, { dot: string; tone: StTone; labelKey: DictionaryKey | null }> = {
+  critical: { dot: "bg-red-500", tone: "error", labelKey: "clients.health.critical" },
+  warning: { dot: "bg-amber-500", tone: "warn", labelKey: "clients.health.warning" },
+  good: { dot: "bg-emerald-500", tone: "live", labelKey: "clients.health.good" },
+  "no-data": { dot: "bg-zinc-400", tone: "idle", labelKey: null },
 }
 
 /** Health filter values are the canonical English status names - they map to
@@ -196,10 +191,10 @@ function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale 
   }
   return (
     <div className="relative group">
-      <div className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${style.bg} ${style.text}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      <span className={`st-label ${style.tone}`}>
+        <span className="sd" />
         {style.labelKey ? t(style.labelKey, locale) : "-"}
-      </div>
+      </span>
       {health.reasons.length > 0 && (
         <div className="absolute z-50 hidden group-hover:block bottom-full left-0 mb-1.5 w-64 rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
           <ul className="space-y-1">
@@ -990,7 +985,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         </TableCell>
                         <TableCell>
                           {client.metaConnected ? (
-                            <StatusPill tone={metaConnectedTone(client.metaConnected)} label={client.metaConnected} />
+                            <StLabel tone={metaConnectedToneKey(client.metaConnected)} label={client.metaConnected} />
                           ) : (
                             <span className="text-muted-foreground/40 text-xs">-</span>
                           )}
@@ -1016,9 +1011,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           )}
                         </TableCell>
                         <TableCell className="border-r border-border/40">
-                          {billingSummaries && summary && PAYMENT_TONES[summary.status] && (
-                            <StatusPill
-                              tone={PAYMENT_TONES[summary.status]}
+                          {billingSummaries && summary && PAYMENT_TONE_KEYS[summary.status] && (
+                            <StLabel
+                              tone={PAYMENT_TONE_KEYS[summary.status]}
                               label={t(PAYMENT_LABEL_KEYS[summary.status.charAt(0).toUpperCase() + summary.status.slice(1)], locale)}
                             />
                           )}

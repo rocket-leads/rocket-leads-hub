@@ -80,6 +80,51 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Sortable table headers wrap their label in a <button>; form controls don't
+   inherit text-transform/font, so those headers rendered mixed-case next to the
+   plain <th> cells. Force inheritance so every header matches the 187N mono
+   uppercase micro-label. */
+[data-slot="table-head"] button {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+/* 187N bare status label: a coloured dot + mono uppercase label with NO fill -
+   the campaign-performance "● LIVE" treatment. Replaces filled status pills in
+   the tables. Tones map to the design-system status tokens. */
+.st-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+}
+.st-label .sd {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.st-label.live { color: var(--st-live); }
+.st-label.live .sd { background: var(--st-live); box-shadow: 0 0 8px var(--st-live-glow); }
+.st-label.warn { color: var(--st-warn); }
+.st-label.warn .sd { background: var(--st-warn); }
+.st-label.error { color: var(--st-error); }
+.st-label.error .sd { background: var(--st-error); }
+.st-label.pending { color: var(--st-pending); }
+.st-label.pending .sd { background: var(--st-pending); }
+.st-label.idle { color: var(--ink-muted); }
+.st-label.idle .sd { background: var(--st-idle); }
+
 /* Light mode - Flow-inspired warm cream background so cards float as
  * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar
  * stays one shade lighter than the page so the rail visually separates

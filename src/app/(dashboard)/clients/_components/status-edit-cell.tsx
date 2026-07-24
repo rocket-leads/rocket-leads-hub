@@ -10,11 +10,20 @@ import {
   STATUS_OPTIONS,
   hubStatusToMondayLabel,
   statusLabelI18n,
-  statusTone,
   type ClientStatus,
 } from "@/lib/clients/status"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
+
+// Hub status -> 187N bare-label tone. Live=green, On Hold=amber, Onboarding=
+// blue (learning), Churned/empty=grey.
+const STATUS_TONE_KEY: Record<string, "live" | "warn" | "pending" | "idle"> = {
+  live: "live",
+  on_hold: "warn",
+  onboarding: "pending",
+  churned: "idle",
+  null: "idle",
+}
 
 type Props = {
   mondayItemId: string
@@ -33,7 +42,7 @@ export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
 
   useEffect(() => setOptimisticStatus(status), [status])
 
-  const tone = statusTone(optimisticStatus)
+  const toneKey = STATUS_TONE_KEY[optimisticStatus ?? "null"] ?? "idle"
 
   const mutation = useMutation({
     mutationFn: async (next: ClientStatus) => {
@@ -55,10 +64,8 @@ export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
   })
 
   const pill = (
-    <span
-      className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${tone.pill}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+    <span className={`st-label ${toneKey}`}>
+      <span className="sd" />
       {statusLabelI18n(optimisticStatus, locale)}
     </span>
   )
@@ -89,8 +96,8 @@ export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
             }}
             className="w-full flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-[13px] hover:bg-muted transition-colors disabled:opacity-50"
           >
-            <span className="inline-flex items-center gap-2">
-              <span className={`h-1.5 w-1.5 rounded-full ${statusTone(opt).dot}`} />
+            <span className={`st-label ${STATUS_TONE_KEY[opt] ?? "idle"}`}>
+              <span className="sd" />
               {t(STATUS_LABEL_KEYS[opt], locale)}
             </span>
             {opt === optimisticStatus && <Check className="h-3.5 w-3.5 text-foreground/70" />}
