@@ -1997,15 +1997,21 @@ function ThreadMessages({
           ate half the viewport. Tap "Reply" to expand into the full
           composer below. Roy 2026-06-12. */}
       {replyable && isEmail && !emailComposerOpen && (
-        <div className="border-t border-border bg-muted/20 px-3 py-2 shrink-0 flex items-center justify-end gap-2">
-          <Button
-            size="sm"
+        <div className="shrink-0 border-t border-border bg-card px-3 py-3">
+          {/* Clean composer-bar prompt (187N): a full-width rounded field with a
+              mail glyph + a filled send circle. Click to expand into the full
+              email composer. Replaces the floating "Antwoord" pill. Roy 2026-07-24. */}
+          <button
+            type="button"
             onClick={() => setEmailComposerOpen(true)}
-            className="gap-1.5"
+            className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
           >
-            <Mail className="h-3.5 w-3.5" />
-            {t("inbox.chat.reply", locale)}
-          </Button>
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
+            <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Send className="h-3.5 w-3.5" />
+            </span>
+          </button>
         </div>
       )}
 
@@ -2299,10 +2305,10 @@ function ThreadMessages({
                   ? t("inbox.chat.internal_placeholder", locale)
                   : t("inbox.chat.reply_placeholder", locale, { source: thread.source })
               }
-              rows={6}
+              rows={3}
               disabled={sending}
               className={cn(
-                "flex-1 rounded-lg border bg-transparent px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 resize-none",
+                "flex-1 resize-none rounded-2xl border bg-transparent px-3.5 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                 isInternal
                   ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10 focus-visible:border-amber-500/60"
                   : "border-input bg-background focus-visible:border-ring",
