@@ -14,7 +14,9 @@ import {
   TrendingUp,
   Calendar,
   CreditCard,
-  Target,
+  BarChart3,
+  Truck,
+  Coins,
   Settings,
   type LucideIcon,
 } from "lucide-react"
@@ -30,8 +32,10 @@ const PAGES: { href: string; label: string; sub: string; icon: LucideIcon }[] = 
   { href: "/onboarding", label: "Onboarding", sub: "New-client wizard", icon: ClipboardCheck },
   { href: "/optimize", label: "Optimize", sub: "Pedro proposals", icon: TrendingUp },
   { href: "/calendar", label: "Calendar", sub: "Schedule · recordings", icon: Calendar },
+  { href: "/targets/marketing", label: "Marketing / Sales", sub: "Funnel · closers · targets", icon: BarChart3 },
+  { href: "/targets/delivery", label: "Delivery", sub: "Revenue · retention · teams", icon: Truck },
+  { href: "/targets/finance", label: "Finance", sub: "Invoiced · collected · ad budget", icon: Coins },
   { href: "/billing", label: "Billing", sub: "Invoices · outstanding", icon: CreditCard },
-  { href: "/targets", label: "Targets", sub: "Sales · finance funnel", icon: Target },
   { href: "/settings", label: "Settings", sub: "Account · integrations", icon: Settings },
 ]
 

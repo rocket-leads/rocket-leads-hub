@@ -99,20 +99,25 @@ export async function Sidebar() {
         }
       : {}),
   }
-  const TARGETS: NavItem = { href: "/targets", label: t("nav.targets", locale), icon: "Target" }
+  // Targets was split into three Growth dashboards. Marketing & Sales is the
+  // former combined Marketing tab; Finance stays admin + finance only.
+  const MARKETING: NavItem = { href: "/targets/marketing", label: t("targets.tab.marketing", locale), icon: "BarChart3" }
+  const DELIVERY: NavItem = { href: "/targets/delivery", label: t("targets.tab.delivery", locale), icon: "Truck" }
+  const FINANCE: NavItem = { href: "/targets/finance", label: t("targets.tab.finance", locale), icon: "Coins" }
   const SETTINGS: NavItem = { href: "/settings", label: t("nav.settings", locale), icon: "Settings" }
+  const canSeeFinance = isAdmin || isFinance
 
-  // Grouped into 187N nav-sections. Finance hides Watch List / Onboarding /
-  // Optimize / Calendar (same rule as before); pure campaign managers hide
-  // Billing. Empty sections are dropped so a filtered-out group leaves no
-  // orphan mono label.
+  // Grouped into 187N nav-sections. Finance (org role) hides Watch List /
+  // Onboarding / Optimize / Calendar (same rule as before); pure campaign
+  // managers hide Billing; the Finance dashboard is admin + finance only.
+  // Empty sections are dropped so a filtered-out group leaves no orphan label.
   const rawSections: NavSection[] = [
     { label: "Overview", items: [HOME, ...(isFinance ? [] : [WATCH_LIST])] },
     {
       label: "Workspace",
-      items: [INBOX, CLIENTS, ...(isFinance ? [] : [ONBOARDING, CALENDAR])],
+      items: [INBOX, CLIENTS, ...(isFinance ? [] : [ONBOARDING, OPTIMIZE, CALENDAR])],
     },
-    { label: "Growth", items: [...(isFinance ? [] : [OPTIMIZE]), TARGETS] },
+    { label: "Growth", items: [MARKETING, DELIVERY, ...(canSeeFinance ? [FINANCE] : [])] },
     { label: "Account", items: [...(isPureCampaignManager ? [] : [BILLING]), SETTINGS] },
   ]
   const sections = rawSections.filter((s) => s.items.length > 0)

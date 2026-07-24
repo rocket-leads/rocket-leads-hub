@@ -1,21 +1,8 @@
-import { auth } from "@/lib/auth"
-import { TargetsTabs } from "./_components/targets-tabs"
-import { PageHeader } from "@/components/ui/page-header"
-import { getUserLocale } from "@/lib/i18n/server"
-import { t } from "@/lib/i18n/t"
+import { redirect } from "next/navigation"
 
-export default async function TargetsPage() {
-  const session = await auth()
-  const isAdmin = session?.user.role === "admin"
-  const isFinance = !!session?.user.isFinance
-  const locale = await getUserLocale(session?.user.id)
-
-  return (
-    <div>
-      <PageHeader title={t("targets.title", locale)} />
-      {/* Finance tab visible to admin + finance (Roy 2026-05-23). Settings
-          tab stays admin-only - it edits targets, not finance numbers. */}
-      <TargetsTabs isAdmin={isAdmin} canSeeFinance={isAdmin || isFinance} />
-    </div>
-  )
+// Targets was split into three sidebar dashboards (Marketing & Sales /
+// Delivery / Finance). The bare /targets URL now lands on the first one, so
+// old links + the Slack "Open Targets" deep link keep working.
+export default function TargetsPage() {
+  redirect("/targets/marketing")
 }
