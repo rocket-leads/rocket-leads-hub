@@ -3,13 +3,13 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, CreditCard, Home, ClipboardCheck, Calendar, TrendingUp, BarChart3, Truck, Coins } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, CreditCard, Home, ClipboardCheck, Calendar, TrendingUp, BarChart3, Truck, Banknote } from "lucide-react"
 
 // lucide's `Receipt` ships a $ glyph - off-brand for a €-Hub, so Billing uses
 // `CreditCard`. Home uses the literal house glyph (Roy 2026-05-21). BarChart3
-// / Truck / Coins are the three Growth dashboards (Marketing & Sales /
+// / Truck / Banknote are the three Growth dashboards (Marketing & Sales /
 // Delivery / Finance).
-const ICONS = { Users, Eye, Target, Settings, Inbox, CreditCard, Home, ClipboardCheck, Calendar, TrendingUp, BarChart3, Truck, Coins }
+const ICONS = { Users, Eye, Target, Settings, Inbox, CreditCard, Home, ClipboardCheck, Calendar, TrendingUp, BarChart3, Truck, Banknote }
 
 type IconKey = keyof typeof ICONS
 

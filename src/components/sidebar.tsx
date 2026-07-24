@@ -103,7 +103,7 @@ export async function Sidebar() {
   // former combined Marketing tab; Finance stays admin + finance only.
   const MARKETING: NavItem = { href: "/targets/marketing", label: t("targets.tab.marketing", locale), icon: "BarChart3" }
   const DELIVERY: NavItem = { href: "/targets/delivery", label: t("targets.tab.delivery", locale), icon: "Truck" }
-  const FINANCE: NavItem = { href: "/targets/finance", label: t("targets.tab.finance", locale), icon: "Coins" }
+  const FINANCE: NavItem = { href: "/targets/finance", label: t("targets.tab.finance", locale), icon: "Banknote" }
   const SETTINGS: NavItem = { href: "/settings", label: t("nav.settings", locale), icon: "Settings" }
   const canSeeFinance = isAdmin || isFinance
 

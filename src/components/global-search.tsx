@@ -16,7 +16,7 @@ import {
   CreditCard,
   BarChart3,
   Truck,
-  Coins,
+  Banknote,
   Settings,
   type LucideIcon,
 } from "lucide-react"
@@ -34,7 +34,7 @@ const PAGES: { href: string; label: string; sub: string; icon: LucideIcon }[] = 
   { href: "/calendar", label: "Calendar", sub: "Schedule · recordings", icon: Calendar },
   { href: "/targets/marketing", label: "Marketing / Sales", sub: "Funnel · closers · targets", icon: BarChart3 },
   { href: "/targets/delivery", label: "Delivery", sub: "Revenue · retention · teams", icon: Truck },
-  { href: "/targets/finance", label: "Finance", sub: "Invoiced · collected · ad budget", icon: Coins },
+  { href: "/targets/finance", label: "Finance", sub: "Invoiced · collected · ad budget", icon: Banknote },
   { href: "/billing", label: "Billing", sub: "Invoices · outstanding", icon: CreditCard },
   { href: "/settings", label: "Settings", sub: "Account · integrations", icon: Settings },
 ]

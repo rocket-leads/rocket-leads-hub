@@ -3,8 +3,8 @@
 import { usePathname } from "next/navigation"
 
 // 187N topbar breadcrumb: mono uppercase "ROCKET LEADS / <here>". The current
-// section is derived from the first path segment so it stays in sync with the
-// sidebar without threading props through every page.
+// section is derived from the path so it stays in sync with the sidebar
+// without threading props through every page.
 const LABELS: Record<string, string> = {
   home: "Home",
   watchlist: "Watch List",
@@ -18,10 +18,23 @@ const LABELS: Record<string, string> = {
   settings: "Settings",
 }
 
+// Targets split into three dashboards + a settings editor - show the specific
+// one rather than the generic "Targets".
+const TARGETS_SUB: Record<string, string> = {
+  marketing: "Marketing / Sales",
+  delivery: "Delivery",
+  finance: "Finance",
+  settings: "Target Settings",
+}
+
 export function TopbarBreadcrumb() {
   const pathname = usePathname()
-  const seg = pathname.split("/").filter(Boolean)[0] ?? "home"
-  const here = LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1)
+  const parts = pathname.split("/").filter(Boolean)
+  const seg = parts[0] ?? "home"
+  let here = LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1)
+  if (seg === "targets" && parts[1] && TARGETS_SUB[parts[1]]) {
+    here = TARGETS_SUB[parts[1]]
+  }
   return (
     <div className="breadcrumb">
       <span>Rocket Leads</span>
