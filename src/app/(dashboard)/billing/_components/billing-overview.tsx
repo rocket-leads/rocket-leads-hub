@@ -291,7 +291,7 @@ export function BillingOverview({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
-                <TableHead>Client</TableHead>
+                <TableHead className="w-[210px]">Client</TableHead>
                 <TableHead className="w-[150px]">Action</TableHead>
                 <TableHead className="w-[140px]">Status</TableHead>
                 <TableHead className="w-[160px]">Admin</TableHead>
@@ -349,7 +349,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="text-muted-foreground/60 hover:text-foreground transition-colors"
+                className="shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
                 aria-label={expanded ? "Collapse campaigns" : "Expand campaigns"}
                 title={expanded ? "Hide campaigns" : "Show campaigns"}
               >
@@ -360,11 +360,11 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
             )}
             <div className="flex flex-col min-w-0">
               {isMulti ? (
-                <span className="text-sm font-medium">{displayName}</span>
+                <span className="text-sm font-medium truncate">{displayName}</span>
               ) : (
                 <Link
                   href={`/clients/${primary.mondayItemId}`}
-                  className="text-sm font-medium hover:text-primary transition-colors"
+                  className="block truncate text-sm font-medium hover:text-primary transition-colors"
                 >
                   {primary.name}
                 </Link>
@@ -545,7 +545,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
             <TableCell className="py-2 pl-10">
               <Link
                 href={`/clients/${sib.mondayItemId}`}
-                className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+                className="block truncate text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
               >
                 {sib.name}
               </Link>
