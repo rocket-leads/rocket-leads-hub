@@ -214,15 +214,11 @@ function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale 
 type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "paymentStatus" | "overdue" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
 type SortDir = "asc" | "desc"
 
-// Toggleable column groups (current board only). Each user picks which
-// blocks they want visible; preference saved per browser via localStorage.
-type GroupKey = "status" | "invoice" | "people" | "kpi"
-const GROUP_LABEL_KEYS: Record<GroupKey, "clients.group.status" | "clients.group.invoice" | "clients.group.people" | "clients.group.kpi"> = {
-  status: "clients.group.status",
-  invoice: "clients.group.invoice",
-  people: "clients.group.people",
-  kpi: "clients.group.kpi",
-}
+// Current board shows one of two saved views (187N-style), not per-group
+// toggles. Performance (default) = status + health + KPI + client update.
+// Finance = payment + invoice. People columns (AM/CM/AS) are never shown on
+// the current board but stay filterable via the filter.
+type ClientsView = "performance" | "finance"
 
 type Props = {
   clients: MondayClient[]
@@ -444,45 +440,34 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const [healthFilter, setHealthFilter] = useState("All")
   const [sortKey, setSortKey] = useState<SortKey | null>(defaultSortKey ?? null)
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? "asc")
-  // Per-block visibility toggles. Roy 2026-06-11 round 2: instead of a
-  // single Compact / Volledig switch, each user picks which groups to
-  // show. Preference saved per user via localStorage (per browser).
-  // Onboarding board is unaffected - it has its own column set.
-  // Defaults mirror the old Compact mode (Status + Prestaties shown,
-  // Facturatie + Personen hidden) so existing muscle memory is preserved.
-  const DEFAULT_GROUP_VIS: Record<GroupKey, boolean> = {
-    status: true,
-    invoice: false,
-    people: false,
-    kpi: true,
-  }
-  const [groupVis, setGroupVis] = useState<Record<GroupKey, boolean>>(() => {
-    if (typeof window === "undefined") return DEFAULT_GROUP_VIS
+  // Current board renders one of two saved views. Performance is the default.
+  // Persisted per browser via localStorage. Onboarding keeps its own layout.
+  const [view, setView] = useState<ClientsView>("performance")
+  useEffect(() => {
     try {
-      const stored = window.localStorage.getItem("clients-table-groups.v1")
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<Record<GroupKey, boolean>>
-        return { ...DEFAULT_GROUP_VIS, ...parsed }
-      }
+      const stored = window.localStorage.getItem("clients-table-view.v1")
+      if (stored === "finance") setView("finance")
     } catch {
-      // private mode / parse error - fall through to default
+      // private mode - stay on default
     }
-    return DEFAULT_GROUP_VIS
-  })
-  const toggleGroup = useCallback((key: GroupKey) => {
-    setGroupVis((prev) => {
-      const next = { ...prev, [key]: !prev[key] }
-      try {
-        localStorage.setItem("clients-table-groups.v1", JSON.stringify(next))
-      } catch {}
-      return next
-    })
   }, [])
-  // Onboarding board ignores the toggles - it has a different column set.
-  const showStatusGroup = boardType !== "current" || groupVis.status
-  const showInvoiceGroup = boardType !== "current" || groupVis.invoice
-  const showPeopleGroup = boardType !== "current" || groupVis.people
-  const showKpiGroup = boardType !== "current" || groupVis.kpi
+  const setViewPersist = useCallback((v: ClientsView) => {
+    setView(v)
+    try {
+      localStorage.setItem("clients-table-view.v1", v)
+    } catch {}
+  }, [])
+  const isPerf = view === "performance"
+
+  // Per-view column visibility (current board only). People (AM/CM/AS) are
+  // never shown here but remain filterable through the filter.
+  const isCurrent = boardType === "current"
+  const showStatusHealth = isCurrent && isPerf // Status + Health
+  const showPaymentCol = isCurrent && !isPerf // Betaling
+  const showInvoiceGroup = isCurrent && !isPerf // Overdue + MRR + Next
+  const showKpiGroup = isCurrent && isPerf
+  const showClientUpdate = isCurrent && isPerf
+  const showPeopleGroup = boardType === "onboarding" // onboarding layout only
 
   const accountManagers = useMemo(() => uniqueSorted(clients.map((c) => c.accountManager)), [clients])
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
@@ -657,17 +642,17 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  // colSpan = Client (1) + each visible group + Client Update (1).
-  // Current board groups: Status (3) + Invoice (3) + People (3) + KPI (4).
-  // Onboarding board has its own 11-column layout that doesn't toggle.
+  // colSpan for the empty-state row. Onboarding keeps its own 11-col layout.
+  // Current board: Performance = client + status + health + KPI(4) + update.
+  // Finance = client + payment + overdue + mrr + next.
   const colSpan = boardType === "onboarding"
-    ? 11
+    ? 7
     : 1 // client name
-      + (showStatusGroup ? 3 : 0)
+      + (showStatusHealth ? 2 : 0)
+      + (showPaymentCol ? 1 : 0)
       + (showInvoiceGroup ? 3 : 0)
-      + (showPeopleGroup ? 3 : 0)
       + (showKpiGroup ? 4 : 0)
-      + 1 // client update
+      + (showClientUpdate ? 1 : 0)
 
   // Status / phase value labels stay as their Monday-canonical English form for
   // now - they're the wire format the dropdown writes back to Monday, and the
@@ -812,24 +797,23 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </span>
         )}
         {boardType === "current" && (
-          <div className="flex items-center gap-1" role="group" aria-label={t("clients.groups.toolbar_label", locale)}>
-            {(["status", "invoice", "people", "kpi"] as GroupKey[]).map((key) => {
-              const active = groupVis[key]
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => toggleGroup(key)}
-                  aria-pressed={active}
-                  title={active
-                    ? t("clients.groups.hide", locale, { name: t(GROUP_LABEL_KEYS[key], locale) })
-                    : t("clients.groups.show", locale, { name: t(GROUP_LABEL_KEYS[key], locale) })}
-                  className={`chip h-9 ${active ? "active" : ""}`}
-                >
-                  {t(GROUP_LABEL_KEYS[key], locale)}
-                </button>
-              )
-            })}
+          <div className="flex items-center gap-1.5" role="group" aria-label="View">
+            <button
+              type="button"
+              onClick={() => setViewPersist("performance")}
+              aria-pressed={isPerf}
+              className={`chip h-9 ${isPerf ? "active" : ""}`}
+            >
+              Performance
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewPersist("finance")}
+              aria-pressed={!isPerf}
+              className={`chip h-9 ${!isPerf ? "active" : ""}`}
+            >
+              Finance
+            </button>
           </div>
         )}
       </div>
@@ -851,13 +835,16 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   <SortableHead label={t("clients.col.kick_off", locale)} sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="w-[100px]" />
                 </>
               )}
-              {/* Status group: Status + Health + Payment (current board) */}
-              {boardType === "current" && showStatusGroup && (
+              {/* Performance view: Status + Health */}
+              {showStatusHealth && (
                 <>
                   <TableHead className="w-[100px]">{t("clients.col.status", locale)}</TableHead>
-                  <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-center w-[90px]" />
-                  <TableHead className="w-[95px] border-r border-border/60">{t("clients.col.payment", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-center w-[90px] border-r border-border/60" />
                 </>
+              )}
+              {/* Finance view: Payment */}
+              {showPaymentCol && (
+                <TableHead className="w-[110px]">{t("clients.col.payment", locale)}</TableHead>
               )}
               {/* Invoice group: Overdue + MRR + Next */}
               {boardType === "current" && showInvoiceGroup && (
@@ -872,7 +859,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 <>
                   <TableHead className="text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
                   <TableHead className="text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
-                  <TableHead className={`text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
+                  <TableHead className="text-center w-[50px]">{t("clients.col.as", locale)}</TableHead>
                 </>
               )}
               {/* KPI group: Ad Spend + Leads + CPL + CPL Δ (current only) */}
@@ -888,9 +875,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   />
                 </>
               )}
-              {/* Client update - always visible on current board (Roy:
-                  not part of the KPI block). */}
-              {boardType === "current" && (
+              {/* Client update - Performance view only. */}
+              {showClientUpdate && (
                 <SortableHead
                   label={t("clients.col.client_update", locale)}
                   sortKey="clientUpdate"
@@ -991,8 +977,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
                       </>
                     )}
-                    {/* Status group: Status + Health + Payment (current board) */}
-                    {boardType === "current" && showStatusGroup && (
+                    {/* Performance view: Status + Health */}
+                    {showStatusHealth && (
                       <>
                         <TableCell>
                           <StatusEditCell
@@ -1001,25 +987,28 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             readOnly={client.boardType === "onboarding"}
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="border-r border-border/40">
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40 text-xs">...</span>
                           ) : (
                             <HealthBadge health={getCampaignHealth(kpi, locale)} locale={locale} />
                           )}
                         </TableCell>
-                        <TableCell className="border-r border-border/40">
-                          {billingSummaries && summary && PAYMENT_TONE_KEYS[summary.status] && (
-                            <StLabel
-                              tone={PAYMENT_TONE_KEYS[summary.status]}
-                              label={t(PAYMENT_LABEL_KEYS[summary.status.charAt(0).toUpperCase() + summary.status.slice(1)], locale)}
-                            />
-                          )}
-                          {!billingSummaries && client.stripeCustomerId && (
-                            <span className="text-muted-foreground/40 text-xs">...</span>
-                          )}
-                        </TableCell>
                       </>
+                    )}
+                    {/* Finance view: Payment */}
+                    {showPaymentCol && (
+                      <TableCell>
+                        {billingSummaries && summary && PAYMENT_TONE_KEYS[summary.status] && (
+                          <StLabel
+                            tone={PAYMENT_TONE_KEYS[summary.status]}
+                            label={t(PAYMENT_LABEL_KEYS[summary.status.charAt(0).toUpperCase() + summary.status.slice(1)], locale)}
+                          />
+                        )}
+                        {!billingSummaries && client.stripeCustomerId && (
+                          <span className="text-muted-foreground/40 text-xs">...</span>
+                        )}
+                      </TableCell>
                     )}
                     {/* Invoice group: Overdue + MRR + Next */}
                     {showInvoiceGroup && (
@@ -1111,18 +1100,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             value={client.campaignManager}
                           />
                         </TableCell>
-                        <TableCell className={boardType === "current" ? "border-r border-border/40" : ""}>
-                          {boardType === "current" ? (
-                            <PersonEditCell
-                              mondayItemId={client.mondayItemId}
-                              fieldKey="appointment_setter"
-                              value={client.appointmentSetter}
-                              multi
-                            />
-                          ) : (
-                            client.appointmentSetter && (
-                              <span className="text-xs text-muted-foreground">{client.appointmentSetter}</span>
-                            )
+                        <TableCell>
+                          {client.appointmentSetter && (
+                            <span className="text-xs text-muted-foreground">{client.appointmentSetter}</span>
                           )}
                         </TableCell>
                       </>
@@ -1155,8 +1135,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         </TableCell>
                       </>
                     )}
-                    {/* Client update - always visible on current board */}
-                    {boardType === "current" && (
+                    {/* Client update - Performance view only. */}
+                    {showClientUpdate && (
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <ClientUpdateCell
                           mondayItemId={client.mondayItemId}

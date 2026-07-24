@@ -15,6 +15,15 @@
   --client-accent-glow: rgba(137, 103, 243, 0.16);
   --client-gradient:    linear-gradient(110deg, #8967F3, #A78BFA);
 
+  /* theme.css hardcodes these coral-derived tokens (rgba/hex) instead of
+     deriving them from --client-accent, so they leaked orange into every
+     hover/tint/focus/glow. Re-point them all to purple. */
+  --teal-wash:   rgba(137, 103, 243, 0.07);
+  --teal-wash-2: rgba(137, 103, 243, 0.12);
+  --teal-bright: #A78BFA;
+  --grad-b:      #A78BFA;
+  --shadow-teal: 0 18px 50px rgba(137, 103, 243, 0.16);
+
   /* fonts — the next/font families come in as CSS vars (layout.tsx) */
   --client-font-display: var(--font-schibsted), "Schibsted Grotesk", "Inter", system-ui, sans-serif;
   --client-font-sans:    var(--font-schibsted), "Schibsted Grotesk", "Inter", system-ui, sans-serif;
@@ -24,4 +33,17 @@
      by next/font under a hashed family name, so re-point it to the var. Used
      for the italic emphasis phrases in sublines. */
   --f-serif: var(--font-instrument-serif), "Instrument Serif", "Newsreader", Georgia, serif;
+}
+
+/* Two corporate rules hardcode coral rgba directly (not via a token), so the
+   token override above can't reach them. Re-declare them in purple. Loaded
+   after theme.css → same specificity, later wins. */
+[data-theme="corporate"] .bg-field::after {
+  background:
+    radial-gradient(680px 460px at 80% -6%, rgba(137, 103, 243, 0.10), transparent 60%),
+    radial-gradient(560px 420px at 4% 104%, rgba(137, 103, 243, 0.05), transparent 62%);
+}
+[data-theme="corporate"] ::selection {
+  background: rgba(137, 103, 243, 0.22);
+  color: var(--ink);
 }
