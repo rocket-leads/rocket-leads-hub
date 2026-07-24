@@ -1,146 +1,98 @@
 "use client"
 
 import { memo } from "react"
+import { Trophy } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
+import { formatCurrency } from "@/lib/targets/formatters"
+import type { AccountManagerRevenue } from "@/types/targets"
 
 interface Props {
-  mrr: number
-  newBusiness: number
-  serviceFeeRevenue: number
-  adBudget: number
-  totalRevenue: number
-  serviceFeePerCustomer: number
-  churnRate: number
-  customers: number
-  mrrTarget: number
-  newBusinessTarget: number
-  serviceFeePerCustomerTarget: number
-  maxChurnRate: number
+  teams: AccountManagerRevenue[]
   isLoading: boolean
 }
 
-/** vs-target delta pill. `lowerIsBetter` flips the good/bad colour for churn. */
-function Delta({ current, target, lowerIsBetter = false }: { current: number; target: number; lowerIsBetter?: boolean }) {
-  if (!target) return null
-  const pct = (current / target - 1) * 100
-  if (!isFinite(pct)) return null
-  const good = lowerIsBetter ? current <= target : current >= target
-  return (
-    <span
-      className={cn("delta", good ? "up" : "down")}
-      style={{ marginTop: 8, whiteSpace: "nowrap", width: "max-content", maxWidth: "100%" }}
-    >
-      <span className="d-dot" />
-      {pct >= 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs target
-    </span>
-  )
-}
-
-function CompositionBar({ segments }: { segments: Array<{ label: string; value: number; className: string }> }) {
-  const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0) || 1
-  return (
-    <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-      {segments.map((s) => (
-        <div
-          key={s.label}
-          className={cn("h-full", s.className)}
-          style={{ width: `${(Math.max(0, s.value) / total) * 100}%` }}
-          title={`${s.label}: ${formatCurrency(s.value)}`}
-        />
-      ))}
-    </div>
-  )
-}
-
-export const DeliveryHero = memo(function DeliveryHero({
-  mrr, newBusiness, serviceFeeRevenue, adBudget, totalRevenue, serviceFeePerCustomer, churnRate, customers,
-  mrrTarget, newBusinessTarget, serviceFeePerCustomerTarget, maxChurnRate, isLoading,
-}: Props) {
+/**
+ * Delivery hero as a team competition leaderboard - ranked by service-fee
+ * revenue (excl. ad budget). The leaderboard framing is a deliberate motivator:
+ * #1 gets the trophy + full-strength purple bar, everyone else sees the gap to
+ * the leader. Per-team detail still lives in the "Revenue by Team" cards below.
+ */
+export const DeliveryHero = memo(function DeliveryHero({ teams, isLoading }: Props) {
   if (isLoading) {
     return (
       <div className="section-card">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-8">
-          <div className="space-y-4">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-14 w-40" />
-            <Skeleton className="h-4 w-56" />
-          </div>
-          <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-3 w-40 mb-5" />
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
         </div>
       </div>
     )
   }
 
-  const onTarget = mrrTarget > 0 && mrr >= mrrTarget
+  const ranked = [...teams]
+    .filter((t) => t.name !== "Unassigned")
+    .sort((a, b) => b.serviceFee - a.serviceFee)
 
-  const MIX = [
-    { label: "MRR", value: mrr, className: "bg-[var(--teal)]" },
-    { label: "New Business", value: newBusiness, className: "bg-[var(--teal)]/55" },
-    { label: "Ad Budget", value: adBudget, className: "bg-muted-foreground/30" },
-  ]
+  if (ranked.length === 0) return null
+
+  const leaderFee = ranked[0].serviceFee || 1
 
   return (
     <div className="section-card overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-8 items-center">
-        {/* ── Left: headline ── */}
-        <div className="min-w-0">
-          <p className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/70 flex items-center gap-2.5">
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", onTarget ? "bg-[var(--st-live)]" : "bg-[var(--st-warn)]")} />
-            Delivery
-          </p>
-          <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">
-            Monthly recurring revenue
-          </p>
-          <p className="mt-1 font-mono text-[54px] font-bold leading-none tracking-tight tabular-nums text-foreground">
-            {formatCurrency(mrr)}
-          </p>
-          <div className="mt-3 h-0.5 w-16 rounded-full bg-[var(--teal)]" />
-          <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
-            <span className="font-medium text-foreground/80">{customers}</span> customer{customers === 1 ? "" : "s"} ·{" "}
-            <span className="font-medium text-foreground/80">{formatCurrency(serviceFeePerCustomer)}</span> service fee / customer.
-          </p>
+      <div className="flex items-baseline justify-between mb-5">
+        <p className="section-title">Team Leaderboard</p>
+        <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60">By service fee</p>
+      </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-4">
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">New Business</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(newBusiness)}</p>
-              <Delta current={newBusiness} target={newBusinessTarget} />
-            </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Total Revenue</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(totalRevenue)}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Churn Rate</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatPercent(churnRate)}</p>
-              <Delta current={churnRate} target={maxChurnRate} lowerIsBetter />
-            </div>
-          </div>
-        </div>
+      <div className="space-y-3">
+        {ranked.map((team, i) => {
+          const isLeader = i === 0
+          const pct = Math.max(3, (Math.max(0, team.serviceFee) / leaderFee) * 100)
+          const gap = ranked[0].serviceFee - team.serviceFee
+          return (
+            <div key={team.name} className="flex items-center gap-3 sm:gap-4">
+              {/* Rank */}
+              <div className="flex w-12 shrink-0 items-center gap-1.5">
+                <span className={cn(
+                  "font-mono text-[24px] font-bold leading-none tabular-nums",
+                  isLeader ? "text-[var(--teal)]" : i === 1 ? "text-foreground/70" : "text-muted-foreground/40",
+                )}>
+                  {i + 1}
+                </span>
+                {isLeader && <Trophy className="h-4 w-4 text-[var(--teal)]" strokeWidth={2.25} />}
+              </div>
 
-        {/* ── Right: revenue mix ── */}
-        <div className="min-w-0">
-          <div className="flex items-baseline justify-between mb-2">
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">Revenue mix</p>
-            <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70">
-              Service fee {formatCurrency(serviceFeeRevenue)}
-            </p>
-          </div>
-          <CompositionBar segments={MIX} />
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            {MIX.map((s) => (
-              <div key={s.label} className="flex items-start gap-2">
-                <span className={cn("mt-1 h-2.5 w-2.5 rounded-sm shrink-0", s.className)} />
-                <div className="min-w-0">
-                  <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60 truncate">{s.label}</p>
-                  <p className="font-mono text-sm font-semibold tabular-nums">{formatCurrency(s.value)}</p>
+              {/* Name + bar + sub-metrics */}
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-baseline justify-between gap-3">
+                  <span className={cn("truncate", isLeader ? "text-sm font-semibold text-foreground" : "text-[13px] font-medium text-foreground/80")}>
+                    {team.name}
+                  </span>
+                  <div className="flex shrink-0 items-baseline gap-2">
+                    <span className="font-mono text-sm font-semibold tabular-nums">{formatCurrency(team.serviceFee)}</span>
+                    {!isLeader && gap > 0 && (
+                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50">−{formatCurrency(gap)}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full rounded-full transition-all duration-700", isLeader ? "bg-[var(--teal)]" : "bg-[var(--teal)]/40")}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex items-center gap-2.5 font-mono text-[10px] text-muted-foreground/60">
+                  <span>{team.customers} client{team.customers === 1 ? "" : "s"}</span>
+                  <span>·</span>
+                  <span>MRR {formatCurrency(team.mrr)}</span>
+                  <span>·</span>
+                  <span>NB {formatCurrency(team.newBusiness)}</span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

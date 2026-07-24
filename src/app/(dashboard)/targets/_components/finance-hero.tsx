@@ -3,27 +3,22 @@
 import { memo } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
+import { formatCurrency } from "@/lib/targets/formatters"
 
 interface Props {
-  revenue: number
-  totalCosts: number
-  netProfit: number
-  margin: number
-  marginTarget: number
-  netProfitTarget: number
-  maxTotalCostsTarget: number
-  isEstimated: boolean
+  invoiced: number
+  newBusiness: number
+  mrr: number
+  invoicedTarget: number
   isLoading: boolean
 }
 
-/** Small vs-target delta pill. `lowerIsBetter` flips the good/bad colour for
- *  cost-style metrics. Inline white-space so it never wraps in a tight column. */
-function Delta({ current, target, lowerIsBetter = false }: { current: number; target: number; lowerIsBetter?: boolean }) {
+/** vs-target delta pill (higher is better). Inline white-space so it never wraps. */
+function Delta({ current, target }: { current: number; target: number }) {
   if (!target) return null
   const pct = (current / target - 1) * 100
   if (!isFinite(pct)) return null
-  const good = lowerIsBetter ? current <= target : current >= target
+  const good = current >= target
   return (
     <span
       className={cn("delta", good ? "up" : "down")}
@@ -35,7 +30,6 @@ function Delta({ current, target, lowerIsBetter = false }: { current: number; ta
   )
 }
 
-/** Horizontal composition bar - segments sized by their share of the total. */
 function CompositionBar({ segments }: { segments: Array<{ label: string; value: number; className: string }> }) {
   const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0) || 1
   return (
@@ -52,9 +46,7 @@ function CompositionBar({ segments }: { segments: Array<{ label: string; value: 
   )
 }
 
-export const FinanceHero = memo(function FinanceHero({
-  revenue, totalCosts, netProfit, margin, marginTarget, netProfitTarget, maxTotalCostsTarget, isEstimated, isLoading,
-}: Props) {
+export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mrr, invoicedTarget, isLoading }: Props) {
   if (isLoading) {
     return (
       <div className="section-card">
@@ -70,9 +62,14 @@ export const FinanceHero = memo(function FinanceHero({
     )
   }
 
-  const onTarget = marginTarget > 0 && margin >= marginTarget
-  const isLoss = netProfit < 0
-  const profitShare = revenue > 0 ? Math.max(0, netProfit) / revenue : 0
+  const onTarget = invoicedTarget > 0 && invoiced >= invoicedTarget
+  const nbShare = invoiced > 0 ? (newBusiness / invoiced) * 100 : 0
+  const mrrShare = invoiced > 0 ? (mrr / invoiced) * 100 : 0
+
+  const SEGMENTS = [
+    { label: "New Business", value: newBusiness, className: "bg-[var(--teal)]" },
+    { label: "MRR", value: mrr, className: "bg-[var(--teal)]/45" },
+  ]
 
   return (
     <div className="section-card overflow-hidden">
@@ -84,65 +81,51 @@ export const FinanceHero = memo(function FinanceHero({
             Financials
           </p>
           <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">
-            Net profit margin{isEstimated && <span className="ml-1.5 text-[var(--st-warn)]">· est</span>}
+            Service fee invoiced
           </p>
-          <p className={cn("mt-1 font-mono text-[54px] font-bold leading-none tracking-tight tabular-nums", isLoss ? "text-[var(--st-error)]" : "text-foreground")}>
-            {formatPercent(margin)}
+          <p className="mt-1 font-mono text-[54px] font-bold leading-none tracking-tight tabular-nums text-foreground">
+            {formatCurrency(invoiced)}
           </p>
           <div className="mt-3 h-0.5 w-16 rounded-full bg-[var(--teal)]" />
           <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
-            <span className="font-medium text-foreground/80">{formatCurrency(netProfit)}</span> profit on{" "}
-            <span className="font-medium text-foreground/80">{formatCurrency(revenue)}</span> revenue.
-            {marginTarget > 0 && <> Target {formatPercent(marginTarget)}.</>}
+            <span className="font-medium text-foreground/80">{formatCurrency(newBusiness)}</span> new business ·{" "}
+            <span className="font-medium text-foreground/80">{formatCurrency(mrr)}</span> recurring.
           </p>
+          <Delta current={invoiced} target={invoicedTarget} />
 
-          <div className="mt-6 grid grid-cols-3 gap-4">
+          <div className="mt-6 grid grid-cols-2 gap-4">
             <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Revenue</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(revenue)}</p>
+              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">New Business</p>
+              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(newBusiness)}</p>
+              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground/60">{nbShare.toFixed(0)}% of invoiced</p>
             </div>
             <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Total Costs</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(totalCosts)}</p>
-              <Delta current={totalCosts} target={maxTotalCostsTarget} lowerIsBetter />
-            </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Net Profit</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(netProfit)}</p>
-              <Delta current={netProfit} target={netProfitTarget} />
+              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">MRR</p>
+              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(mrr)}</p>
+              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground/60">{mrrShare.toFixed(0)}% of invoiced</p>
             </div>
           </div>
         </div>
 
-        {/* ── Right: revenue → costs / profit split ── */}
+        {/* ── Right: new business vs recurring split ── */}
         <div className="min-w-0">
           <div className="flex items-baseline justify-between mb-2">
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">Where revenue goes</p>
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">New business vs recurring</p>
             <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70">
-              {isLoss ? "Operating at a loss" : `${(profitShare * 100).toFixed(0)}% kept as profit`}
+              {nbShare.toFixed(0)}% new · {mrrShare.toFixed(0)}% recurring
             </p>
           </div>
-          <CompositionBar
-            segments={[
-              { label: "Total Costs", value: totalCosts, className: "bg-muted-foreground/30" },
-              { label: "Net Profit", value: Math.max(0, netProfit), className: "bg-[var(--teal)]" },
-            ]}
-          />
+          <CompositionBar segments={SEGMENTS} />
           <div className="mt-4 grid grid-cols-2 gap-4">
-            <div className="flex items-start gap-2">
-              <span className="mt-1 h-2.5 w-2.5 rounded-sm bg-muted-foreground/30 shrink-0" />
-              <div>
-                <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Total Costs</p>
-                <p className="font-mono text-sm font-semibold tabular-nums">{formatCurrency(totalCosts)}</p>
+            {SEGMENTS.map((s) => (
+              <div key={s.label} className="flex items-start gap-2">
+                <span className={cn("mt-1 h-2.5 w-2.5 rounded-sm shrink-0", s.className)} />
+                <div className="min-w-0">
+                  <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">{s.label}</p>
+                  <p className="font-mono text-sm font-semibold tabular-nums">{formatCurrency(s.value)}</p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="mt-1 h-2.5 w-2.5 rounded-sm bg-[var(--teal)] shrink-0" />
-              <div>
-                <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Net Profit</p>
-                <p className={cn("font-mono text-sm font-semibold tabular-nums", isLoss && "text-[var(--st-error)]")}>{formatCurrency(netProfit)}</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>

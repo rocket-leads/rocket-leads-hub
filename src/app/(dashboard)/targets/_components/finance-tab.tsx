@@ -142,16 +142,12 @@ export function FinanceTab() {
         </div>
       </div>
 
-      {/* Hero - net profit margin + where revenue goes */}
+      {/* Hero - service fee invoiced, split New Business vs MRR */}
       <FinanceHero
-        revenue={revenueForProfit}
-        totalCosts={totalCosts}
-        netProfit={netProfit}
-        margin={margin}
-        marginTarget={profitMargin}
-        netProfitTarget={netProfitTarget}
-        maxTotalCostsTarget={maxTotalCostsTarget}
-        isEstimated={isCurrentRange || anyEstimated}
+        invoiced={sf?.invoiced ?? 0}
+        newBusiness={nb?.invoiced ?? 0}
+        mrr={mrr?.invoiced ?? 0}
+        invoicedTarget={totalRevenueTarget}
         isLoading={loading}
       />
 
