@@ -14,6 +14,7 @@ import { ComposerDialog } from "../composer-dialog"
 import { ExternalRail, type ChannelEntry, type ExternalGroup } from "./external-rail"
 import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
 import { UnifiedFeed } from "./unified-feed"
+import { InboxHero } from "./inbox-hero"
 import { UpdateFeed } from "./update-feed"
 import { DetailPane } from "./detail-pane"
 import {
@@ -529,6 +530,21 @@ export function InboxShell({
     return c
   }, [extBase, mentionedOnly, mentionDone])
 
+  // Per-channel-kind threads + unread, for the compact COMMS hero strip.
+  const channelStats = useMemo(() => {
+    let waT = 0, waU = 0, emT = 0, emU = 0
+    for (const th of threads) {
+      const isOpen = !th.isArchived && !th.isAssigned
+      const unread = isOpen && th.unreadCount > 0 ? 1 : 0
+      if (th.channelKind === "whatsapp") { waT += 1; waU += unread }
+      else if (th.channelKind === "email") { emT += 1; emU += unread }
+    }
+    return [
+      { label: "WhatsApp", threads: waT, unread: waU },
+      { label: "Email", threads: emT, unread: emU },
+    ]
+  }, [threads])
+
   // Mentioned has no "assigned" state; fall back to Open if it's selected.
   const effectiveState: TicketState = mentionedOnly && extState === "assigned" ? "open" : extState
   const searching = extSearch.trim().length > 0
@@ -895,6 +911,17 @@ export function InboxShell({
           </div>
         )}
       </div>
+
+      {/* Compact COMMS · LIVE strip - only on the main channel inbox (not locked
+          per-client tabs, not the Mentioned view). */}
+      {isExternal && !locked && !mentionedOnly && (
+        <InboxHero
+          newCount={extCounts.open}
+          assignedCount={extCounts.assigned}
+          closedCount={extCounts.closed}
+          channels={channelStats}
+        />
+      )}
 
       {/* Rail above the feed below xl (and always in locked mode). Hidden when
           the user collapses the sidebar. */}
