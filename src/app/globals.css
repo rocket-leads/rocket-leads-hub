@@ -66,6 +66,20 @@
   --color-brand-line: #DADEE7;
 }
 
+/* 187N sidebar count pill (Inbox unread, Billing due-today). Mono tabular
+   digits on a soft purple tint, pinned right of the nav row via ml-auto. */
+.nav-badge {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--r-pill);
+  background: var(--teal-wash-2);
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Light mode - Flow-inspired warm cream background so cards float as
  * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar
  * stays one shade lighter than the page so the rail visually separates
