@@ -146,7 +146,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-medium mb-3">{t("settings.clients.title", locale)}</h2>
+      <h2 className="section-title mb-4">{t("settings.clients.title", locale)}</h2>
 
       {/* Status tabs - default Live so the rolodex of churned clients
           isn't the first thing the admin sees. The Broken filter sits to

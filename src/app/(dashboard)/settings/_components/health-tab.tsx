@@ -103,7 +103,7 @@ export function HealthTab() {
       <OverallBanner overall={overall} locale={locale} />
 
       <section className="mb-8 mt-6">
-        <h2 className="text-sm font-medium mb-3">{t("settings.health.features.title", locale)}</h2>
+        <h2 className="section-title mb-4">{t("settings.health.features.title", locale)}</h2>
         <div className="rounded-lg border border-border/40 divide-y divide-border/30">
           {featureVerdicts.map((fv) => (
             <FeatureRow key={fv.feature.id} verdict={fv} renderNow={renderNow} locale={locale} />
@@ -112,7 +112,7 @@ export function HealthTab() {
       </section>
 
       <section className="mb-8">
-        <h2 className="text-sm font-medium mb-3">{t("settings.health.section.integrations", locale)}</h2>
+        <h2 className="section-title mb-4">{t("settings.health.section.integrations", locale)}</h2>
         <div className="rounded-lg border border-border/40 overflow-hidden">
           <div className="grid grid-cols-[1fr_120px_2fr] gap-x-4 px-4 py-2.5 border-b border-border/40 bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground/70">
             <span>{t("settings.health.col.service", locale)}</span>
@@ -148,7 +148,7 @@ export function HealthTab() {
 
       {errorGroups.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-medium mb-3">
+          <h2 className="section-title mb-4">
             {t("settings.health.recurring.title", locale)}{" "}
             <span className="text-[11px] text-muted-foreground/60 font-normal">
               {t("settings.health.recurring.subtitle", locale, { n: data.errorRows.length })}
