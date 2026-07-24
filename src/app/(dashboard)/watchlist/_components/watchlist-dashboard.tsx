@@ -1463,16 +1463,9 @@ function WatchCard({
   onSelectClient: (id: string) => void
   locale: Locale
 }) {
-  const { client, insight, kpi, daysInBucket, isNewToday } = item
+  const { client, insight, kpi, daysInBucket, isNewToday, manualOverride } = item
   const id = client.mondayItemId
   const owner = client.campaignManager?.trim() || client.accountManager?.trim() || ""
-  const initials =
-    (owner || client.name)
-      .split(/\s+/)
-      .map((w) => w[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "—"
   const prio = col === "action" ? "p1" : col === "watch" ? "p2" : "p3"
 
   const kpiLabels: string[] = []
@@ -1481,6 +1474,12 @@ function WatchCard({
     if (kpi.leads > 0) kpiLabels.push(`${kpi.leads} leads`)
     if (kpi.cpl > 0) kpiLabels.push(`€${kpi.cpl.toFixed(0)} cpl`)
   }
+
+  const ResultIcon =
+    col === "action" ? AlertCircle : col === "watch" ? TrendingUp : col === "healthy" ? CheckCircle2 : CircleDashed
+
+  const hasActions =
+    col === "action" || createCategory !== null || !!client.metaAdAccountId
 
   return (
     <article
@@ -1497,10 +1496,7 @@ function WatchCard({
       }}
     >
       <div className="tc-top">
-        <span className="proj">
-          <span className="pj-dot brand" />
-          {owner || "—"}
-        </span>
+        <span className="proj">{owner || "—"}</span>
         {isNewToday ? (
           <span className="pill newpill">
             <span className="pdot" />
@@ -1515,7 +1511,14 @@ function WatchCard({
       </div>
 
       <div className="tc-title">{client.name}</div>
-      {insight && <div className="tc-desc">{insight}</div>}
+
+      {insight && (
+        <div className={`tc-block ${col}`}>
+          <ResultIcon />
+          <span className="truncate">{insight}</span>
+        </div>
+      )}
+
       {kpiLabels.length > 0 && (
         <div className="tc-labels">
           {kpiLabels.map((l, i) => (
@@ -1526,21 +1529,51 @@ function WatchCard({
         </div>
       )}
 
-      <div className="tc-foot" onClick={(e) => e.stopPropagation()}>
-        <span className="avatar">{initials}</span>
-        {createCategory && (
-          <CreateTaskButton
-            mondayItemId={id}
-            clientName={client.companyName || client.name}
-            campaignManager={client.campaignManager || null}
-            category={createCategory}
-            insight={insight}
-            kpi={kpi}
-            locale={locale}
-            compact
-          />
-        )}
-      </div>
+      {hasActions && (
+        <div className="tc-foot" onClick={(e) => e.stopPropagation()}>
+          {/* Action Needed keeps the "mark done" checkbox; every card can be
+              re-bucketed (switch) + jump to its Meta ad account. */}
+          {col === "action" && (
+            <MarkDoneButton
+              mondayItemId={id}
+              clientName={client.name}
+              accountManager={client.accountManager}
+              insight={insight}
+              kpi={kpi}
+              locale={locale}
+              compact
+            />
+          )}
+          {createCategory && (
+            <MoveButton
+              mondayItemId={id}
+              clientName={client.name}
+              category={createCategory}
+              insight={insight}
+              kpi={kpi}
+              manualOverride={manualOverride}
+              locale={locale}
+            />
+          )}
+          {client.metaAdAccountId && (
+            <a
+              href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                e.nativeEvent.stopImmediatePropagation?.()
+              }}
+              title={t("watchlist.row.open_ads_manager", locale)}
+              aria-label={t("watchlist.row.open_ads_manager", locale)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/50 hover:border-[#0866FF]/50 hover:bg-[#0866FF]/10 transition-colors"
+            >
+              <Image src="/logos/brands/meta.svg" alt="" width={15} height={15} />
+            </a>
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -1631,6 +1664,9 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
+  // No-Data column is hidden by default (low signal); the "Geen data" summary
+  // pill toggles it on/off.
+  const [showNoData, setShowNoData] = useState(false)
 
   // Lookup so the slide-over can render instantly with the client
   // object we already have, instead of waiting for /api/clients/[id]
@@ -1875,9 +1911,20 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           <StatusPill tone="success">
             {t("watchlist.pill.good", locale)} <span className="tabular-nums">{categorized.good.length}</span>
           </StatusPill>
-          <StatusPill tone="neutral">
-            {t("watchlist.pill.no_data", locale)} <span className="tabular-nums">{categorized.noData.length}</span>
-          </StatusPill>
+          <button
+            type="button"
+            onClick={() => setShowNoData((v) => !v)}
+            title={showNoData ? "Hide No-data column" : "Show No-data column"}
+            aria-pressed={showNoData}
+            className={cn(
+              "st-label idle transition-opacity hover:opacity-100",
+              showNoData ? "opacity-100" : "opacity-55",
+            )}
+          >
+            <span className="sd" />
+            {t("watchlist.pill.no_data", locale)}{" "}
+            <span className="tabular-nums">{categorized.noData.length}</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1924,7 +1971,10 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         {/* items-start so each section card sizes to its own content
             instead of being stretched to match the tallest column -
             Roy 2026-06-11 v4: "wit vlak onder Action Needed mag eruit". */}
-        <div className="board">
+        <div
+          className="board"
+          style={{ ["--kb-cols" as string]: showNoData ? "4" : "3" } as React.CSSProperties}
+        >
           <KanbanColumn
             col="action"
             title={t("watchlist.pill.action", locale)}
@@ -1952,15 +2002,17 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
             onSelectClient={handleSelectClient}
             locale={locale}
           />
-          <KanbanColumn
-            col="nodata"
-            title={t("watchlist.pill.no_data", locale)}
-            cap="no signal"
-            items={categorized.noData}
-            createCategory={null}
-            onSelectClient={handleSelectClient}
-            locale={locale}
-          />
+          {showNoData && (
+            <KanbanColumn
+              col="nodata"
+              title={t("watchlist.pill.no_data", locale)}
+              cap="no signal"
+              items={categorized.noData}
+              createCategory={null}
+              onSelectClient={handleSelectClient}
+              locale={locale}
+            />
+          )}
         </div>
       </div>
 

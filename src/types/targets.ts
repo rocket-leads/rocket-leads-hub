@@ -146,6 +146,19 @@ export type CountryKey = "all" | "nl" | "be" | "de" | "other"
 export type MondayTargetsByCountry = Record<CountryKey, MondayTargetsData>
 export type MetaTargetsByCountry = Record<CountryKey, MetaTargetsData>
 
+/** Ad-spend platform filter. "all" = every source (unchanged funnel behaviour),
+ *  "meta" = Meta Ads (FB/IG + Meta Leadforms), "google" = Google Ads. */
+export type PlatformKey = "all" | "meta" | "google"
+
+/** Google Ads spend for a date range, read from the Google Ads sheet (Actual tab).
+ *  Country-agnostic - the sheet holds a single daily spend total. `error` is set
+ *  when the sheet couldn't be read (e.g. not yet shared with the service account)
+ *  so the dashboard can degrade to Meta-only rather than break. */
+export interface GoogleAdsSpend {
+  spend: number
+  error: string | null
+}
+
 export interface DateRange {
   startDate: Date
   endDate: Date

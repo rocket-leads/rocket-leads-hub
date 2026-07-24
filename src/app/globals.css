@@ -124,7 +124,15 @@
 .tc-desc { font-size: 11.5px; color: var(--ink-muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tc-labels { display: flex; flex-wrap: wrap; gap: 5px; }
 .tc-label { font-family: var(--f-mono); font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-pill); color: var(--ink-muted); background: var(--surface-3); border: 1px solid var(--line); white-space: nowrap; }
-.tc-foot { display: flex; align-items: center; gap: 9px; margin-top: 1px; padding-top: 10px; border-top: 1px solid var(--line-faint); }
+/* result callout (the "Blocked · waiting on…" banner slot) - carries the KPI
+   result prominently, coloured by category. */
+.tc-block { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 500; line-height: 1.4; border-radius: var(--r-sm); padding: 6px 10px; }
+.tc-block svg { width: 13px; height: 13px; flex: none; }
+.tc-block.action  { color: var(--st-error); background: var(--st-error-tint); }
+.tc-block.watch   { color: var(--st-warn);  background: var(--st-warn-tint); }
+.tc-block.healthy { color: var(--st-live);  background: var(--st-live-tint); }
+.tc-block.nodata  { color: var(--ink-muted); background: var(--surface-3); }
+.tc-foot { display: flex; align-items: center; gap: 6px; margin-top: 1px; padding-top: 10px; border-top: 1px solid var(--line-faint); }
 .tcard .avatar { width: 24px; height: 24px; border-radius: 7px; font-size: 9.5px; box-shadow: var(--shadow-xs); }
 .tc-foot .chip { padding: 3px 9px; font-size: 11px; gap: 5px; }
 .tc-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-faint); }

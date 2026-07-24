@@ -16,6 +16,8 @@ import type {
   MetaTargetsData,
   MetaTargetsByCountry,
   CountryKey,
+  PlatformKey,
+  GoogleAdsSpend,
   CategoryBreakdown,
   FinanceOverview,
   InvoiceDetail,
@@ -43,6 +45,7 @@ const TARGETS_BOARD_COLUMNS = [
   "datum_afspraak",
   "date3",
   "status",
+  "status_1", // Platform / lead source - drives the Meta/Google platform filter
   "numbers",
   "status_17",
   "wie_",
@@ -348,18 +351,38 @@ function getCountryKey(countryValue: string): CountryKey {
   return "other"
 }
 
+// Platform column (`status_1`) is a broad lead-source column. For the ad-platform
+// filter we only care whether a lead came from paid Meta or paid Google; every
+// other source (Website, LinkedIn, Setter, TikTok, …) is "other" and only shows
+// under Platform=all. Label set confirmed from the Monday board 2026-07-24.
+const META_PLATFORM_LABELS = new Set(["fb/ig", "meta leadforms"])
+const GOOGLE_PLATFORM_LABELS = new Set(["google"])
+function getPlatformKey(platformValue: string): "meta" | "google" | "other" {
+  const v = platformValue.trim().toLowerCase()
+  if (META_PLATFORM_LABELS.has(v)) return "meta"
+  if (GOOGLE_PLATFORM_LABELS.has(v)) return "google"
+  return "other"
+}
+
 /**
  * Marketing / Sales - Monday board data, grouped by country.
  *
  * When `closerFilter` is provided, the top-level / weekly / industries / closed-deals
  * aggregations only include items where the `wie_` column matches. The per-closer
- * rollup always uses every item regardless of the filter - that's what populates the
- * "Closer" dropdown options on the dashboard, so we can't strip it down.
+ * rollup always uses every item regardless of the CLOSER filter - that's what populates
+ * the "Closer" dropdown options on the dashboard, so we can't strip it down.
+ *
+ * When `platformFilter` ("meta" | "google") is provided, EVERY aggregation - including
+ * the per-closer rollup - only includes items whose `status_1` platform matches. Platform
+ * is an independent axis from closer: filtering to Meta/Google should genuinely scope the
+ * whole funnel (that's how per-platform ROAS is built), so the closer table + dropdown
+ * legitimately reflect the platform too.
  */
 export async function fetchMondayTargets(
   startDate: string,
   endDate: string,
   closerFilter?: string | null,
+  platformFilter?: PlatformKey | null,
 ): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
   // Kick off Stripe NB cross-check in parallel with the Monday board fetch - the two are
@@ -416,6 +439,8 @@ export async function fetchMondayTargets(
   const todayStr = new Date().toISOString().slice(0, 10)
   const filter = closerFilter?.trim() || null
   const matchesFilter = (closerKey: string): boolean => !filter || closerKey === filter
+  // Platform gate - applies to every aggregation (top-level, weekly, per-closer).
+  const platform = platformFilter && platformFilter !== "all" ? platformFilter : null
 
   // Per-country accumulators
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
@@ -464,9 +489,13 @@ export async function fetchMondayTargets(
     const industry = getColumnValue(item, "status_17") || "Unknown"
     const closer = getColumnValue(item, "wie_").trim()
     const closerKey = closer || "Unassigned"
+    // Platform gate: when a platform filter is active, skip every item whose source
+    // isn't that platform - drops it out of top-level, weekly AND per-closer at once.
+    const matchesPlatform = !platform || getPlatformKey(getColumnValue(item, "status_1")) === platform
+    if (!matchesPlatform) continue
     // Top-level + weekly + industries + closed-deals all respect the closer filter.
     // The per-closer block further down ignores it on purpose so the dropdown always
-    // sees every closer.
+    // sees every closer (within the active platform).
     const includeInTopLevel = matchesFilter(closerKey)
 
     if (includeInTopLevel) addTo(country, (a) => a.totalItems++)
@@ -1226,6 +1255,80 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
     totalCosts: teamCosts + marketingCosts + hqCosts,
     avgCollectionRate,
     estimated,
+  }
+}
+
+// ─── Google Ads spend (Google Sheet) ────────────────────────────────────────
+//
+// Google Ads has no Hub API integration; spend is maintained in a Google Sheet
+// (the "Actual" tab: column A = date the spend was incurred, column B = the
+// spend amount). The sheet holds a single daily total with NO country/campaign
+// attribution, so this returns one number for the range. Reuses the existing
+// service-account auth (getGoogleAuth) - the sheet must be shared (Viewer) with
+// that service-account email. Hardcoded like META_AD_ACCOUNT_ID; move to Settings
+// if it ever needs to change per environment. Roy 2026-07-24.
+const GOOGLE_ADS_SHEET_ID = "1WTkAc4zSntRtMHzfSsYSJqSxwVdolXT5VjSYGjLxy58"
+const GOOGLE_ADS_SHEET_TAB = "Actual"
+
+/** Parse a sheet date cell (col A) into a YYYY-MM-DD string, or null. Handles the
+ *  Google Sheets serial number (unformatted), ISO (YYYY-MM-DD), and day-first
+ *  European formats (DD-MM-YYYY / DD/MM/YYYY) so we don't depend on the sheet's
+ *  display locale. */
+function parseSheetDate(raw: string | number | undefined | null): string | null {
+  if (raw == null || raw === "") return null
+  // Google Sheets serial: days since 1899-12-30 (unformatted numeric cell).
+  if (typeof raw === "number" || /^\d+(\.\d+)?$/.test(String(raw).trim())) {
+    const serial = Number(raw)
+    if (serial > 59 && serial < 100000) {
+      const ms = Math.round((serial - 25569) * 86400 * 1000) // 25569 = 1970-01-01 in serial
+      const d = new Date(ms)
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+    }
+  }
+  const s = String(raw).trim()
+  // ISO first (YYYY-MM-DD or YYYY/MM/DD)
+  const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+  if (iso) {
+    const [, y, m, d] = iso
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
+  }
+  // Day-first European (DD-MM-YYYY or DD/MM/YYYY)
+  const eu = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/)
+  if (eu) {
+    const [, d, m, y] = eu
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
+  }
+  return null
+}
+
+/**
+ * Google Ads spend for [startDate, endDate] from the Actual tab. Country-agnostic.
+ * Never throws - on any failure (sheet not shared yet, auth, parse) it returns
+ * spend 0 + an `error` string so the dashboard degrades to Meta-only spend rather
+ * than blanking the whole Marketing tab.
+ */
+export async function fetchGoogleAdsSpend(startDate: string, endDate: string): Promise<GoogleAdsSpend> {
+  try {
+    const authClient = await getGoogleAuth()
+    const sheets = google.sheets({ version: "v4", auth: authClient })
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_ADS_SHEET_ID,
+      range: `${GOOGLE_ADS_SHEET_TAB}!A:B`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    })
+    const rows = (res.data.values ?? []) as Array<Array<string | number>>
+    let spend = 0
+    for (const row of rows) {
+      const date = parseSheetDate(row?.[0])
+      if (!date || date < startDate || date > endDate) continue
+      const amount = typeof row[1] === "number" ? row[1] : parseEuro(String(row[1] ?? ""))
+      if (isFinite(amount)) spend += amount
+    }
+    return { spend, error: null }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn("[fetchGoogleAdsSpend] failed:", msg)
+    return { spend: 0, error: msg }
   }
 }
 
