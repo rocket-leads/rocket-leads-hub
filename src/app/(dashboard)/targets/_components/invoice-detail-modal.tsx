@@ -15,13 +15,16 @@ interface Props {
   onClose: () => void
 }
 
-const STATUS_BADGE: Record<InvoiceDetail["status"], { label: string; className: string; order: number }> = {
-  paid: { label: "Paid", className: "bg-green-500/15 text-green-500", order: 1 },
-  open: { label: "Open", className: "bg-yellow-500/15 text-yellow-500", order: 2 },
-  overdue: { label: "Overdue", className: "bg-red-500/15 text-red-500", order: 3 },
-  credit: { label: "Credit", className: "bg-blue-500/15 text-blue-500", order: 4 },
-  credit_prev: { label: "Credit (prev)", className: "bg-blue-500/10 text-blue-400", order: 5 },
-  credit_old: { label: "Credit (old)", className: "bg-muted-foreground/15 text-muted-foreground", order: 6 },
+// 187N bare status label (dot + mono uppercase, no fill) - tone maps to the
+// design-system status tokens via the `.st-label` classes in globals.css.
+type StTone = "live" | "warn" | "error" | "pending" | "idle"
+const STATUS_BADGE: Record<InvoiceDetail["status"], { label: string; tone: StTone; order: number }> = {
+  paid: { label: "Paid", tone: "live", order: 1 },
+  open: { label: "Open", tone: "warn", order: 2 },
+  overdue: { label: "Overdue", tone: "error", order: 3 },
+  credit: { label: "Credit", tone: "pending", order: 4 },
+  credit_prev: { label: "Credit (prev)", tone: "pending", order: 5 },
+  credit_old: { label: "Credit (old)", tone: "idle", order: 6 },
 }
 
 type SortKey = "date" | "status" | "amount" | "customer"
@@ -122,9 +125,9 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-foreground/25 supports-backdrop-filter:backdrop-blur-sm" onClick={onClose} />
 
-      <div style={{ position: "fixed", top: "15vh", left: "50%", transform: "translateX(-50%)", width: "90vw", maxWidth: "48rem", height: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} className="bg-card border border-border rounded-xl shadow-2xl z-50">
+      <div style={{ position: "fixed", top: "15vh", left: "50%", transform: "translateX(-50%)", width: "90vw", maxWidth: "48rem", height: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} className="bg-popover ring-1 ring-foreground/10 rounded-2xl shadow-2xl z-50">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-border/40 shrink-0">
           <div>
@@ -142,9 +145,9 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
               <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Invoiced</span>
               <span className="text-base font-bold font-mono text-foreground">{formatCurrency(totalInvoiced)}</span>
               <div className="mt-1.5 space-y-0.5 text-[10px]">
-                <div className="flex justify-between"><span className="text-green-500">Paid</span><span className="font-mono text-green-500">{formatCurrency(totalPaid)}</span></div>
-                {totalOpen > 0 && <div className="flex justify-between"><span className="text-yellow-500">Open</span><span className="font-mono text-yellow-500">{formatCurrency(totalOpen)}</span></div>}
-                {totalOverdue > 0 && <div className="flex justify-between"><span className="text-red-500">Overdue</span><span className="font-mono text-red-500">{formatCurrency(totalOverdue)}</span></div>}
+                <div className="flex justify-between"><span className="text-[var(--st-live)]">Paid</span><span className="font-mono text-[var(--st-live)]">{formatCurrency(totalPaid)}</span></div>
+                {totalOpen > 0 && <div className="flex justify-between"><span className="text-[var(--st-warn)]">Open</span><span className="font-mono text-[var(--st-warn)]">{formatCurrency(totalOpen)}</span></div>}
+                {totalOverdue > 0 && <div className="flex justify-between"><span className="text-[var(--st-error)]">Overdue</span><span className="font-mono text-[var(--st-error)]">{formatCurrency(totalOverdue)}</span></div>}
               </div>
             </div>
 
@@ -153,8 +156,8 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
               <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Credits</span>
               <span className="text-base font-bold font-mono text-foreground">{allCredited > 0 ? `-${formatCurrency(allCredited)}` : "€0"}</span>
               <div className="mt-1.5 space-y-0.5 text-[10px]">
-                {sameMonthCredited > 0 && <div className="flex justify-between"><span className="text-blue-500">This month</span><span className="font-mono text-blue-500">-{formatCurrency(sameMonthCredited)}</span></div>}
-                {prevMonthCredited > 0 && <div className="flex justify-between"><span className="text-blue-400">Prev month</span><span className="font-mono text-blue-400">-{formatCurrency(prevMonthCredited)}</span></div>}
+                {sameMonthCredited > 0 && <div className="flex justify-between"><span className="text-[var(--st-pending)]">This month</span><span className="font-mono text-[var(--st-pending)]">-{formatCurrency(sameMonthCredited)}</span></div>}
+                {prevMonthCredited > 0 && <div className="flex justify-between"><span className="text-[var(--st-pending)]/70">Prev month</span><span className="font-mono text-[var(--st-pending)]/70">-{formatCurrency(prevMonthCredited)}</span></div>}
                 {oldCredited > 0 && <div className="flex justify-between"><span className="text-muted-foreground/50">Older</span><span className="font-mono text-muted-foreground/50">-{formatCurrency(oldCredited)}</span></div>}
               </div>
             </div>
@@ -181,16 +184,13 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
 
         {/* Filter bar */}
         <div className="px-6 py-2 border-b border-border/40 shrink-0 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Filter:</span>
-          <div className="flex gap-0.5 bg-muted rounded-md p-0.5">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">Filter</span>
+          <div className="flex gap-1.5 flex-wrap">
             {FILTER_OPTIONS.map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setFilter(key)}
-                className={cn(
-                  "h-6 px-2.5 text-[10px] font-medium rounded transition-colors",
-                  filter === key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
+                className={cn("chip h-7", filter === key && "active")}
               >
                 {label}
               </button>
@@ -204,18 +204,18 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-card z-10 shadow-sm">
               <tr className="border-b border-border/40">
-                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("date")}>
+                <th className="text-left py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium cursor-pointer select-none" onClick={() => toggleSort("date")}>
                   <span className="flex items-center gap-1">Date {sortKey === "date" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
                 </th>
-                <th className="text-left py-2 px-5 text-muted-foreground font-medium">Invoice</th>
-                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("customer")}>
+                <th className="text-left py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">Invoice</th>
+                <th className="text-left py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium cursor-pointer select-none" onClick={() => toggleSort("customer")}>
                   <span className="flex items-center gap-1">Customer {sortKey === "customer" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
                 </th>
-                <th className="text-left py-2 px-5 text-muted-foreground font-medium">Type</th>
-                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("status")}>
+                <th className="text-left py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">Type</th>
+                <th className="text-left py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium cursor-pointer select-none" onClick={() => toggleSort("status")}>
                   <span className="flex items-center gap-1">Status {sortKey === "status" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
                 </th>
-                <th className="text-right py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("amount")}>
+                <th className="text-right py-2 px-5 font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium cursor-pointer select-none" onClick={() => toggleSort("amount")}>
                   <span className="flex items-center gap-1 justify-end">Amount {sortKey === "amount" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
                 </th>
               </tr>
@@ -294,13 +294,14 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
                       )}
                     </td>
                     <td className="py-2 px-5">
-                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badge.className)}>
+                      <span className={`st-label ${badge.tone}`}>
+                        <span className="sd" />
                         {badge.label}
                       </span>
                     </td>
                     <td className={cn(
                       "py-2 px-5 text-right font-mono font-medium",
-                      d.amount < 0 ? "text-red-500" : "text-foreground",
+                      d.amount < 0 ? "text-[var(--st-error)]" : "text-foreground",
                     )}>
                       {formatCurrency(d.amount)}
                     </td>

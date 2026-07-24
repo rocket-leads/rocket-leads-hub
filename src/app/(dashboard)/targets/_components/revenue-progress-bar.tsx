@@ -36,7 +36,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
 
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-4 border border-border/40">
+      <div className="section-card">
         <Skeleton className="h-3 w-full rounded-full" />
       </div>
     )
@@ -46,8 +46,8 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const proRataPct = monthlyTarget > 0 ? (proRata / monthlyTarget) * 100 : 0
   const performance = proRata > 0 ? current / proRata : 0
 
-  const barColor = performance >= 1 ? "bg-green-500" : "bg-red-500"
-  const textColor = performance >= 1 ? "text-green-500" : "text-red-500"
+  const barColor = performance >= 1 ? "bg-[var(--st-live)]" : "bg-[var(--st-error)]"
+  const textColor = performance >= 1 ? "text-[var(--st-live)]" : "text-[var(--st-error)]"
 
   // Surface a gap when Stripe shows more new business than Monday's closed deals -
   // means deals are invoiced but not yet logged in Monday. Click → drilldown.
@@ -55,7 +55,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const showGapChip = gap > GAP_THRESHOLD
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border/40 space-y-3">
+    <div className="section-card space-y-3">
       {/* Header: label + gap chip + actual / target */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
@@ -66,7 +66,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
               onClick={onGapClick}
               className={cn(
                 "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium",
-                "bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25 transition-colors",
+                "bg-[var(--st-warn-tint)] text-[var(--st-warn)] hover:brightness-95 transition-all",
                 onGapClick && "cursor-pointer",
               )}
               title="Stripe shows more New Business than Monday - click to see which invoices"
