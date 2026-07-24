@@ -314,27 +314,12 @@ function MoveDialog({
             <div className="grid grid-cols-3 gap-1.5">
               {(["action", "watch", "good"] as const).map((opt) => {
                 const isSelected = target === opt
-                const tone =
-                  opt === "action"
-                    ? isSelected
-                      ? "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-300"
-                      : "border-border/40 hover:border-red-500/40"
-                    : opt === "watch"
-                      ? isSelected
-                        ? "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                        : "border-border/40 hover:border-amber-500/40"
-                      : isSelected
-                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-border/40 hover:border-emerald-500/40"
                 return (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => setTarget(opt)}
-                    className={cn(
-                      "h-9 rounded-md border px-2 text-[12px] font-medium transition-colors",
-                      tone,
-                    )}
+                    className={cn("chip h-9 justify-center", isSelected && "active")}
                   >
                     {targetLabel[opt]}
                   </button>
@@ -625,12 +610,7 @@ function MarkDoneDialog({
                     key={opt}
                     type="button"
                     onClick={() => setCategory(opt)}
-                    className={cn(
-                      "h-9 rounded-md border px-2 text-[11px] font-medium transition-colors",
-                      isSelected
-                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-border/40 hover:border-emerald-500/40",
-                    )}
+                    className={cn("chip h-9 justify-center", isSelected && "active")}
                   >
                     {categoryLabel[opt]}
                   </button>
@@ -670,12 +650,7 @@ function MarkDoneDialog({
                     key={opt}
                     type="button"
                     onClick={() => setReviewDays(opt)}
-                    className={cn(
-                      "h-9 rounded-md border px-2 text-[12px] font-medium transition-colors tabular-nums",
-                      isSelected
-                        ? "border-primary/60 bg-primary/10 text-primary"
-                        : "border-border/40 hover:border-primary/40",
-                    )}
+                    className={cn("chip h-9 justify-center tabular-nums", isSelected && "active")}
                   >
                     {opt}d
                   </button>
@@ -1737,7 +1712,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           so the same chrome is used everywhere the Hub displays a status
           tone (table rows, slide-over headers, etc.). */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-5">
           <StatusPill tone="danger">
             {t("watchlist.pill.action", locale)} <span className="tabular-nums">{categorized.action.length}</span>
           </StatusPill>
