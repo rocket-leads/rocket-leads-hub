@@ -66,7 +66,11 @@ export function DeliveryTab() {
       </div>
 
       {/* Hero - team competition leaderboard */}
-      <DeliveryHero teams={data?.byTeam ?? []} isLoading={loading} />
+      <DeliveryHero
+        teams={data?.byTeam ?? []}
+        unassigned={data?.byAccountManager?.find((am) => am.name === "Unassigned") ?? null}
+        isLoading={loading}
+      />
 
       {/* Revenue */}
       <div className="space-y-3">
