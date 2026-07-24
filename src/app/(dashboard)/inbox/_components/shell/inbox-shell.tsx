@@ -656,6 +656,9 @@ export function InboxShell({
   // header buttons - the user always sees the two states it's NOT in.
   const setThreadState = useCallback(
     (thread: ChatThreadSummary, target: TicketState) => {
+      // Picking up (Opgepakt) a CLOSED ticket reopens it too - you can't own a
+      // ticket that's still archived. Reopen first, then assign. Roy 2026-07-24.
+      if (target === "assigned" && thread.isArchived) markThread(thread, "unarchive")
       markThread(thread, target === "closed" ? "archive" : target === "assigned" ? "assign" : "open")
     },
     [markThread],
