@@ -4,7 +4,6 @@ import { useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check, Search, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -350,13 +349,13 @@ function CampaignRow({
         {campaign.name}
       </span>
       {campaign.isSuggested && !campaign.isSelected && (
-        <Badge
-          variant="outline"
-          className="text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 shrink-0"
+        <span
+          className="st-label warn shrink-0"
           title="De matcher denkt dat deze campagne bij deze klant hoort. Klik om te bevestigen."
         >
+          <span className="sd" />
           Suggested
-        </Badge>
+        </span>
       )}
     </button>
   )

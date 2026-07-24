@@ -1,6 +1,5 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Euro,
@@ -82,21 +81,23 @@ const KPI_GROUPS: KpiGroup[] = [
 
 type TrendStatus = "green" | "orange" | "red"
 
+// 187N status tokens (light-theme contrast). Green = live, orange = warn,
+// red = error.
 const STATUS_STYLES: Record<TrendStatus, { border: string; value: string; dot: string }> = {
   green: {
-    border: "border-l-[3px] border-l-green-500",
-    value: "text-green-400",
-    dot: "bg-green-500",
+    border: "border-l-[3px] border-l-[color:var(--st-live)]",
+    value: "text-[color:var(--st-live)]",
+    dot: "bg-[var(--st-live)]",
   },
   orange: {
-    border: "border-l-[3px] border-l-amber-500",
-    value: "text-amber-400",
-    dot: "bg-amber-500",
+    border: "border-l-[3px] border-l-[color:var(--st-warn)]",
+    value: "text-[color:var(--st-warn)]",
+    dot: "bg-[var(--st-warn)]",
   },
   red: {
-    border: "border-l-[3px] border-l-red-500",
-    value: "text-red-400",
-    dot: "bg-red-500",
+    border: "border-l-[3px] border-l-[color:var(--st-error)]",
+    value: "text-[color:var(--st-error)]",
+    dot: "bg-[var(--st-error)]",
   },
 }
 
@@ -159,13 +160,11 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
           : "grid grid-cols-2 gap-3 sm:grid-cols-5"
 
         return (
-          <Card key={group.titleKey} className="overflow-hidden">
-            <div className="px-4 pt-3.5 pb-3">
-              <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                {t(group.titleKey, locale)}
-              </h3>
+          <div key={group.titleKey} className="section-card">
+            <div className="section-head">
+              <h3 className="section-title">{t(group.titleKey, locale)}</h3>
             </div>
-            <CardContent className="px-4 pb-4 pt-0">
+            <div>
               <div className={colClass}>
                 {visibleCards.map((kpi) => {
                   const Icon = kpi.icon
@@ -192,7 +191,7 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
                           {isLoading ? (
                             <Skeleton className="h-7 w-20" />
                           ) : (
-                            <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
+                            <p className={`text-xl font-mono font-semibold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
                               {data ? fmt(data[kpi.key] as number, kpi.type) : "-"}
                             </p>
                           )}
@@ -202,8 +201,8 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
                   )
                 })}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )
       })}
     </div>

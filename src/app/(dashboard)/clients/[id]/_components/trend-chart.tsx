@@ -84,18 +84,13 @@ function WindowToggle({
   onChange: (v: WindowDays) => void
 }) {
   return (
-    <div className="inline-flex rounded-md border border-border/40 p-0.5">
+    <div className="inline-flex items-center gap-1.5">
       {WINDOW_OPTIONS.map((opt) => (
         <button
           key={opt}
           type="button"
           onClick={() => onChange(opt)}
-          className={cn(
-            "h-7 px-2.5 text-[11px] font-medium rounded-sm tabular-nums transition-colors",
-            value === opt
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/30",
-          )}
+          className={cn("chip tabular-nums", value === opt && "active")}
         >
           {opt}d
         </button>

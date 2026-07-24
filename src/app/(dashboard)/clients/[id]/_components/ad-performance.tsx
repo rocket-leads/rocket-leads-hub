@@ -61,13 +61,10 @@ const CATEGORIES = [
 ] as const
 
 function ReliabilityBadge({ level }: { level: "high" | "medium" | "low" }) {
-  const styles = {
-    high: "bg-green-500/15 text-green-600 dark:text-green-400",
-    medium: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    low: "bg-muted text-muted-foreground",
-  }
+  const tone = level === "high" ? "live" : level === "medium" ? "warn" : "idle"
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${styles[level]}`}>
+    <span className={`st-label ${tone}`}>
+      <span className="sd" />
       {level === "high" ? "Reliable" : level === "medium" ? "Limited data" : "Low data"}
     </span>
   )
