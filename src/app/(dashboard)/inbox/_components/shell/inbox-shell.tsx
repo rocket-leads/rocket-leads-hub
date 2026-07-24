@@ -11,10 +11,11 @@ import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { ComposerDialog } from "../composer-dialog"
-import { ExternalRail, type ChannelEntry, type ExternalGroup } from "./external-rail"
+import { type ChannelEntry, type ExternalGroup } from "./external-rail"
 import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
 import { UnifiedFeed } from "./unified-feed"
 import { InboxHero } from "./inbox-hero"
+import { ChannelPicker } from "./channel-picker"
 import { UpdateFeed } from "./update-feed"
 import { DetailPane } from "./detail-pane"
 import {
@@ -828,23 +829,6 @@ export function InboxShell({
     { id: "external", label: t("inbox.shell.scope.external", locale) },
   ]
 
-  const externalRail = (
-    <ExternalRail
-      whatsapp={waEntries}
-      email={emailEntries}
-      activeChannelId={viewMode === "channel" ? activeChannelId : null}
-      allActive={viewMode === "all"}
-      allCount={allCount}
-      mentionedOnly={mentionedOnly}
-      mentionedCount={mentionedCount}
-      expanded={expanded}
-      onSelectAll={onSelectAll}
-      onSelectChannel={onSelectChannel}
-      onToggleExpand={toggleExpand}
-      onSelectMentioned={selectMentioned}
-      loading={identityQuery.isLoading}
-    />
-  )
   const internalRail = (
     <InternalRail
       types={internalTypes}
@@ -855,7 +839,22 @@ export function InboxShell({
       onDeadlineChange={setDeadline}
     />
   )
-  const railForScope = isExternal ? externalRail : internalRail
+  // Compact channel selector — the 187N 2-column fold of the external rail into
+  // the thread-list header. Roy 2026-07-24.
+  const channelPicker = (
+    <ChannelPicker
+      whatsapp={waEntries}
+      email={emailEntries}
+      activeChannelId={viewMode === "channel" ? activeChannelId : null}
+      allActive={viewMode === "all"}
+      mentionedOnly={mentionedOnly}
+      allCount={allCount}
+      mentionedCount={mentionedCount}
+      onSelectAll={onSelectAll}
+      onSelectChannel={onSelectChannel}
+      onSelectMentioned={selectMentioned}
+    />
+  )
   const railToggle = (
     <button
       type="button"
@@ -923,11 +922,12 @@ export function InboxShell({
         />
       )}
 
-      {/* Rail above the feed below xl (and always in locked mode). Hidden when
-          the user collapses the sidebar. */}
-      {!railCollapsed && (
+      {/* Internal scope keeps its Type/Deadline rail above the feed below xl (and
+          always in locked mode). The external scope folds its channel rail into
+          the ChannelPicker in the list header instead. Roy 2026-07-24. */}
+      {!isExternal && !railCollapsed && (
         <div className={cn(locked ? "block" : "xl:hidden")}>
-          <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60 p-2">{railForScope}</div>
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60 p-2">{internalRail}</div>
         </div>
       )}
 
@@ -939,15 +939,10 @@ export function InboxShell({
           <div
             className={cn(
               "flex w-full min-w-0 flex-col gap-3",
-              // Narrow ticket-list column (Roy 2026-07-20: "de helft") so the
-              // reading/chat pane gets the space. Icon+count filter tabs let it
-              // stay tight. xl = channels rail (200px) + a compact ticket feed
-              // (~224px).
-              locked
-                ? "lg:w-[360px]"
-                : railCollapsed
-                  ? "lg:w-[320px]"
-                  : "lg:w-[360px] xl:w-[440px]",
+              // 187N 2-column fold: the channel rail is gone (now the
+              // ChannelPicker dropdown in this column's header), so the list
+              // column is just the thread list. Roy 2026-07-24.
+              locked ? "lg:w-[360px]" : "lg:w-[360px] xl:w-[400px]",
             )}
           >
             <div className="search-pill w-full shrink-0">
@@ -969,6 +964,9 @@ export function InboxShell({
                 </button>
               )}
             </div>
+            {/* Channel selector (folds the old rail into the list header). Hidden
+                while searching - search spans the current scope. */}
+            {!searching && channelPicker}
             {/* Scope toggle: when searching inside one channel, choose whether
                 to stay on that line or widen to all channels (Trengo-style). */}
             {searching && viewMode === "channel" && (
@@ -990,33 +988,28 @@ export function InboxShell({
                 </button>
               </div>
             )}
-            <div className="flex min-h-0 flex-1 gap-4">
-              {!locked && !railCollapsed && (
-                <aside className="hidden w-[200px] shrink-0 overflow-y-auto xl:block">{externalRail}</aside>
-              )}
-              <div className="min-h-0 min-w-0 flex-1">
-                <UnifiedFeed
-                  rows={visibleExternalRows}
-                  loading={externalLoading}
-                  activeId={openRow?.id ?? null}
-                  showClient={!locked}
-                  filterTabs={extFilterTabs}
-                  filterValue={effectiveState}
-                  onFilterChange={setExtState}
-                  onOpen={openItem}
-                  onAction={handleRowAction}
-                  onCloseRow={mentionedOnly ? closeMention : undefined}
-                  closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
-                  checkboxKind={mentionedOnly ? "mention" : "ticket"}
-                  selectable={selectable}
-                  selectedOf={selectable ? (row) => selectedTickets.has(row.id) : undefined}
-                  onToggleSelect={selectable ? toggleTicketSelect : undefined}
-                  selectAllState={selectAllState}
-                  onToggleSelectAll={toggleSelectAll}
-                  users={users}
-                  emptyHint={emptyHint}
-                />
-              </div>
+            <div className="min-h-0 min-w-0 flex-1">
+              <UnifiedFeed
+                rows={visibleExternalRows}
+                loading={externalLoading}
+                activeId={openRow?.id ?? null}
+                showClient={!locked}
+                filterTabs={extFilterTabs}
+                filterValue={effectiveState}
+                onFilterChange={setExtState}
+                onOpen={openItem}
+                onAction={handleRowAction}
+                onCloseRow={mentionedOnly ? closeMention : undefined}
+                closedOf={mentionedOnly ? (row) => mentionDone(row.id) : undefined}
+                checkboxKind={mentionedOnly ? "mention" : "ticket"}
+                selectable={selectable}
+                selectedOf={selectable ? (row) => selectedTickets.has(row.id) : undefined}
+                onToggleSelect={selectable ? toggleTicketSelect : undefined}
+                selectAllState={selectAllState}
+                onToggleSelectAll={toggleSelectAll}
+                users={users}
+                emptyHint={emptyHint}
+              />
             </div>
           </div>
           <div className="hidden min-h-0 min-w-0 flex-1 lg:block">

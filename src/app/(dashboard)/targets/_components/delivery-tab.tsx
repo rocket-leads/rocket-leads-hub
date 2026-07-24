@@ -51,12 +51,12 @@ export function DeliveryTab() {
           onChange={setRange}
           maxDate={maxPickerDate}
         />
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
           {presets.map((preset) => (
             <button
               key={preset.label}
               onClick={() => applyPreset(preset)}
-              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+              className="chip h-9"
             >
               {preset.label}
             </button>
@@ -66,7 +66,7 @@ export function DeliveryTab() {
 
       {/* Revenue */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.revenue", locale)}</h2>
+        <div className="section-title">{t("targets.delivery.section.revenue", locale)}</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <KpiCard
             label="MRR"
@@ -121,7 +121,7 @@ export function DeliveryTab() {
 
       {/* Retention - ordered to read like the math: prev → +new → −churned → net → current → rate */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.retention", locale)}</h2>
+        <div className="section-title">{t("targets.delivery.section.retention", locale)}</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <RetentionCard
             label={t("targets.delivery.retention.previous", locale)}
@@ -170,7 +170,7 @@ export function DeliveryTab() {
       {/* Revenue by Team - ranked by service fee (excl. ad budget); 1st place leftmost */}
       {data?.byTeam && data.byTeam.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.revenue_by_team", locale)}</h2>
+          <div className="section-title">{t("targets.delivery.section.revenue_by_team", locale)}</div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {[...data.byTeam]
               .sort((a, b) => b.serviceFee - a.serviceFee)
@@ -184,7 +184,7 @@ export function DeliveryTab() {
       {/* Unassigned Revenue - collapsible, only the Unassigned bucket with per-customer fix actions */}
       {data?.byAccountManager?.find((am) => am.name === "Unassigned") && (data.unassignedCustomers?.length ?? 0) > 0 && (
         <div className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.unassigned", locale)}</h2>
+          <div className="section-title">{t("targets.delivery.section.unassigned", locale)}</div>
           {(() => {
             const unassigned = data.byAccountManager.find((am) => am.name === "Unassigned")!
             return (

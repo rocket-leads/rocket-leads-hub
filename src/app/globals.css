@@ -161,6 +161,20 @@
   padding-inline: clamp(16px, 2.2vw, 44px);
 }
 
+/* AI Co-pilot inline result: quick loading bar, then a draft card with a green
+   ✓ (approve = create) and a red ✗ (dismiss) - all in the same popup. */
+.cmd-progress { height: 3px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; margin-top: 8px; }
+.cmd-progress > span { display: block; height: 100%; width: 40%; border-radius: var(--r-pill); background: var(--gradient); animation: cmdIndet 1.05s ease-in-out infinite; }
+@keyframes cmdIndet { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+.cmd-draft { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); }
+.cmd-draft-body { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink); line-height: 1.45; }
+.cmd-draft-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.cmd-approve { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600; color: #fff; background: var(--st-live); border: 1px solid transparent; transition: filter var(--t-fast); }
+.cmd-approve:hover { filter: brightness(1.06); }
+.cmd-reject { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--r-sm); color: var(--st-error); background: var(--st-error-tint); border: 1px solid transparent; transition: background var(--t-fast); }
+.cmd-reject:hover { background: color-mix(in srgb, var(--st-error) 20%, transparent); }
+.cmd-approve:disabled, .cmd-reject:disabled { opacity: .5; cursor: not-allowed; }
+
 /* 187N search pill: rounded-pill surface + magnifier, focus ring in teal.
    `all: unset` on the inner input strips the global form styling so the field
    reads as a bare input inside the pill (the campaign-performance search). */
