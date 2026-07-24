@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Search,
@@ -18,6 +19,8 @@ import {
   Truck,
   Banknote,
   Settings,
+  Sparkles,
+  Plus,
   type LucideIcon,
 } from "lucide-react"
 import type { GlobalSearchResults } from "@/app/api/search/route"
@@ -43,11 +46,18 @@ const EMPTY: GlobalSearchResults = { clients: [], tasks: [], messages: [] }
 
 type FlatItem = {
   key: string
-  type: "CLIENT" | "TASK" | "MESSAGE" | "PAGE"
+  type: "ACTION" | "CLIENT" | "TASK" | "MESSAGE" | "PAGE"
   icon: LucideIcon
   label: string
   sub: string | null
   run: () => void
+}
+
+/** Open the AI Co-pilot composer (optionally pre-filled) from anywhere. The
+ *  Co-pilot lives on the same command surface now, so its button is gone and
+ *  it opens via this event instead. */
+function openCopilotComposer(prefill: string) {
+  window.dispatchEvent(new CustomEvent("copilot:open", { detail: { prefill } }))
 }
 
 /**
@@ -138,6 +148,38 @@ export function GlobalSearch() {
     const q = query.trim().toLowerCase()
     const has = (s: string | null | undefined) => !!s && s.toLowerCase().includes(q)
 
+    // ── Actions (AI Co-pilot) ──────────────────────────────────────────────
+    // Typing a natural-language command surfaces "Ask AI Co-pilot" as the top
+    // action - hitting it hands the query straight to the Co-pilot (create a
+    // task, log an update, etc.). Plus a static "Create task" entry.
+    const actionItems: FlatItem[] = []
+    if (query.trim()) {
+      actionItems.push({
+        key: "act:ask",
+        type: "ACTION",
+        icon: Sparkles,
+        label: "Ask AI Co-pilot",
+        sub: `“${query.trim()}”`,
+        run: () => {
+          close()
+          openCopilotComposer(query.trim())
+        },
+      })
+    }
+    if (!q || "create task".includes(q) || "task".includes(q)) {
+      actionItems.push({
+        key: "act:create-task",
+        type: "ACTION",
+        icon: Plus,
+        label: "Create task",
+        sub: "AI Co-pilot",
+        run: () => {
+          close()
+          openCopilotComposer("")
+        },
+      })
+    }
+
     const clientItems: FlatItem[] = (q ? data.clients.filter((c) => has(c.name)) : [])
       .slice(0, 6)
       .map((c) => ({
@@ -191,6 +233,7 @@ export function GlobalSearch() {
       }))
 
     const groups = [
+      { label: "Actions", items: actionItems },
       { label: "Clients", items: clientItems },
       { label: "Tasks", items: taskItems },
       { label: "Messages", items: messageItems },
@@ -199,7 +242,7 @@ export function GlobalSearch() {
 
     const flat = groups.flatMap((g) => g.items)
     return { groups, flat }
-  }, [query, data, openClient, goto])
+  }, [query, data, openClient, goto, close])
 
   // Keep the selection in range as the result set changes, and scroll it in.
   useEffect(() => {
@@ -241,7 +284,7 @@ export function GlobalSearch() {
         <span className="kbd">⌘K</span>
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="cmd-overlay open" onMouseDown={close}>
           <div className="cmd-panel" onMouseDown={(e) => e.stopPropagation()}>
             <div className="cmd-search">
@@ -251,7 +294,7 @@ export function GlobalSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder="Search clients, tasks, messages, pages…"
+                placeholder="Search clients, tasks, messages — or ask the AI Co-pilot…"
               />
               <button type="button" className="esc" onClick={close}>
                 ESC
@@ -314,7 +357,8 @@ export function GlobalSearch() {
               <span style={{ marginLeft: "auto" }}>Rocket Leads · Growth Hub</span>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

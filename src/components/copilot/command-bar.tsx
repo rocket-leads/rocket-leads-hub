@@ -11,7 +11,7 @@ import { executeAction } from "@/lib/copilot/executors"
 import type { CopilotDraft } from "@/lib/copilot/tools"
 import type { ClientSearchResult } from "@/app/api/clients/search/route"
 import { useCompleteDraft, useQueueCommand } from "./use-copilot-drafts"
-import { DraftsPanel, useCopilotDraftsBadge } from "./drafts-panel"
+import { DraftsPanel } from "./drafts-panel"
 import { ConfirmDialog } from "./confirm-dialog"
 
 type UserRow = { id: string; name: string | null; email: string; role: string | null }
@@ -102,9 +102,25 @@ export function CommandBar() {
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [open])
 
-  // Reset on open.
+  // Opened from the ⌘K palette ("Ask AI Co-pilot" / "Create task") - the
+  // palette dispatches `copilot:open` with an optional prefill. The standalone
+  // button is gone; this event + ⌘J are the entry points now.
+  const prefillRef = useRef("")
   useEffect(() => {
-    if (open) setInput("")
+    function onOpen(e: Event) {
+      prefillRef.current = (e as CustomEvent<{ prefill?: string }>).detail?.prefill ?? ""
+      setOpen(true)
+    }
+    window.addEventListener("copilot:open", onOpen as EventListener)
+    return () => window.removeEventListener("copilot:open", onOpen as EventListener)
+  }, [])
+
+  // Reset on open - seed with any prefill handed in by the palette.
+  useEffect(() => {
+    if (open) {
+      setInput(prefillRef.current)
+      prefillRef.current = ""
+    }
   }, [open])
 
   const submit = useCallback(async () => {
@@ -137,35 +153,10 @@ export function CommandBar() {
     }
   }
 
-  const badgeCount = useCopilotDraftsBadge()
-
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        // Brand-purple chrome (Roy 2026-06-11 v2): the AI Co-pilot is
-        // where the CM actually creates tasks + updates, so it gets the
-        // primary purple. Roy 2026-06-12: the notification bell merged
-        // into this surface, so the badge counter that lived on the bell
-        // now sits here - one button, one place to look.
-        className="relative flex items-center gap-2 h-10 rounded-lg border border-primary/40 bg-primary/10 px-3.5 text-sm text-primary hover:bg-primary/20 hover:border-primary/60 transition-colors"
-        aria-label="Open AI co-pilot"
-      >
-        <Sparkles className="h-3.5 w-3.5 shrink-0" />
-        <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-primary/30 bg-primary/10 px-1.5 text-[10px] font-medium text-primary/80">
-          <span className="text-xs">⌘</span>J
-        </kbd>
-        {badgeCount > 0 && (
-          <span
-            className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground shadow-sm"
-            aria-label={`${badgeCount} drafts ready`}
-          >
-            {badgeCount}
-          </span>
-        )}
-      </button>
-
+      {/* No standalone trigger button anymore - the Co-pilot is merged into the
+          ⌘K command palette (Actions group). Opens via `copilot:open` + ⌘J. */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-xl">
           <div className="flex flex-col gap-3">

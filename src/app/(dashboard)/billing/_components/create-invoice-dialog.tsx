@@ -747,9 +747,8 @@ export function CreateInvoiceDialog({
           // Edit screen - same line-item form as before, but the primary
           // action now creates a Stripe draft and transitions to preview.
           <div className="space-y-4">
-            {/* Mode selector - pill toggle (raw buttons are the sanctioned
-                pattern for pill selectors per the Hub button rules). */}
-            <div className="inline-flex rounded-md border border-border/60 p-0.5 bg-muted/30">
+            {/* Mode selector - 187N .chip toggles (active = purple wash). */}
+            <div className="flex items-center gap-2">
               {([
                 { key: "monthly" as const, label: "Monthly invoice" },
                 { key: "oneoff" as const, label: "One-off invoice" },
@@ -759,12 +758,7 @@ export function CreateInvoiceDialog({
                   type="button"
                   onClick={() => setMode(opt.key)}
                   disabled={inFlight}
-                  className={cn(
-                    "h-8 px-3 rounded text-xs font-medium transition-colors",
-                    mode === opt.key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+                  className={cn("chip disabled:opacity-50", mode === opt.key && "active")}
                 >
                   {opt.label}
                 </button>
