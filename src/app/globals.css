@@ -64,6 +64,53 @@
   --color-brand-grey-medium: #797D85;
   --color-brand-grey-light: #959AA4;
   --color-brand-line: #DADEE7;
+
+  /* One green, one red hub-wide. Remap Tailwind's green/emerald (→ --st-live)
+     and red/rose (→ --st-error) scales onto the design-system status colours -
+     the exact green/red used by the revenue pro-rata bars - so every
+     text-/bg-/border-{green,emerald,red,rose}-* class across every page adopts
+     them. A light→dark ramp is kept (via color-mix) so tint backgrounds paired
+     with dark text stay legible. Roy 2026-07-26. */
+  --color-green-50:  color-mix(in srgb, var(--st-live) 10%, white);
+  --color-green-100: color-mix(in srgb, var(--st-live) 18%, white);
+  --color-green-200: color-mix(in srgb, var(--st-live) 32%, white);
+  --color-green-300: color-mix(in srgb, var(--st-live) 55%, white);
+  --color-green-400: color-mix(in srgb, var(--st-live) 78%, white);
+  --color-green-500: var(--st-live);
+  --color-green-600: color-mix(in srgb, var(--st-live) 88%, black);
+  --color-green-700: color-mix(in srgb, var(--st-live) 74%, black);
+  --color-green-800: color-mix(in srgb, var(--st-live) 62%, black);
+  --color-green-900: color-mix(in srgb, var(--st-live) 52%, black);
+  --color-emerald-50:  color-mix(in srgb, var(--st-live) 10%, white);
+  --color-emerald-100: color-mix(in srgb, var(--st-live) 18%, white);
+  --color-emerald-200: color-mix(in srgb, var(--st-live) 32%, white);
+  --color-emerald-300: color-mix(in srgb, var(--st-live) 55%, white);
+  --color-emerald-400: color-mix(in srgb, var(--st-live) 78%, white);
+  --color-emerald-500: var(--st-live);
+  --color-emerald-600: color-mix(in srgb, var(--st-live) 88%, black);
+  --color-emerald-700: color-mix(in srgb, var(--st-live) 74%, black);
+  --color-emerald-800: color-mix(in srgb, var(--st-live) 62%, black);
+  --color-emerald-900: color-mix(in srgb, var(--st-live) 52%, black);
+  --color-red-50:  color-mix(in srgb, var(--st-error) 10%, white);
+  --color-red-100: color-mix(in srgb, var(--st-error) 18%, white);
+  --color-red-200: color-mix(in srgb, var(--st-error) 32%, white);
+  --color-red-300: color-mix(in srgb, var(--st-error) 55%, white);
+  --color-red-400: color-mix(in srgb, var(--st-error) 80%, white);
+  --color-red-500: var(--st-error);
+  --color-red-600: color-mix(in srgb, var(--st-error) 88%, black);
+  --color-red-700: color-mix(in srgb, var(--st-error) 74%, black);
+  --color-red-800: color-mix(in srgb, var(--st-error) 62%, black);
+  --color-red-900: color-mix(in srgb, var(--st-error) 52%, black);
+  --color-rose-50:  color-mix(in srgb, var(--st-error) 10%, white);
+  --color-rose-100: color-mix(in srgb, var(--st-error) 18%, white);
+  --color-rose-200: color-mix(in srgb, var(--st-error) 32%, white);
+  --color-rose-300: color-mix(in srgb, var(--st-error) 55%, white);
+  --color-rose-400: color-mix(in srgb, var(--st-error) 80%, white);
+  --color-rose-500: var(--st-error);
+  --color-rose-600: color-mix(in srgb, var(--st-error) 88%, black);
+  --color-rose-700: color-mix(in srgb, var(--st-error) 74%, black);
+  --color-rose-800: color-mix(in srgb, var(--st-error) 62%, black);
+  --color-rose-900: color-mix(in srgb, var(--st-error) 52%, black);
 }
 
 /* 187N sidebar count pill (Inbox unread, Billing due-today). Mono tabular
