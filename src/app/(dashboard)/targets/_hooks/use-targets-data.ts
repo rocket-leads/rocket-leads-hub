@@ -49,7 +49,7 @@ export function useTargetsData(
         if (!r.ok) throw new Error("Failed to fetch Monday data (MTD)")
         return r.json()
       }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   })
 
   const mondayQuery = useQuery<MondayTargetsByCountry>({
@@ -66,7 +66,7 @@ export function useTargetsData(
         return r.json()
       })
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
     // Fall back to the warm MTD data while the selected range fetches. Skipped
     // when the user IS on MTD (placeholder == real) or when any filter is active
     // (an unfiltered MTD slice would be misleading as a placeholder for a scoped view).
@@ -88,7 +88,7 @@ export function useTargetsData(
       if (!r.ok) throw new Error("Failed to fetch Meta data")
       return r.json()
     }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   })
 
   // Google Ads spend (from the Actual sheet) - country-agnostic single total.
@@ -98,7 +98,7 @@ export function useTargetsData(
       if (!r.ok) throw new Error("Failed to fetch Google Ads spend")
       return r.json()
     }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   })
 
   // Pick the right country slice (no re-fetch needed). Monday is already

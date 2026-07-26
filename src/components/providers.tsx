@@ -10,7 +10,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 60 * 1000, // 1 hour
+            staleTime: 60 * 60 * 1000, // 1 hour - data is "fresh" this long → no refetch on revisit
+            // gcTime keeps a query's cache alive after the last component using it
+            // unmounts. Default is 5 min → navigate away for >5 min and the cache is
+            // garbage-collected, so returning is a COLD fetch (the "even later it's
+            // still slow" symptom). 2h keeps every visited page instant to return to.
+            gcTime: 2 * 60 * 60 * 1000,
+            // The cron + manual refresh button keep data current; refetching every
+            // time the window regains focus just adds latency + external API load.
+            refetchOnWindowFocus: false,
             retry: 1,
           },
         },

@@ -10,7 +10,7 @@ export function useDeliveryData(startDate: string, endDate: string) {
       if (!r.ok) throw new Error("Failed to fetch delivery data")
       return r.json()
     }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   })
 
   return {

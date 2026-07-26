@@ -1719,7 +1719,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   const stateQuery = useQuery<WatchlistStateResponse>({
     queryKey: ["watchlist-state"],
     queryFn: () => fetch("/api/watchlist/state").then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
@@ -1728,7 +1728,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   const recentOverridesQuery = useQuery<RecentOverridesResponse>({
     queryKey: ["watchlist-recent-overrides"],
     queryFn: () => fetch("/api/watchlist/recent-overrides").then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 

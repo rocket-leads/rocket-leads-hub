@@ -16,7 +16,7 @@ export function useFinanceData(startDate: string, endDate: string, year: number,
       if (!r.ok) throw new Error("Failed to fetch finance data")
       return r.json()
     }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   })
 
   const costsQuery = useQuery<CostData>({
