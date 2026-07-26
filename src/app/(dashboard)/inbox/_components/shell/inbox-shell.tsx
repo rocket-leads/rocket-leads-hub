@@ -338,6 +338,15 @@ export function InboxShell({
     for (const it of intScoped) c[internalStateOf(it)] += 1
     return c
   }, [intScoped])
+  // Per-type breakdown for the internal hero strip (mirrors the external
+  // per-channel breakdown): total items + how many still need attention.
+  const internalTypeStats = useMemo(
+    () => [
+      { label: "Tasks", threads: tasks.length, unread: internalCounts.task },
+      { label: "Updates", threads: updates.length, unread: internalCounts.update },
+    ],
+    [tasks.length, updates.length, internalCounts],
+  )
   const intSearching = intSearch.trim().length > 0
   const visibleInternalRows = useMemo(() => {
     const q = intSearch.trim().toLowerCase()
@@ -973,14 +982,24 @@ export function InboxShell({
         )}
       </div>
 
-      {/* Compact COMMS · LIVE strip - only on the main channel inbox (not locked
-          per-client tabs, not the Mentioned view). */}
+      {/* Compact status strip — mirrored across both scopes so they launch the
+          same way: COMMS·LIVE (external) / WORKSPACE·LIVE (internal). Hidden on
+          locked per-client tabs + the Mentioned view. */}
       {isExternal && !locked && !mentionedOnly && (
         <InboxHero
           newCount={extCounts.open}
           assignedCount={extCounts.assigned}
           closedCount={extCounts.closed}
           channels={channelStats}
+        />
+      )}
+      {!isExternal && !locked && (
+        <InboxHero
+          label="Workspace"
+          newCount={intStateCounts.open}
+          assignedCount={intStateCounts.assigned}
+          closedCount={intStateCounts.closed}
+          channels={internalTypeStats}
         />
       )}
 

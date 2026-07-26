@@ -15,17 +15,20 @@ export function InboxHero({
   assignedCount,
   closedCount,
   channels,
+  label = "Comms",
 }: {
   newCount: number
   assignedCount: number
   closedCount: number
   channels: InboxHeroChannel[]
+  /** Leading strip label — "Comms" (external) / "Workspace" (internal). */
+  label?: string
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1 font-mono text-[11px] text-muted-foreground/60">
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--st-live)] shadow-[0_0_8px_var(--st-live-glow)]" />
-        <span className="uppercase tracking-[0.14em] text-muted-foreground/55">Comms · Live</span>
+        <span className="uppercase tracking-[0.14em] text-muted-foreground/55">{label} · Live</span>
       </span>
       <Stat label="New" value={newCount} strong />
       <Stat label="Opgepakt" value={assignedCount} />
