@@ -48,36 +48,29 @@ function MetricRow({
   tone?: "auto" | "neutral"
   showStatus?: boolean
 }) {
+  // Show attainment as a % OF the (pace-adjusted or ratio) target - 121% reads as
+  // "21% ahead", 88% as "12% behind", green at/over 100%, red under.
   const has = showStatus && target > 0 && isFinite(current)
-  const pct = has ? (current / target - 1) * 100 : 0
-  const up = current >= target
-  const color = !has
+  const pctOfTarget = has ? (current / target) * 100 : null
+  const good = pctOfTarget !== null && pctOfTarget >= 100
+  const color = pctOfTarget === null
     ? ""
     : tone === "neutral"
     ? "text-muted-foreground/50"
-    : up
+    : good
     ? "text-[var(--st-live)]"
     : "text-[var(--st-error)]"
   return (
-    <div className="grid grid-cols-[1fr_auto_58px] items-baseline gap-x-3 py-2">
+    <div className="grid grid-cols-[1fr_auto_56px] items-baseline gap-x-3 py-2">
       <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
       <span className="font-mono text-[15px] font-semibold tabular-nums text-foreground text-right">{value}</span>
-      {has && isFinite(pct) ? (
-        <span className={cn("font-mono text-[11px] font-semibold tabular-nums whitespace-nowrap text-right", color)}>
-          {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}%
+      {pctOfTarget !== null && isFinite(pctOfTarget) ? (
+        <span className={cn("font-mono text-[12px] font-semibold tabular-nums whitespace-nowrap text-right", color)}>
+          {Math.round(pctOfTarget)}%
         </span>
       ) : (
         <span className="text-right font-mono text-[11px] text-muted-foreground/30">–</span>
       )}
-    </div>
-  )
-}
-
-function GroupHead({ label, caption }: { label: string; caption: string }) {
-  return (
-    <div className="flex items-baseline justify-between">
-      <p className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50">{label}</p>
-      <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/40">{caption}</p>
     </div>
   )
 }
@@ -150,22 +143,22 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
             Marketing · New Business
           </p>
 
-          <div className="mt-4">
-            <GroupHead label="Ad spend & returns" caption="vs pace" />
-            <div className="mt-1 divide-y divide-border/30">
-              <MetricRow label="Ad Spend" value={hasSpend ? formatCurrencyDecimal(spend) : "–"} current={spend} target={adSpendPace} tone="neutral" showStatus={hasSpend} />
-              <MetricRow label="Deals" value={String(deals)} current={deals} target={dealsPace} />
-              <MetricRow label="Closed Deal Revenue" value={formatCurrency(closedRevenue)} current={closedRevenue} target={closedPace} />
-              <MetricRow label="Cash Collected" value={formatCurrency(collectedRevenue)} current={collectedRevenue} target={collectedPace} />
-            </div>
+          <div className="mt-4 flex items-baseline justify-end">
+            <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/40">% of pace target</p>
+          </div>
+          <div className="mt-1 divide-y divide-border/30">
+            <MetricRow label="Ad Spend" value={hasSpend ? formatCurrencyDecimal(spend) : "–"} current={spend} target={adSpendPace} tone="neutral" showStatus={hasSpend} />
+            <MetricRow label="ROAS" value={hasSpend ? formatMultiplier(roas) : "–"} current={roas} target={roasTarget} showStatus={hasSpend} />
+            <MetricRow label="Deals" value={String(deals)} current={deals} target={dealsPace} />
+            <MetricRow label="Closed Deal Revenue" value={formatCurrency(closedRevenue)} current={closedRevenue} target={closedPace} />
+            <MetricRow label="Cash Collected" value={formatCurrency(collectedRevenue)} current={collectedRevenue} target={collectedPace} />
           </div>
 
           <div className="mt-3 border-t border-border/40 pt-3">
-            <GroupHead label="Efficiency" caption="vs target" />
-            <div className="mt-1 divide-y divide-border/30">
-              <MetricRow label="ROAS" value={hasSpend ? formatMultiplier(roas) : "–"} current={roas} target={roasTarget} showStatus={hasSpend} />
-              <MetricRow label="Avg Deal Value" value={deals > 0 ? formatCurrency(avgDealValue) : "–"} current={avgDealValue} target={avgDealTarget} showStatus={deals > 0} />
-              <MetricRow label="Avg Collected / Deal" value={deals > 0 ? formatCurrency(avgCollected) : "–"} current={avgCollected} target={avgCollectedTarget} showStatus={deals > 0} />
+            <p className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50">Efficiency · per deal</p>
+            <div className="divide-y divide-border/30">
+              <MetricRow label="Average Deal Value" value={deals > 0 ? formatCurrency(avgDealValue) : "–"} current={avgDealValue} target={avgDealTarget} showStatus={deals > 0} />
+              <MetricRow label="Average Collected / Deal" value={deals > 0 ? formatCurrency(avgCollected) : "–"} current={avgCollected} target={avgCollectedTarget} showStatus={deals > 0} />
             </div>
           </div>
         </div>
