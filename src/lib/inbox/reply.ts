@@ -527,7 +527,7 @@ async function sendSlackReplyAsUser(
 // --- Public API ----------------------------------------------------------
 
 export type ReplyResult = {
-  source: "trengo" | "slack"
+  source: "trengo" | "slack" | "monday"
   outboundMsgId: string
   inboxEventId: string
 }
