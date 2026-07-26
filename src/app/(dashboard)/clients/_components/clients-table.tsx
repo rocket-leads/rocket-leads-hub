@@ -353,7 +353,7 @@ function ClientUpdateCell({
         <ClientUpdateButton mondayItemId={mondayItemId} clientName={clientName} />
       )}
       {caption && (
-        <span className="text-[10px] tabular-nums text-muted-foreground/60">
+        <span className="text-[11px] tabular-nums text-muted-foreground/60">
           {t("clients.client_update.last", locale, { date: caption })}
         </span>
       )}
@@ -916,9 +916,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           // the name as plain text so we don't have a Link competing with
                           // the row's onClick.
                           <div className="block min-w-0 flex-1" title={client.name}>
-                            <p className="font-medium text-sm truncate">{client.name}</p>
+                            <p className="font-semibold text-[14px] leading-tight truncate">{client.name}</p>
                             {client.firstName && (
-                              <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                              <p className="text-[12px] text-muted-foreground/70 truncate">{client.firstName}</p>
                             )}
                           </div>
                         ) : (
@@ -928,9 +928,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             className="block hover:text-primary transition-colors min-w-0 flex-1"
                             title={client.name}
                           >
-                            <p className="font-medium text-sm truncate">{client.name}</p>
+                            <p className="font-semibold text-[14px] leading-tight truncate">{client.name}</p>
                             {client.firstName && (
-                              <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                              <p className="text-[12px] text-muted-foreground/70 truncate">{client.firstName}</p>
                             )}
                           </Link>
                         )}
@@ -952,7 +952,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             <span className="text-muted-foreground/40 text-xs">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
+                        <TableCell className="text-[13px] text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
                       </>
                     )}
                     {/* Performance view: Status + Health */}
@@ -991,7 +991,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     {/* Invoice group: Overdue + MRR + Next */}
                     {showInvoiceGroup && (
                       <>
-                        <TableCell className="text-xs tabular-nums">
+                        <TableCell className="text-[13px] tabular-nums">
                           {(() => {
                             if (!billingSummaries && client.stripeCustomerId) {
                               return <span className="text-muted-foreground/40">...</span>
@@ -1012,10 +1012,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             // glance without a second column.
                             return (
                               <div className="leading-tight">
-                                <p className="text-xs tabular-nums font-medium text-red-400">
+                                <p className="text-[13px] tabular-nums font-medium text-red-400">
                                   {fmt(overdue)}
                                 </p>
-                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                                <p className="text-[11px] tabular-nums text-muted-foreground/60">
                                   {t("clients.overdue.of", locale, { total: fmt(summary.outstanding) })}
                                 </p>
                               </div>
@@ -1033,8 +1033,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             }
                             return (
                               <div className="leading-tight">
-                                <p className="text-xs tabular-nums font-medium">{formatCurrencyLocale(a.mrr, locale)}</p>
-                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                                <p className="text-[13px] tabular-nums font-medium">{formatCurrencyLocale(a.mrr, locale)}</p>
+                                <p className="text-[11px] tabular-nums text-muted-foreground/60">
                                   {formatCurrencyLocale(a.adBudget, locale)} {t("clients.budget_suffix", locale)}
                                 </p>
                               </div>
@@ -1048,7 +1048,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                               that lives on the Billing page, not here. */}
                           {client.cycleStartDate ? (
                             <span
-                              className={`text-xs tabular-nums ${
+                              className={`text-[13px] tabular-nums ${
                                 client.cycleStartDate <= todayIso()
                                   ? "text-amber-500 font-medium"
                                   : "text-muted-foreground"
@@ -1088,16 +1088,16 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     {/* KPI group: Ad Spend + Leads + CPL + CPL Δ */}
                     {boardType === "current" && showKpiGroup && (
                       <>
-                        <TableCell className="text-xs tabular-nums text-muted-foreground">
+                        <TableCell className="text-[13px] tabular-nums text-muted-foreground">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.adSpend > 0 ? fmtKpi(kpi.adSpend, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-xs tabular-nums font-medium">
+                        <TableCell className="text-[13px] tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.leads > 0 ? fmtKpi(kpi.leads, "integer") : ""}
                         </TableCell>
-                        <TableCell className={`text-xs tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
+                        <TableCell className={`text-[13px] tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-xs tabular-nums border-r border-border/40">
+                        <TableCell className="text-[13px] tabular-nums border-r border-border/40">
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40">...</span>
                           ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 && kpi.prevPeriodReliable !== false ? (
