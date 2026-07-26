@@ -1302,6 +1302,10 @@ function ThreadMessages({
   const queryClient = useQueryClient()
   const locale = useLocale()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // The single scroll viewport that holds BOTH the messages and the composer
+  // (Trengo-style: the composer is inline at the end of the stream, not a fixed
+  // footer, so scrolling up reveals history and the composer scrolls away).
+  const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [reply, setReply] = useState("")
@@ -1380,10 +1384,21 @@ function ThreadMessages({
     [messagesQuery.data?.messages],
   )
 
-  // Scroll to bottom on load + on new message arrivals.
+  // Scroll the whole viewport (messages + inline composer) to the bottom on
+  // load + on new message arrivals, so you land ready to reply with the latest
+  // messages just above the composer.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [thread.threadKey, messages.length])
+
+  // Expanding the email composer grows the stream below the fold - bring it into
+  // view so the reply box is visible the moment you click "Reply".
+  useEffect(() => {
+    if (!emailComposerOpen) return
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [emailComposerOpen])
 
   // In-memory per-thread draft cache. Keyed by threadKey, holds the slice
   // of composer state that should survive switching back and forth between
@@ -1968,8 +1983,8 @@ function ThreadMessages({
           caps the reading column so the conversation stays comfortable on
           wide monitors instead of stretching edge-to-edge - Roy 2026-07-15
           "chat box ineens heel erg breed". */}
-      <div className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-3 bg-background/40">
-        <div className={cn("mx-auto w-full min-w-0 space-y-3", isEmail ? "max-w-3xl" : "max-w-4xl")}>
+      <div ref={scrollRef} className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto bg-background/40">
+        <div className={cn("mx-auto w-full min-w-0 space-y-3 px-4 py-3", isEmail ? "max-w-3xl" : "max-w-4xl")}>
           {messagesQuery.isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -1990,15 +2005,18 @@ function ThreadMessages({
           )}
           <div ref={messagesEndRef} />
         </div>
-      </div>
 
+        {/* Composer lives INSIDE the scroll viewport (after the messages), so
+            it scrolls with the stream instead of being a fixed footer - scroll
+            up and it slides away to reveal history (Trengo behaviour). Roy
+            2026-07-26. */}
       {/* Email composer rail. When closed, the chat pane gets the full
           vertical space back so the conversation is actually readable -
           for a quoted-history-laden email thread the always-on composer
           ate half the viewport. Tap "Reply" to expand into the full
           composer below. Roy 2026-06-12. */}
       {replyable && isEmail && !emailComposerOpen && (
-        <div className="shrink-0 border-t border-border bg-card px-3 py-3">
+        <div className="border-t border-border bg-card px-3 py-3">
           {/* Clean composer-bar prompt (187N): a full-width rounded field with a
               mail glyph + a filled send circle. Click to expand into the full
               email composer. Replaces the floating "Antwoord" pill. Roy 2026-07-24. */}
@@ -2023,12 +2041,10 @@ function ThreadMessages({
       {replyable && (!isEmail || emailComposerOpen) && (
         <div
           className={cn(
-            // Height-bounded + scrollable so the Send button is ALWAYS reachable
-            // at 100% zoom: a tall email editor + signature used to overflow the
-            // pane, and the parent's overflow-hidden clipped the bottom (= the
-            // Send row). Cap at 80% of the pane and let the composer scroll;
-            // the email Send row is sticky so it stays pinned. Roy 2026-07-26.
-            "border-t border-border p-3 transition-colors shrink-0 relative max-h-[80%] overflow-y-auto",
+            // Inline in the scroll stream (not a fixed footer): natural height,
+            // scrolls with the messages. Send is reached by scrolling the stream
+            // down; scrolling up slides the whole composer away. Roy 2026-07-26.
+            "relative border-t border-border p-3 transition-colors",
             isInternal ? "bg-amber-500/5" : "bg-muted/20",
             isDragOver &&
               supportsAttachments &&
@@ -2208,10 +2224,7 @@ function ThreadMessages({
                 onPasteFiles={(files) => uploadFiles(files)}
                 disabled={sending || uploadingCount > 0}
               />
-              {/* Sticky Send row: pinned to the bottom of the scrollable composer
-                  so it stays visible no matter how tall the signature / body is.
-                  Roy 2026-07-26 - Send was scrolling off-screen at 100% zoom. */}
-              <div className="sticky bottom-0 z-10 -mx-3 -mb-3 mt-2 flex items-center justify-end gap-2 border-t border-border/50 bg-background/95 px-3 py-2.5 backdrop-blur-sm">
+              <div className="mt-2 flex items-center justify-end gap-2">
                 {supportsAttachments && (
                   <>
                     <input
@@ -2439,6 +2452,7 @@ function ThreadMessages({
           ) : null}
         </div>
       )}
+      </div>
     </div>
   )
 }
