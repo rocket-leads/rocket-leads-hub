@@ -42,7 +42,7 @@ function TargetDelta({ current, target }: { current: number; target: number }) {
   return (
     <span className={cn("delta", up ? "up" : "down")} style={{ marginTop: 8 }}>
       <span className="d-dot" />
-      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs target
+      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs pace
     </span>
   )
 }

@@ -85,7 +85,7 @@ function StatCard({ stat }: { stat: Stat }) {
           style={{ whiteSpace: "nowrap", width: "max-content", maxWidth: "100%" }}
         >
           <span className="d-dot" />
-          {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs target
+          {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs pace
         </span>
       )}
       <Sparkline values={stat.series} />
