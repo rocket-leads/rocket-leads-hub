@@ -36,6 +36,9 @@ export async function GET(
       stripeCustomerId: client.stripeCustomerId || null,
       cycleStartDate: client.cycleStartDate || null,
       fee: agreementMonthly(agreement),
+      // Kept separate so each becomes its own invoice line.
+      serviceFee: agreement.platforms.reduce((s, p) => s + (agreement.platform_fees[p] ?? 0), 0),
+      followUpFee: agreement.follow_up ? agreement.follow_up_fee : 0,
       adBudget: agreement.ad_budget,
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(client.metaAdAccountId),
     },

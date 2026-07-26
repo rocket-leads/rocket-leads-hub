@@ -133,7 +133,10 @@ export default async function BillingPage() {
   // the Supabase clients.id to join client_agreements, so this is two queries:
   // monday_item_id → clients.id, then clients.id → flat agreement columns.
   const mondayIds = scheduled.map((c) => c.mondayItemId)
-  const moneyByMondayId = new Map<string, { mrr: number; adBudget: number }>()
+  const moneyByMondayId = new Map<
+    string,
+    { mrr: number; serviceFee: number; followUpFee: number; adBudget: number }
+  >()
 
   if (mondayIds.length > 0) {
     const { data: clientRows } = await supabase
@@ -157,6 +160,13 @@ export default async function BillingPage() {
         const agreement = normalizeAgreement(a)
         moneyByMondayId.set(mondayItemId, {
           mrr: agreementMonthly(agreement),
+          // Service fee + follow-up fee kept separate so each becomes its own
+          // invoice line (not merged into one "Service fee" total).
+          serviceFee: agreement.platforms.reduce(
+            (s, p) => s + (agreement.platform_fees[p] ?? 0),
+            0,
+          ),
+          followUpFee: agreement.follow_up ? agreement.follow_up_fee : 0,
           adBudget: agreement.ad_budget,
         })
       }
@@ -231,6 +241,8 @@ export default async function BillingPage() {
       cycleStartDate: c._cycle,
       stripeCustomerId: c.stripeCustomerId || null,
       fee: money?.mrr ?? 0,
+      serviceFee: money?.serviceFee ?? 0,
+      followUpFee: money?.followUpFee ?? 0,
       adBudget: money?.adBudget ?? 0,
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(c.metaAdAccountId),
       campaignStatus: c._status,
@@ -306,12 +318,10 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
     siblings.sort((a, b) => a.nextInvoiceDate.localeCompare(b.nextInvoiceDate))
     const primary = siblings[0]
     const totalFee = siblings.reduce((s, r) => s + r.fee, 0)
-    // Only count ad budget when the campaign actually runs through our ad
-    // account - otherwise the client pays Meta directly and we don't bill it.
-    const totalAdBudget = siblings.reduce(
-      (s, r) => s + (r.usesRocketLeadsAdAccount ? r.adBudget : 0),
-      0,
-    )
+    // Ad budget is invoiced whenever there's an amount (the "Adbudget RL"
+    // value). Finance clears it on the client for direct-pay clients, so a
+    // stored amount means RL fronts it.
+    const totalAdBudget = siblings.reduce((s, r) => s + r.adBudget, 0)
     const readiness = aggregateGroupReadiness(siblings)
     groups.push({
       groupKey,

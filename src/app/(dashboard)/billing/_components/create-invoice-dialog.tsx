@@ -75,26 +75,27 @@ function computeProration(
 }
 
 /** Per-campaign info used to seed line items when the parent client has
- *  multiple Monday rows (= multiple campaigns) sharing one Stripe customer. */
+ *  multiple Monday rows (= multiple campaigns) sharing one Stripe customer.
+ *  Each fee component is kept separate so it becomes its own invoice line. */
 export type SiblingCampaignSeed = {
   name: string
-  fee: number
+  serviceFee: number
+  followUpFee: number
   adBudget: number
-  usesRocketLeadsAdAccount: boolean
 }
 
 type Props = {
   mondayItemId: string
   stripeCustomerId: string
   clientName: string
-  /** Service fee (e.g. €450). Pre-fills the first line item - used when no
-   *  `siblingCampaigns` is provided (single-campaign client). */
-  fee: number
-  /** Ad budget. Pre-fills a second line item *only* when the client runs ads
-   *  via Rocket Leads' ad account. Otherwise the field is hidden entirely so
-   *  finance doesn't accidentally invoice for ads we don't pay for. */
+  /** Service fee = sum of the agreement's platform fees (e.g. Meta €500).
+   *  Its own line item. */
+  serviceFee: number
+  /** Follow-up (lead opvolging) fee. Its own line item when > 0. */
+  followUpFee: number
+  /** Ad budget RL fronts (the "Adbudget RL" amount). Its own line item when
+   *  > 0 - finance deletes it if a client pays Meta directly. */
   adBudget: number
-  usesRocketLeadsAdAccount: boolean
   /** When the parent client has multiple campaigns sharing this Stripe
    *  customer, pass them all here. Each entry contributes its own
    *  service-fee + (when applicable) ad-budget line items, suffixed with the
@@ -132,42 +133,37 @@ function suffixFromSiblings(name: string, allNames: string[]): string {
   return suffix || name
 }
 
-/** Build the default line items based on what the agreement says. */
+/**
+ * Build the default line items from the agreement. Each component gets its OWN
+ * line - service fee, follow-up fee and ad budget are never merged - so the
+ * invoice mirrors the Monday columns 1:1. The ad-budget line appears whenever
+ * there's an amount to invoice (the "Adbudget RL" value); finance deletes it
+ * for clients who pay Meta directly.
+ */
 function buildInitialItems(
-  fee: number,
+  serviceFee: number,
+  followUpFee: number,
   adBudget: number,
-  usesRl: boolean,
   siblings: SiblingCampaignSeed[] | undefined,
 ): LineItemDraft[] {
   const monthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })
   const items: LineItemDraft[] = []
+  const add = (description: string, amount: number) => {
+    if (amount > 0) items.push({ id: crypto.randomUUID(), description, amountEuro: String(amount) })
+  }
 
   if (siblings && siblings.length > 1) {
     const allNames = siblings.map((s) => s.name)
     for (const sib of siblings) {
       const suffix = suffixFromSiblings(sib.name, allNames)
-      if (sib.fee > 0) {
-        items.push({
-          id: crypto.randomUUID(),
-          description: `Service fee - ${suffix} - ${monthLabel}`,
-          amountEuro: String(sib.fee),
-        })
-      }
-      if (sib.usesRocketLeadsAdAccount && sib.adBudget > 0) {
-        items.push({
-          id: crypto.randomUUID(),
-          description: `Advertising budget - ${suffix} - ${monthLabel}`,
-          amountEuro: String(sib.adBudget),
-        })
-      }
+      add(`Service fee - ${suffix} - ${monthLabel}`, sib.serviceFee)
+      add(`Follow-up fee - ${suffix} - ${monthLabel}`, sib.followUpFee)
+      add(`Advertising budget - ${suffix} - ${monthLabel}`, sib.adBudget)
     }
   } else {
-    if (fee > 0) {
-      items.push({ id: crypto.randomUUID(), description: `Service fee - ${monthLabel}`, amountEuro: String(fee) })
-    }
-    if (usesRl && adBudget > 0) {
-      items.push({ id: crypto.randomUUID(), description: `Advertising budget - ${monthLabel}`, amountEuro: String(adBudget) })
-    }
+    add(`Service fee - ${monthLabel}`, serviceFee)
+    add(`Follow-up fee - ${monthLabel}`, followUpFee)
+    add(`Advertising budget - ${monthLabel}`, adBudget)
   }
 
   if (items.length === 0) {
@@ -210,16 +206,16 @@ export function CreateInvoiceDialog({
   mondayItemId,
   stripeCustomerId,
   clientName,
-  fee,
+  serviceFee,
+  followUpFee,
   adBudget,
-  usesRocketLeadsAdAccount,
   siblingCampaigns,
   cycleStartDate,
   onClose,
 }: Props) {
   const router = useRouter()
   const [items, setItems] = useState<LineItemDraft[]>(() =>
-    buildInitialItems(fee, adBudget, usesRocketLeadsAdAccount, siblingCampaigns),
+    buildInitialItems(serviceFee, followUpFee, adBudget, siblingCampaigns),
   )
   const [daysUntilDue, setDaysUntilDue] = useState<string>("7")
   const [error, setError] = useState<string | null>(null)
