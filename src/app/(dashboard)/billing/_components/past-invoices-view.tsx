@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
-import { ExternalLink, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Check } from "lucide-react"
 import { subDays } from "date-fns"
 import { cn } from "@/lib/utils"
 import {
@@ -211,7 +210,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                 <SortableHead label="Date" k="date" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[130px]" />
                 <SortableHead label="Amount" k="amount" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
                 <SortableHead label="Status" k="status" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
-                <TableHead className="w-[100px]">Open</TableHead>
+                <TableHead className="w-[130px]">Link</TableHead>
                 <TableHead className="w-[48px]" />
               </TableRow>
             </TableHeader>
@@ -252,37 +251,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
-                      {inv.invoicePdf ? (
-                        <a
-                          href={inv.invoicePdf}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          PDF
-                          <ExternalLink className="h-3 w-3 opacity-50" />
-                        </a>
-                      ) : inv.hostedUrl ? (
-                        <a
-                          href={inv.hostedUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Image
-                            src="/logos/brands/stripe.svg"
-                            alt=""
-                            width={12}
-                            height={12}
-                            className="h-3 w-3 object-contain"
-                            unoptimized
-                          />
-                          View
-                          <ExternalLink className="h-3 w-3 opacity-50" />
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground/50">-</span>
-                      )}
+                      <InvoiceLinkCell hostedUrl={inv.hostedUrl} invoicePdf={inv.invoicePdf} />
                     </TableCell>
                     <TableCell className="py-2.5 text-right">
                       <InvoiceActionMenu
@@ -331,6 +300,74 @@ function Stat({
       </p>
       <p className={`text-xl font-semibold mt-0.5 tabular-nums ${valueTone}`}>{value}</p>
       {hint && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{hint}</p>}
+    </div>
+  )
+}
+
+/**
+ * Per-invoice link cell. Primary action copies the Stripe hosted invoice URL
+ * (the client-facing, payable invoice page) to the clipboard so the AM can
+ * paste it straight into WhatsApp/email. A secondary icon opens that same
+ * page in a new tab to preview it. Falls back to the PDF link when Stripe
+ * hasn't produced a hosted URL yet (e.g. draft invoices).
+ */
+function InvoiceLinkCell({
+  hostedUrl,
+  invoicePdf,
+}: {
+  hostedUrl: string | null
+  invoicePdf: string | null
+}) {
+  const [copied, setCopied] = useState(false)
+  const copyTarget = hostedUrl ?? invoicePdf
+
+  if (!copyTarget) {
+    return <span className="text-[11px] text-muted-foreground/50">-</span>
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(copyTarget!)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // Clipboard blocked (insecure context / permissions) - open the page
+      // so the AM can copy the URL from the address bar instead.
+      window.open(copyTarget!, "_blank", "noopener,noreferrer")
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={copy}
+        title="Copy invoice link"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {copied ? (
+          <>
+            <Check className="h-3 w-3 text-[color:var(--st-live)]" />
+            <span className="text-[color:var(--st-live)]">Copied</span>
+          </>
+        ) : (
+          <>
+            <Copy className="h-3 w-3 opacity-60" />
+            Copy link
+          </>
+        )}
+      </button>
+      {hostedUrl && (
+        <a
+          href={hostedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open invoice page"
+          className="inline-flex items-center text-muted-foreground/60 hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      )}
     </div>
   )
 }
