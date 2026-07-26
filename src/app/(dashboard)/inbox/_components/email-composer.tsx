@@ -253,16 +253,18 @@ export function EmailComposer({
           </>
         )}
         <HeaderRow label="Subject">
-          {/* border-0 + appearance-none strips the browser's default input
-              chrome so Subject sits flush like the From/To spans (it was the
-              only <input> in the header, so it read as a boxed field). */}
+          {/* The 187N global `input[type=text]` rule (theme.css) gives every
+              text input a boxed look (border + radius + 11px padding + 14px
+              font) — its element+attr selector outranks utility classes, so we
+              override with `!` (v4 suffix) to make Subject sit FLUSH like the
+              From/To spans and match their row height exactly. Roy 2026-07-26. */}
           <input
             type="text"
             value={subject}
             onChange={(e) => onSubjectChange(e.target.value)}
             placeholder="Re: (uses original subject if blank)"
             disabled={disabled}
-            className="w-full flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] text-foreground/80 shadow-none outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/45"
+            className="w-full flex-1 border-0! bg-transparent! p-0! text-[13px]! text-foreground/80 shadow-none! outline-none! rounded-none! focus:border-0! focus:shadow-none! focus:ring-0! placeholder:text-muted-foreground/45"
           />
         </HeaderRow>
       </div>
@@ -436,7 +438,7 @@ function EmailChipInput({
         onBlur={commitDraft}
         placeholder={value.length === 0 ? placeholder : ""}
         disabled={disabled}
-        className="min-w-[120px] flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] shadow-none outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/45"
+        className="min-w-[120px] flex-1 border-0! bg-transparent! p-0! text-[13px]! shadow-none! outline-none! rounded-none! focus:border-0! focus:shadow-none! focus:ring-0! placeholder:text-muted-foreground/45"
       />
     </span>
   )

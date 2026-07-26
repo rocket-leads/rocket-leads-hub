@@ -46,9 +46,14 @@ only recolours them. So a component can be "on-brand colour, wrong shape."
 1. **Purple, never orange.** Brand accent is `#8967F3`. If you see coral/orange,
    it's a hardcoded token leak — fix it in `client.css`, not inline. Amber is
    only for semantic warnings (`--st-warn`), red (`--st-error`) for errors.
-2. **Fix shapes at the primitive, once — never per screen.** If a Button / Dialog
-   / input shape is off, fix its file in `src/components/ui/*` so every usage
-   inherits it. Don't patch the same shape on 10 screens.
+2. **Style at the primitive, once — never per screen.** Primitive-level look &
+   feel (Button, Dialog, input, etc.) IS restyled to 187N — do it in the
+   primitive's file in `src/components/ui/*` so every usage inherits it, and
+   update this brief when you make such a call. This is the sanctioned path, not
+   a last resort: a per-screen override of a shared primitive is the anti-pattern
+   (don't patch the same shape on 10 screens). When the 187N look for a primitive
+   is ambiguous, match the corresponding class in `theme.css` (`.btn`/`.btn-primary`,
+   the global `input`, `.chip`, etc.) rather than inventing a new one.
 3. **Use the 187N vocabulary** (cheat-sheet below) instead of inventing new
    Tailwind. Status = `.st-label` (dot + mono uppercase, NO fill). Toolterms/
    toggles = `.chip`/`.chip.active`. Search = `.search-pill`. Cards = `.section-card`.
