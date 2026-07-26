@@ -100,6 +100,8 @@ type Props = {
   onChanged: () => void
   /** Invalidate the thread + feed after a reply lands. */
   onReplied: () => void
+  /** Pick up the ticket (New -> Opgepakt) the moment the composer opens. */
+  onPickup?: () => void
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   /** Current ticket state + setter for the 3-state header buttons. */
   ticketState?: TicketState
@@ -124,6 +126,7 @@ export function DetailPane({
   onClose,
   onChanged,
   onReplied,
+  onPickup,
   onMakeTaskFromMessage,
   ticketState,
   onSetState,
@@ -167,6 +170,7 @@ export function DetailPane({
         thread={row.thread}
         users={users}
         onReplied={onReplied}
+        onPickup={onPickup}
         onMakeTaskFromMessage={onMakeTaskFromMessage}
         ticketState={ticketState}
         onSetState={onSetState}
@@ -189,6 +193,7 @@ function ChatDetail({
   thread,
   users,
   onReplied,
+  onPickup,
   onMakeTaskFromMessage,
   ticketState,
   onSetState,
@@ -200,6 +205,7 @@ function ChatDetail({
   thread: ChatThreadSummary
   users: InboxUser[]
   onReplied: () => void
+  onPickup?: () => void
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   ticketState?: TicketState
   onSetState?: (target: TicketState) => void
@@ -232,6 +238,7 @@ function ChatDetail({
           users={users}
           onMakeTaskFromMessage={onMakeTaskFromMessage}
           onReplied={onReplied}
+          onPickup={onPickup}
           mentioned={mentioned}
           noteMentions={noteMentions}
           onResolvedState={setResolved}

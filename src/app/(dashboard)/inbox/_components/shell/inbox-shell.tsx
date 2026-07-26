@@ -705,6 +705,19 @@ export function InboxShell({
     }
   }, [queryClient, openRow, markThread])
 
+  // Pick-up-on-engage: clicking the Reply button (opening the composer) is
+  // taking the ticket, so it moves New -> Opgepakt immediately, BEFORE a word
+  // is typed. Same reopen+assign as onReplied but without the thread refetch
+  // (nothing was sent yet). Idempotent - no-op once already assigned. Roy
+  // 2026-07-26.
+  const onPickup = useCallback(() => {
+    if (openRow?.thread && !openRow.thread.isAssigned) {
+      if (openRow.thread.isArchived) markThread(openRow.thread, "unarchive")
+      markThread(openRow.thread, "assign")
+      setExtState((s) => (s === "open" || s === "closed" ? "assigned" : s))
+    }
+  }, [openRow, markThread])
+
   // Explicit 3-state transitions (Open / Assigned / Closed) for the ticket
   // header buttons - the user always sees the two states it's NOT in.
   const setThreadState = useCallback(
@@ -1060,6 +1073,7 @@ export function InboxShell({
               onClose={() => setOpenRow(null)}
               onChanged={refreshItems}
               onReplied={onReplied}
+              onPickup={onPickup}
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
               noteMentions={noteMentions}
@@ -1127,6 +1141,7 @@ export function InboxShell({
               onClose={() => setOpenRow(null)}
               onChanged={refreshItems}
               onReplied={onReplied}
+              onPickup={onPickup}
               onMakeTaskFromMessage={openComposerFromChat}
             />
           </div>
@@ -1144,6 +1159,7 @@ export function InboxShell({
               onClose={() => setOpenRow(null)}
               onChanged={refreshItems}
               onReplied={onReplied}
+              onPickup={onPickup}
               onMakeTaskFromMessage={openComposerFromChat}
               mentioned={mentionedOnly}
               noteMentions={noteMentions}
