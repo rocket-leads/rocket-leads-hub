@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState, useCallback } from "react"
-import { format, subDays } from "date-fns"
+import { format, subDays, getDaysInMonth } from "date-fns"
+import { getEffectiveDays } from "@/lib/targets/calculations"
 import { useFinanceData } from "../_hooks/use-finance-data"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
@@ -70,23 +71,22 @@ export function FinanceTab() {
   const nb = finance?.serviceFeeNewBusiness
   const mrr = finance?.serviceFeeMrr
 
-  // ── Pro-rata factor: how far through the selected range are we ──
-  // 0 = range entirely in the future, 1 = range entirely in the past, in-between
-  // = elapsed share of a range that crosses today (used for projections + targets).
-  const proRataFactor = (() => {
-    const now = new Date()
-    if (now <= range.startDate) return 0
-    if (now >= range.endDate) return 1
-    const total = range.endDate.getTime() - range.startDate.getTime()
-    const elapsed = now.getTime() - range.startDate.getTime()
-    return total > 0 ? elapsed / total : 1
-  })()
-  const isCurrentRange = proRataFactor > 0 && proRataFactor < 1
+  // ── Pace: how far through the CALENDAR MONTH the range reaches ──
+  // The service-fee target is a MONTHLY target, so "where we should be by now"
+  // and the month-end projection are based on the day of the month the range
+  // ends on (days ÷ days-in-month) - NOT how much of the range's own span has
+  // elapsed. An MTD range ends yesterday, so a range-elapsed factor reads as a
+  // full (=1) period and the target bar wrongly shows behind even when we're
+  // ahead of pace. Matches the Marketing tab's getProRataTarget. Roy 2026-07-26.
+  const daysInMonth = getDaysInMonth(range.endDate)
+  const daysElapsed = getEffectiveDays(range)
+  const paceFraction = daysInMonth > 0 ? Math.min(1, daysElapsed / daysInMonth) : 1
+  const isCurrentRange = paceFraction > 0 && paceFraction < 1
 
   // ── Revenue actuals ──
   const actualServiceFee = sf?.invoiced ?? 0
-  // ── PROJECTED full-period revenue (extrapolate at current pace) ──
-  const projectedServiceFee = isCurrentRange && proRataFactor > 0 ? actualServiceFee / proRataFactor : actualServiceFee
+  // ── PROJECTED full-month revenue (extrapolate invoiced-so-far at current pace) ──
+  const projectedServiceFee = isCurrentRange ? actualServiceFee / paceFraction : actualServiceFee
 
   // ── Costs: the API returns full-month values (either actual from sheet or 3-month average) ──
   const teamCostsActual = costs?.teamCosts ?? 0
@@ -98,7 +98,8 @@ export function FinanceTab() {
 
   // ── Target progress bar ──
   const totalRevenueTarget = tgt?.serviceFeeRevenue ?? 0
-  const totalRevenueExpected = totalRevenueTarget * proRataFactor
+  // Expected = where a MONTHLY target should stand by this day of the month.
+  const totalRevenueExpected = totalRevenueTarget * paceFraction
 
   // ── Derived finance targets ──
   // Both Net Profit target and Max Total Costs target scale with actual/projected revenue
@@ -119,9 +120,9 @@ export function FinanceTab() {
   const netProfit = revenueForProfit - totalCosts
   const margin = revenueForProfit > 0 ? netProfit / revenueForProfit : 0
 
-  // ── Month-end projection: only when viewing the current month-to-date (range
-  // starts on the 1st of the current month). Extrapolates invoiced service fee
-  // at the current daily pace to the full calendar month. ──
+  // ── Month-end projection for the hero: only for a true current month-to-date
+  // view (range starts on the 1st of the current month). Reuses the same pace +
+  // projected revenue so the hero, the target bar and the Profit section agree. ──
   const monthProjection = (() => {
     const today = new Date()
     const start = range.startDate
@@ -129,12 +130,8 @@ export function FinanceTab() {
     const inCurrentMonth = end.getFullYear() === today.getFullYear() && end.getMonth() === today.getMonth()
     const startsAtMonthStart =
       start.getDate() === 1 && start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
-    if (!inCurrentMonth || !startsAtMonthStart) return null
-    const daysElapsed = end.getDate()
-    const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate()
-    const invoicedSf = sf?.invoiced ?? 0
-    if (daysElapsed <= 0 || invoicedSf <= 0) return null
-    return { value: invoicedSf * (daysInMonth / daysElapsed), daysElapsed, daysInMonth }
+    if (!inCurrentMonth || !startsAtMonthStart || !isCurrentRange || actualServiceFee <= 0) return null
+    return { value: projectedServiceFee, daysElapsed, daysInMonth }
   })()
 
   return (
