@@ -40,10 +40,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // .btn-primary — solid brand purple, white text; hover deepens the
-        // fill, lifts 2px, and casts the 187N purple glow (--shadow-teal).
+        // .btn-primary — solid brand purple, white text, with the 187N
+        // CHAMFER: the signature diagonal-cut top-left/bottom-right corners
+        // (clip-path via the theme `.chamfer` class + `--chamfer` token). This
+        // is what makes a CTA read as 187N vs a plain rounded old-hub button.
+        // Shadows are dropped because a clip-path clips box-shadow; hover
+        // deepens the fill + lifts 2px for feedback instead. Roy 2026-07-26.
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-[var(--teal-ink)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-teal)] [a]:hover:bg-[var(--teal-ink)]",
+          "chamfer bg-primary text-primary-foreground hover:bg-[var(--teal-ink)] hover:-translate-y-0.5 [a]:hover:bg-[var(--teal-ink)]",
         // .btn-secondary — white surface + border, hover reveals the purple.
         outline:
           "border-[var(--line-strong)] bg-card text-foreground shadow-xs hover:border-primary hover:text-primary aria-expanded:border-primary aria-expanded:text-primary",
