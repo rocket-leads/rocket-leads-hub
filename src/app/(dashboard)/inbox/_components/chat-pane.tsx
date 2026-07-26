@@ -2011,37 +2011,11 @@ function ThreadMessages({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Composer lives INSIDE the scroll viewport (after the messages), so
-            it scrolls with the stream instead of being a fixed footer - scroll
-            up and it slides away to reveal history (Trengo behaviour). Roy
-            2026-07-26. */}
-      {/* Email composer rail. When closed, the chat pane gets the full
-          vertical space back so the conversation is actually readable -
-          for a quoted-history-laden email thread the always-on composer
-          ate half the viewport. Tap "Reply" to expand into the full
-          composer below. Roy 2026-06-12. */}
-      {replyable && isEmail && !emailComposerOpen && (
-        <div className="border-t border-border bg-card px-3 py-3">
-          {/* Clean composer-bar prompt (187N): a full-width rounded field with a
-              mail glyph + a filled send circle. Click to expand into the full
-              email composer. Replaces the floating "Antwoord" pill. Roy 2026-07-24. */}
-          <button
-            type="button"
-            onClick={() => {
-              // Opening the reply = taking the ticket: New -> Opgepakt now.
-              onPickup?.()
-              setEmailComposerOpen(true)
-            }}
-            className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
-          >
-            <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
-            <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Send className="h-3.5 w-3.5" />
-            </span>
-          </button>
-        </div>
-      )}
+        {/* The EXPANDED composer lives INSIDE the scroll viewport (after the
+            messages) so it scrolls with the stream - scroll up and it slides
+            away to reveal history. The COLLAPSED "Reply…" bar is instead PINNED
+            as a footer below the scroll (rendered after the viewport closes) so
+            there's always a one-click way to start a reply. Roy 2026-07-26. */}
 
       {/* Reply box. Drag-drop handlers moved up here from the textarea row
           so dropping ANYWHERE in the composer area uploads the file -
@@ -2465,6 +2439,30 @@ function ThreadMessages({
         </div>
       )}
       </div>
+
+      {/* Pinned collapsed "Reply…" bar — a fixed footer below the scroll
+          viewport so there's always a one-click way into the composer. Only for
+          email in its collapsed state; clicking it expands the full composer
+          INSIDE the scroll (above), and the bar disappears. Roy 2026-07-26. */}
+      {replyable && isEmail && !emailComposerOpen && (
+        <div className="shrink-0 border-t border-border bg-card px-3 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              // Opening the reply = taking the ticket: New -> Opgepakt now.
+              onPickup?.()
+              setEmailComposerOpen(true)
+            }}
+            className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
+          >
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
+            <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Send className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
