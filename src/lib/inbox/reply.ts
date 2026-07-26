@@ -2,6 +2,7 @@ import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/notifications/push"
 import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/trengo"
+import { postItemUpdate } from "@/lib/integrations/monday"
 import { convertMentionNamesToHandles } from "@/lib/inbox/trengo-mentions"
 
 /**
@@ -604,10 +605,7 @@ export async function replyToInboxEvent(
   const event = await loadEvent(eventId)
   if (!event) throw new Error("Event not found")
 
-  if (event.source === "monday") {
-    throw new Error("Monday updates aren't replyable from the Hub")
-  }
-  if (event.source !== "trengo" && event.source !== "slack") {
+  if (event.source !== "trengo" && event.source !== "slack" && event.source !== "monday") {
     throw new Error(`Reply not supported for source: ${event.source}`)
   }
   if (template && event.source !== "trengo") {
@@ -680,6 +678,26 @@ export async function replyToInboxEvent(
       outboundId = r.message_id
       sourceMsgId = `trengo:msg:${outboundId}`
     }
+  } else if (event.source === "monday") {
+    // A Monday-sourced inbox item IS a Monday update. Replying to it posts a
+    // child update (reply) on the same Monday item, threaded under the original
+    // update - so "1 Hub update ↔ 1 Monday update, a Hub reply ↔ a Monday
+    // update reply". source_thread = `monday:item:<itemId>`, source_msg_id =
+    // `monday:update:<itemId>:<updateId>`. Posts AS the user (their Monday
+    // token) when connected, else the workspace token. Roy 2026-07-26.
+    if (!trimmed) throw new Error("Monday replies require a text body")
+    const mondayItemId = (event.source_thread ?? "").replace(/^monday:item:/, "")
+    const parentUpdateId = (event.source_msg_id ?? "").split(":")[3] ?? null
+    if (!mondayItemId || !parentUpdateId) {
+      throw new Error("Missing Monday item / update id on event")
+    }
+    const newId = await postItemUpdate(mondayItemId, trimmed, {
+      parentUpdateId,
+      actorUserId: userId,
+    })
+    if (!newId) throw new NeedsConnectError("monday")
+    outboundId = newId
+    sourceMsgId = `monday:update:${mondayItemId}:${newId}`
   } else {
     // Slack - source_thread is either `slack:thread:<channel>:<thread_ts>` or
     // `slack:channel:<channel>`. Channel ID is also the second segment of

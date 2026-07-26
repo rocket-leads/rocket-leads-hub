@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { sendPushToUser } from "@/lib/notifications/push"
+import { postItemUpdate } from "@/lib/integrations/monday"
 import type {
   CreateInboxItemInput,
   InboxKind,
@@ -110,6 +111,37 @@ export async function POST(req: NextRequest) {
       { error: error?.message ?? "Failed to create inbox item" },
       { status: 500 },
     )
+  }
+
+  // Mirror the new task/update to Monday as a real update on the client's item,
+  // then relink the Hub row to it (source=monday + the thread/msg ids the reply
+  // path keys on). Result: "1 Hub task/update ↔ 1 Monday update", and replying
+  // in the Hub threads a reply onto it. Best-effort + awaited so the item is
+  // linked by the time the composer refetches; a Monday failure leaves the item
+  // as a normal manual Hub item (no throw). clientId is the Monday item id.
+  // Roy 2026-07-26.
+  if (body.clientId) {
+    try {
+      const mondayBody = body.body?.trim()
+        ? `${body.title.trim()}\n\n${body.body.trim()}`
+        : body.title.trim()
+      const updateId = await postItemUpdate(body.clientId, mondayBody, {
+        actorUserId: session.user.id,
+      })
+      if (updateId) {
+        await supabase
+          .from("inbox_events")
+          .update({
+            source: "monday",
+            source_thread: `monday:item:${body.clientId}`,
+            source_msg_id: `monday:update:${body.clientId}:${updateId}`,
+            monday_update_id: updateId,
+          })
+          .eq("id", data.id)
+      }
+    } catch (e) {
+      console.error("Monday update mirror on inbox-create failed:", e)
+    }
   }
 
   // Push notification: notify the assignee about a new task on their plate.
