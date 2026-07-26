@@ -162,7 +162,9 @@ export function FinanceTab() {
         invoiced={sf?.invoiced ?? 0}
         newBusiness={nb?.invoiced ?? 0}
         mrr={mrr?.invoiced ?? 0}
-        invoicedTarget={totalRevenueTarget}
+        invoicedExpected={totalRevenueExpected}
+        mrrExpected={(tgt?.mrr ?? 0) * paceFraction}
+        newBusinessExpected={(tgt?.newBusiness ?? 0) * paceFraction}
         projection={monthProjection}
         isLoading={loading}
       />

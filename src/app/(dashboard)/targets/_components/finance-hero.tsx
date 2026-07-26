@@ -10,9 +10,13 @@ interface Props {
   invoiced: number
   newBusiness: number
   mrr: number
-  invoicedTarget: number
-  /** Month-end projection when viewing the current month-to-date - extrapolates
-   *  the invoiced-so-far at the current daily pace to the full calendar month. */
+  /** Pace-adjusted expected values (monthly target × fraction of month elapsed).
+   *  We're mid-month, so status is measured against where each stream should be
+   *  by now, not the full end-of-month target. */
+  invoicedExpected: number
+  mrrExpected: number
+  newBusinessExpected: number
+  /** Month-end projection when viewing the current month-to-date. */
   projection: { value: number; daysElapsed: number; daysInMonth: number } | null
   isLoading: boolean
 }
@@ -20,24 +24,26 @@ interface Props {
 const MRR_COLOR = "#8967F3"
 const NB_COLOR = "#B7A6F5"
 
-/** vs-target delta pill (higher is better). Inline white-space so it never wraps. */
-function Delta({ current, target }: { current: number; target: number }) {
-  if (!target) return null
-  const pct = (current / target - 1) * 100
-  if (!isFinite(pct)) return null
-  const good = current >= target
+/** Per-stream pace status: is this stream ahead of / behind where it should be
+ *  by this day of the month? Green = on/ahead of pace, red = behind. */
+function PaceChip({ label, current, expected }: { label: string; current: number; expected: number }) {
+  if (expected <= 0) return null
+  const good = current >= expected
+  const pct = Math.abs((current / expected - 1) * 100)
   return (
     <span
       className={cn("delta", good ? "up" : "down")}
-      style={{ marginTop: 8, whiteSpace: "nowrap", width: "max-content", maxWidth: "100%" }}
+      style={{ marginTop: 0, whiteSpace: "nowrap", width: "max-content", maxWidth: "100%" }}
     >
       <span className="d-dot" />
-      {pct >= 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs target
+      {label} {good ? "▲" : "▼"} {pct.toFixed(0)}%
     </span>
   )
 }
 
-export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mrr, invoicedTarget, projection, isLoading }: Props) {
+export const FinanceHero = memo(function FinanceHero({
+  invoiced, newBusiness, mrr, invoicedExpected, mrrExpected, newBusinessExpected, projection, isLoading,
+}: Props) {
   if (isLoading) {
     return (
       <div className="section-card">
@@ -53,7 +59,8 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
     )
   }
 
-  const onTarget = invoicedTarget > 0 && invoiced >= invoicedTarget
+  const onTrack = invoicedExpected > 0 && invoiced >= invoicedExpected
+  const hasPace = mrrExpected > 0 || newBusinessExpected > 0
 
   const segments = [
     { name: "MRR", value: mrr, color: MRR_COLOR },
@@ -66,7 +73,7 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
         {/* ── Left: headline ── */}
         <div className="min-w-0">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/70 flex items-center gap-2.5">
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", onTarget ? "bg-[var(--st-live)]" : "bg-[var(--st-warn)]")} />
+            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", onTrack ? "bg-[var(--st-live)]" : "bg-[var(--st-warn)]")} />
             Financials
           </p>
           <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">
@@ -80,10 +87,20 @@ export const FinanceHero = memo(function FinanceHero({ invoiced, newBusiness, mr
             <span className="font-medium text-foreground/80">{formatCurrency(mrr)}</span> recurring ·{" "}
             <span className="font-medium text-foreground/80">{formatCurrency(newBusiness)}</span> new business.
           </p>
-          <Delta current={invoiced} target={invoicedTarget} />
+
+          {/* Per-stream pace status - which of the two is on/off track */}
+          {hasPace && (
+            <div className="mt-4">
+              <p className="mb-1.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/50">vs expected pace</p>
+              <div className="flex flex-wrap gap-2">
+                <PaceChip label="MRR" current={mrr} expected={mrrExpected} />
+                <PaceChip label="New Business" current={newBusiness} expected={newBusinessExpected} />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ── Right: new business vs recurring donut ── */}
+        {/* ── Right: MRR vs New Business donut ── */}
         {segments.length > 0 ? (
           <ShareDonut segments={segments} centerLabel="Invoiced" />
         ) : (
