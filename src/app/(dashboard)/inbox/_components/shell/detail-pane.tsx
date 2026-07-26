@@ -25,38 +25,36 @@ const STATE_META: Record<TicketState, {
   icon: typeof Circle
   labelKey: DictionaryKey
   titleKey: DictionaryKey
-  /** Fill when this is the current state. */
-  activeClass: string
 }> = {
   open: {
     icon: Circle,
     labelKey: "inbox.shell.state.open",
     titleKey: "inbox.shell.state.open",
-    activeClass: "bg-muted text-foreground",
   },
   assigned: {
     icon: User,
     labelKey: "inbox.shell.state.assigned",
     titleKey: "inbox.shell.state.assigned_title",
-    activeClass: "bg-amber-500 text-white",
   },
   closed: {
     icon: Check,
     labelKey: "inbox.shell.state.closed",
     titleKey: "inbox.shell.state.closed_title",
-    activeClass: "bg-emerald-500 text-white",
   },
 }
 
 const STATE_ORDER: readonly TicketState[] = ["open", "assigned", "closed"] as const
 
+/** 187N segmented pill: the CURRENT state is a purple-accent chip (icon + mono
+ *  micro-caps label); the other two are calm muted icon buttons one click away.
+ *  One accent, no amber/emerald fills - the premium 187N vocabulary. */
 function StateSwitch({ current, onSetState }: { current: TicketState; onSetState?: (t: TicketState) => void }) {
   const locale = useLocale()
   return (
     <div
       role="group"
       aria-label={t("inbox.shell.state.group", locale)}
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm"
+      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-card/95 p-0.5 shadow-xs backdrop-blur-sm"
     >
       {STATE_ORDER.map((s) => {
         const meta = STATE_META[s]
@@ -76,17 +74,15 @@ function StateSwitch({ current, onSetState }: { current: TicketState; onSetState
             aria-label={controlLabel}
             aria-pressed={isCurrent}
             className={cn(
-              "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
+              "flex h-7 items-center rounded-full transition-colors",
               isCurrent
-                ? meta.activeClass
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "gap-1.5 bg-[var(--teal-wash)] px-2.5 text-[var(--teal)]"
+                : "w-7 justify-center text-muted-foreground/55 hover:bg-muted/60 hover:text-foreground",
             )}
           >
-            <Icon className="h-3.5 w-3.5" strokeWidth={s === "closed" ? 3 : 2} />
-            {/* Only the active segment shows its label (mono micro-caps, 187N
-                status feel) - keeps the control compact + the state unmistakable. */}
+            <Icon className="h-3.5 w-3.5" strokeWidth={s === "closed" ? 2.5 : 2} />
             {isCurrent && (
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wide">{label}</span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em]">{label}</span>
             )}
           </button>
         )

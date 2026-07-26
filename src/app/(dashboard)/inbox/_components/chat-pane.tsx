@@ -30,6 +30,7 @@ import {
   Sparkles,
   Star,
   Archive,
+  Link2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
@@ -2067,7 +2068,7 @@ function ThreadMessages({
                     type="button"
                     onClick={() => setComposerMode("reply")}
                     aria-pressed={composerMode === "reply"}
-                    className={cn("chip h-8", composerMode === "reply" && "active")}
+                    className={cn("chip", composerMode === "reply" && "active")}
                   >
                     {t("inbox.chat.reply", locale)}
                   </button>
@@ -2079,7 +2080,7 @@ function ThreadMessages({
                     // reads like a client-facing reply. Amber is allowed for
                     // semantic signals per the 187N brand rules.
                     className={cn(
-                      "chip h-8",
+                      "chip",
                       composerMode === "internal" &&
                         "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
                     )}
@@ -2907,11 +2908,8 @@ function LinkToClientPicker({
   return (
     <div ref={containerRef} className="relative mt-1.5">
       {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium hover:bg-amber-500/10"
-        >
+        <button type="button" onClick={() => setOpen(true)} className="chip">
+          <Link2 className="h-3.5 w-3.5" />
           Link to client…
         </button>
       ) : (
@@ -3767,12 +3765,13 @@ export function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
     return null
   }
   const label = thread.channelKind === "whatsapp" ? "WhatsApp" : "Email"
-  const tone =
-    thread.channelKind === "whatsapp"
-      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-      : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+  // 187N mono status tag: dot + micro-caps, no filled pill. WhatsApp reads as
+  // "live" (green), email as "brand" (purple) - the calm 187N vocabulary
+  // instead of the old blue/emerald wash badges. Roy 2026-07-26.
+  const tone = thread.channelKind === "whatsapp" ? "live" : "brand"
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${tone}`}>
+    <span className={`st-label ${tone} shrink-0`}>
+      <span className="sd" />
       {label}
     </span>
   )

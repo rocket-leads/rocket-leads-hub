@@ -219,17 +219,17 @@ export function EmailComposer({
   }, [editor, channel?.signature, htmlBody])
 
   return (
-    <div className="rounded-lg border border-input bg-background overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       {/* Header: From / To / CC-BCC toggle / Subject */}
-      <div className="border-b border-border/60 divide-y divide-border/60">
+      <div className="divide-y divide-border/60 border-b border-border/60">
         <HeaderRow label="From">
-          <span className="text-xs text-foreground/80">
+          <span className="truncate text-[13px] text-foreground/80">
             {channel ? formatFrom(channel) : channelQuery.isLoading ? "Loading…" : "-"}
           </span>
           <button
             type="button"
             onClick={() => setCcBccExpanded((v) => !v)}
-            className="ml-auto text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+            className="ml-auto inline-flex shrink-0 items-center gap-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 transition-colors hover:text-foreground"
           >
             {ccBccExpanded ? "Hide CC/BCC" : "CC / BCC"}
             {ccBccExpanded ? (
@@ -240,7 +240,7 @@ export function EmailComposer({
           </button>
         </HeaderRow>
         <HeaderRow label="To">
-          <span className="text-xs text-foreground/80 truncate">{toDisplay}</span>
+          <span className="truncate text-[13px] text-foreground/80">{toDisplay}</span>
         </HeaderRow>
         {ccBccExpanded && (
           <>
@@ -253,13 +253,16 @@ export function EmailComposer({
           </>
         )}
         <HeaderRow label="Subject">
+          {/* border-0 + appearance-none strips the browser's default input
+              chrome so Subject sits flush like the From/To spans (it was the
+              only <input> in the header, so it read as a boxed field). */}
           <input
             type="text"
             value={subject}
             onChange={(e) => onSubjectChange(e.target.value)}
             placeholder="Re: (uses original subject if blank)"
             disabled={disabled}
-            className="flex-1 bg-transparent text-xs text-foreground/80 focus:outline-none placeholder:text-muted-foreground/50"
+            className="w-full flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] text-foreground/80 shadow-none outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/45"
           />
         </HeaderRow>
       </div>
@@ -268,22 +271,23 @@ export function EmailComposer({
       <RichTextToolbar editor={editor} disabled={disabled} />
 
       {/* Editor body */}
-      <div className="bg-background min-h-[140px] max-h-[300px] overflow-y-auto">
+      <div className="bg-card min-h-[140px] max-h-[300px] overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
     </div>
   )
 }
 
-/** One labeled row of the header strip. Two-column layout with a fixed
- *  60-pixel label gutter so From/To/CC/BCC/Subject align. */
+/** One labeled row of the header strip. Fixed mono label gutter (wide enough
+ *  for "SUBJECT" so nothing collides) keeps From/To/CC/BCC/Subject aligned in
+ *  one column — 187N premium: mono uppercase micro-caps, faint ink. */
 function HeaderRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5">
-      <span className="w-12 shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+    <div className="flex items-center gap-3 px-3.5 py-2">
+      <span className="w-[68px] shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/55">
         {label}
       </span>
-      <span className="flex-1 min-w-0 inline-flex items-center gap-1 flex-wrap">{children}</span>
+      <span className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-1">{children}</span>
     </div>
   )
 }
@@ -432,7 +436,7 @@ function EmailChipInput({
         onBlur={commitDraft}
         placeholder={value.length === 0 ? placeholder : ""}
         disabled={disabled}
-        className="flex-1 min-w-[120px] bg-transparent text-xs focus:outline-none placeholder:text-muted-foreground/50"
+        className="min-w-[120px] flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] shadow-none outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/45"
       />
     </span>
   )
