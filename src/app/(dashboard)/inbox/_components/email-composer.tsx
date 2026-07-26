@@ -272,8 +272,10 @@ export function EmailComposer({
       {/* Toolbar */}
       <RichTextToolbar editor={editor} disabled={disabled} />
 
-      {/* Editor body */}
-      <div className="bg-card min-h-[140px] max-h-[300px] overflow-y-auto">
+      {/* Editor body — grows with content (no inner max-height/scroll) so the
+          whole composer rides the ONE thread scrollbar instead of spawning a
+          second one. Roy 2026-07-26. */}
+      <div className="bg-card min-h-[140px]">
         <EditorContent editor={editor} />
       </div>
     </div>

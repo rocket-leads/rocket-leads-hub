@@ -1180,6 +1180,7 @@ type NoteMentions = { done: Record<string, boolean>; toggle: (noteMsgId: string)
 export function ThreadView({
   thread,
   onReplied,
+  onPickup,
   users,
   onMakeTaskFromMessage,
   onMarkThread,
@@ -1191,6 +1192,8 @@ export function ThreadView({
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
+  /** Pick up the ticket (New -> Opgepakt) when the composer is opened. */
+  onPickup?: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   /** Mark-read/unread toggle. Lives on the open-conversation header
@@ -1240,7 +1243,7 @@ export function ThreadView({
   // navigating away from a broken thread recovers. Roy 2026-07-20.
   return (
     <ErrorBoundary label="this conversation" resetKey={thread.threadKey}>
-      <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} onResolvedState={onResolvedState} />
+      <ThreadMessages thread={thread} onReplied={onReplied} onPickup={onPickup} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} mentioned={mentioned} noteMentions={noteMentions} onResolvedState={onResolvedState} />
     </ErrorBoundary>
   )
 }
@@ -1281,6 +1284,7 @@ type PendingAttachment = {
 function ThreadMessages({
   thread,
   onReplied,
+  onPickup,
   users,
   onMakeTaskFromMessage,
   onMarkThread,
@@ -1291,6 +1295,7 @@ function ThreadMessages({
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
+  onPickup?: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   onMarkThread?: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
@@ -2022,7 +2027,11 @@ function ThreadMessages({
               email composer. Replaces the floating "Antwoord" pill. Roy 2026-07-24. */}
           <button
             type="button"
-            onClick={() => setEmailComposerOpen(true)}
+            onClick={() => {
+              // Opening the reply = taking the ticket: New -> Opgepakt now.
+              onPickup?.()
+              setEmailComposerOpen(true)
+            }}
             className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
           >
             <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
@@ -2318,6 +2327,9 @@ function ThreadMessages({
                 const ta = e.currentTarget
                 syncMentionState(ta.value, ta.selectionStart ?? 0)
               }}
+              // Engaging the reply box picks up the ticket (New -> Opgepakt),
+              // idempotent so re-focusing is a no-op. Roy 2026-07-26.
+              onFocus={() => onPickup?.()}
               onClick={(e) => {
                 const ta = e.currentTarget
                 syncMentionState(ta.value, ta.selectionStart ?? 0)
@@ -3171,16 +3183,23 @@ function ThreadMessagesList({
   noteMentions?: NoteMentions
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }) {
-  const [middleExpanded, setMiddleExpanded] = useState(false)
+  // Which older email messages the user has folded open. The latest message +
+  // any internal note are always open; everything else starts collapsed.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
-  // Reset the middle-collapsed state whenever the thread changes -
-  // the parent re-mounts ThreadMessagesList per thread switch by
-  // virtue of the messages array identity changing, but the user-
-  // intent reset is explicit so it survives query refetches inside
-  // the same thread (which preserve identity in some edge cases).
+  // Reset the fold state whenever the thread changes - the parent re-mounts on
+  // thread switch by virtue of the messages array identity changing, but the
+  // reset is explicit so it survives refetches inside the same thread.
   const firstMessageId = messages[0]?.id ?? null
   useEffect(() => {
-    setMiddleExpanded(false)
+    setExpandedIds(new Set())
   }, [firstMessageId])
 
   function makeTask(msg: ChatMessage) {
@@ -3196,9 +3215,9 @@ function ThreadMessagesList({
     }
   }
 
-  // Flat list for non-email threads + short email threads, with a day divider
+  // Non-email threads (WhatsApp / Slack): flat bubble list with a day divider
   // whenever the calendar day changes (187N Chats "TODAY ·" separator).
-  if (!isEmailThread || messages.length <= 3) {
+  if (!isEmailThread) {
     let prevDay: string | null = null
     return (
       <>
@@ -3223,69 +3242,65 @@ function ThreadMessagesList({
     )
   }
 
-  // Gmail-style collapse: first + last 2 expanded, middle behind a
-  // toggle. Internal notes inside the middle always render so the
-  // AM doesn't miss a flag (Trengo internal_note has the yellow tint
-  // the rest of the Hub uses for team-only annotations).
-  const first = messages[0]
-  const tail = messages.slice(-2)
-  const middle = messages.slice(1, -2)
-  const middleInternal = middle.filter((m) => m.isInternal === true)
-  const collapsedMiddle = middle.filter((m) => m.isInternal !== true)
-
+  // Email thread — Trengo pattern: the LATEST message is fully expanded, every
+  // older message is a one-line row you fold open with the chevron. Internal
+  // notes always stay expanded (never hide a team flag). No per-message
+  // max-height, so the whole thread rides the single scrollbar. Roy 2026-07-26.
+  const lastId = messages[messages.length - 1]?.id ?? null
   return (
     <>
-      <MessageBubble
-        msg={first}
-        isEmailThread={isEmailThread}
-        mentionNames={mentionNames}
-        noteMentions={noteMentions}
-        onMakeTask={makeTask(first)}
-      />
-      {!middleExpanded && collapsedMiddle.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setMiddleExpanded(true)}
-          className="w-full px-4 py-2 rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
-        >
-          Show {collapsedMiddle.length} earlier message
-          {collapsedMiddle.length === 1 ? "" : "s"}
-        </button>
-      )}
-      {/* Internal notes always visible - never collapse a team flag. */}
-      {!middleExpanded &&
-        middleInternal.map((msg) => (
+      {messages.map((msg) => {
+        const alwaysOpen = msg.id === lastId || msg.isInternal === true
+        const open = alwaysOpen || expandedIds.has(msg.id)
+        if (!open) {
+          return <CollapsedEmailRow key={msg.id} msg={msg} onExpand={() => toggleExpanded(msg.id)} />
+        }
+        return (
           <MessageBubble
             key={msg.id}
             msg={msg}
-            isEmailThread={isEmailThread}
+            isEmailThread
             mentionNames={mentionNames}
             noteMentions={noteMentions}
             onMakeTask={makeTask(msg)}
+            // Older expanded emails get a collapse chevron to fold them back;
+            // the latest + internal notes stay open (no chevron).
+            onCollapse={alwaysOpen ? undefined : () => toggleExpanded(msg.id)}
           />
-        ))}
-      {middleExpanded &&
-        middle.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isEmailThread={isEmailThread}
-            mentionNames={mentionNames}
-            noteMentions={noteMentions}
-            onMakeTask={makeTask(msg)}
-          />
-        ))}
-      {tail.map((msg) => (
-        <MessageBubble
-          key={msg.id}
-          msg={msg}
-          isEmailThread={isEmailThread}
-          mentionNames={mentionNames}
-          noteMentions={noteMentions}
-          onMakeTask={makeTask(msg)}
-        />
-      ))}
+        )
+      })}
     </>
+  )
+}
+
+/** Collapsed email row (Trengo pattern): one line — avatar + sender + preview
+ *  snippet + relative time + a chevron. Clicking anywhere folds it open into
+ *  the full EmailMessageCard. */
+function CollapsedEmailRow({ msg, onExpand }: { msg: ChatMessage; onExpand: () => void }) {
+  const isUs = msg.authorKind === "rl_team"
+  const preview = (msg.body || msg.emailSubject || "").trim().replace(/\s+/g, " ")
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      className="group flex w-full items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-foreground/25"
+    >
+      <UserAvatar
+        name={msg.authorName}
+        avatarUrl={msg.authorAvatarUrl}
+        className="size-8 shrink-0"
+        fallbackClassName={cn(
+          "text-xs font-semibold",
+          isUs ? "bg-primary/15 text-primary" : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+        )}
+      />
+      <span className="max-w-[9rem] shrink-0 truncate text-[13px] font-semibold text-foreground/90">
+        {msg.authorName}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground/70">{preview || "…"}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/50">{fmtRelative(msg.at)}</span>
+      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground/60" />
+    </button>
   )
 }
 
@@ -3337,10 +3352,14 @@ function MessageBubble({
   mentionNames = [],
   noteMentions,
   onMakeTask,
+  onCollapse,
 }: {
   msg: ChatMessage
   mentionNames?: string[]
   noteMentions?: NoteMentions
+  /** When set, the email card shows a collapse chevron to fold it back into a
+   *  one-line row (older messages in a Trengo-style email thread). */
+  onCollapse?: () => void
   /** When the parent thread is an email channel, every message renders
    *  in the Gmail-style EmailMessageCard layout (full-width card,
    *  prominent sender header, iframe body if HTML is available, paragraph-
@@ -3369,7 +3388,7 @@ function MessageBubble({
         {isUs && onMakeTask && (
           <MakeTaskInlineButton onClick={onMakeTask} />
         )}
-        <EmailMessageCard msg={msg} isUs={isUs} />
+        <EmailMessageCard msg={msg} isUs={isUs} onCollapse={onCollapse} />
         {!isUs && onMakeTask && (
           <MakeTaskInlineButton onClick={onMakeTask} />
         )}
@@ -3519,9 +3538,11 @@ function MessageBubble({
 function EmailMessageCard({
   msg,
   isUs,
+  onCollapse,
 }: {
   msg: ChatMessage
   isUs: boolean
+  onCollapse?: () => void
 }) {
   const locale = useLocale()
   const [height, setHeight] = useState<number>(140)
@@ -3662,6 +3683,18 @@ function EmailMessageCard({
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60 shrink-0 mt-0.5">
           {fmtTime(msg.at)}
         </span>
+        {/* Collapse chevron — folds an older email back into its one-line row.
+            Only on foldable (older) emails; the latest stays open. */}
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label="Collapse"
+            className="mt-0.5 shrink-0 rounded-md p-0.5 text-muted-foreground/40 transition-colors hover:bg-muted hover:text-foreground/70"
+          >
+            <ChevronDown className="h-4 w-4 rotate-180" />
+          </button>
+        )}
       </div>
       {/* Body — iframe when we have the raw HTML (real email layout
           with images + tables + links), otherwise paragraph-preserving
