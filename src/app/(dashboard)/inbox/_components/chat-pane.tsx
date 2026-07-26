@@ -2022,7 +2022,12 @@ function ThreadMessages({
       {replyable && (!isEmail || emailComposerOpen) && (
         <div
           className={cn(
-            "border-t border-border p-3 transition-colors shrink-0 relative",
+            // Height-bounded + scrollable so the Send button is ALWAYS reachable
+            // at 100% zoom: a tall email editor + signature used to overflow the
+            // pane, and the parent's overflow-hidden clipped the bottom (= the
+            // Send row). Cap at 80% of the pane and let the composer scroll;
+            // the email Send row is sticky so it stays pinned. Roy 2026-07-26.
+            "border-t border-border p-3 transition-colors shrink-0 relative max-h-[80%] overflow-y-auto",
             isInternal ? "bg-amber-500/5" : "bg-muted/20",
             isDragOver &&
               supportsAttachments &&
@@ -2202,7 +2207,10 @@ function ThreadMessages({
                 onPasteFiles={(files) => uploadFiles(files)}
                 disabled={sending || uploadingCount > 0}
               />
-              <div className="mt-2 flex items-center justify-end gap-2">
+              {/* Sticky Send row: pinned to the bottom of the scrollable composer
+                  so it stays visible no matter how tall the signature / body is.
+                  Roy 2026-07-26 - Send was scrolling off-screen at 100% zoom. */}
+              <div className="sticky bottom-0 z-10 -mx-3 -mb-3 mt-2 flex items-center justify-end gap-2 border-t border-border/50 bg-background/95 px-3 py-2.5 backdrop-blur-sm">
                 {supportsAttachments && (
                   <>
                     <input

@@ -166,7 +166,7 @@ export function EmailComposer({
         // getHTML(), so the sent email keeps the signature at full size. Roy
         // 2026-07-24: the branded portrait signature was dominating the pane.
         class:
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[160px] px-3 py-2 [&_img]:max-h-28 [&_img]:w-auto",
+          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[140px] px-3 py-2 [&_img]:!max-h-28 [&_img]:!w-auto [&_img]:!object-contain",
       },
       // Intercept clipboard image data and route to the parent's file
       // upload pipeline (📎 attachment flow). Non-image clipboard contents
@@ -268,7 +268,7 @@ export function EmailComposer({
       <RichTextToolbar editor={editor} disabled={disabled} />
 
       {/* Editor body */}
-      <div className="bg-background min-h-[180px] max-h-[440px] overflow-y-auto">
+      <div className="bg-background min-h-[140px] max-h-[300px] overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
     </div>
