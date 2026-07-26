@@ -756,14 +756,18 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
 
   if (mode === "docked") {
     // Docked variant: a self-contained card filling its parent. The parent
-    // (page-level aside in inbox-view) owns positioning, slide-in
-    // animation and viewport height; this component just renders the
-    // bordered card. No backdrop - the list next to the aside stays
-    // interactive, so the AM can jump from row to row without closing.
+    // owns positioning + viewport height; this just renders the bordered card.
+    // No Portal/Backdrop/Popup - the list next to the pane stays interactive.
+    // BUT the shared `body` uses Dialog.Title (via EditableTitle) which needs a
+    // Dialog.Root in context; a bare Root provides that store without any modal
+    // behaviour (no focus-trap / scroll-lock - those live on the Popup). Fixes
+    // the "useDialogRootContext store undefined" crash. Roy 2026-07-26.
     return (
-      <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
-        {body}
-      </div>
+      <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
+        <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+          {body}
+        </div>
+      </DialogPrimitive.Root>
     )
   }
 
