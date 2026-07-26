@@ -6,8 +6,8 @@
    fonts) and the semantic component classes; client.css re-points the accent
    to purple and wires the next/font families. Loaded here so every page adopts
    it, and the @theme block below bridges our Tailwind utilities to their vars. */
-@import "../styles/187n/theme.css";
-@import "../styles/187n/client.css";
+@import "../styles/187n/theme.css" layer(components);
+@import "../styles/187n/client.css" layer(components);
 
 @custom-variant dark (&:is(.dark *));
 
