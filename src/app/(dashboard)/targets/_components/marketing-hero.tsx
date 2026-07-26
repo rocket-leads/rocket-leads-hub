@@ -19,7 +19,7 @@ interface Props {
   isLoading: boolean
 }
 
-/** Pro-rata a monthly target to where we should be in the current range. */
+/** Pro-rata a monthly target to where we should be by this day of the month. */
 function proRata(monthlyTarget: number, range: DateRange): number {
   if (monthlyTarget <= 0) return 0
   const refMonthStart = startOfMonth(range.endDate)
@@ -33,17 +33,52 @@ function weekLabel(weekStart: string): string {
   return new Date(weekStart).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
 }
 
-/** Small vs-target delta pill (dot + %). Volume/revenue: higher is better. */
-function TargetDelta({ current, target }: { current: number; target: number }) {
-  if (target <= 0) return null
-  const pct = (current / target - 1) * 100
-  if (!isFinite(pct)) return null
-  const up = pct >= 0
+/**
+ * One metric row: label · value · status. `tone="auto"` colours the delta
+ * green/red by higher-is-better vs its target; `tone="neutral"` shows the delta
+ * muted (for ad spend, where over/under the plan isn't inherently good or bad).
+ */
+function MetricRow({
+  label, value, current, target, tone = "auto", showStatus = true,
+}: {
+  label: string
+  value: string
+  current: number
+  target: number
+  tone?: "auto" | "neutral"
+  showStatus?: boolean
+}) {
+  const has = showStatus && target > 0 && isFinite(current)
+  const pct = has ? (current / target - 1) * 100 : 0
+  const up = current >= target
+  const color = !has
+    ? ""
+    : tone === "neutral"
+    ? "text-muted-foreground/50"
+    : up
+    ? "text-[var(--st-live)]"
+    : "text-[var(--st-error)]"
   return (
-    <span className={cn("delta", up ? "up" : "down")} style={{ marginTop: 8 }}>
-      <span className="d-dot" />
-      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs pace
-    </span>
+    <div className="grid grid-cols-[1fr_auto_58px] items-baseline gap-x-3 py-2">
+      <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
+      <span className="font-mono text-[15px] font-semibold tabular-nums text-foreground text-right">{value}</span>
+      {has && isFinite(pct) ? (
+        <span className={cn("font-mono text-[11px] font-semibold tabular-nums whitespace-nowrap text-right", color)}>
+          {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}%
+        </span>
+      ) : (
+        <span className="text-right font-mono text-[11px] text-muted-foreground/30">–</span>
+      )}
+    </div>
+  )
+}
+
+function GroupHead({ label, caption }: { label: string; caption: string }) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <p className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50">{label}</p>
+      <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/40">{caption}</p>
+    </div>
   )
 }
 
@@ -61,11 +96,9 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
   if (isLoading || !monday || !meta) {
     return (
       <div className="section-card">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-8">
-          <div className="space-y-4">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-14 w-40" />
-            <Skeleton className="h-4 w-56" />
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr] gap-8">
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}
           </div>
           <Skeleton className="h-48 w-full" />
         </div>
@@ -75,17 +108,29 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
 
   const spend = meta.spend
   const hasSpend = spend > 0
-  // collectedRevenue is the dashboard's primary Revenue + ROAS figure (cash in).
-  const revenue = monday.collectedRevenue ?? 0
+  const closedRevenue = monday.closedRevenue ?? 0
+  // collectedRevenue = cash actually in the door; the primary ROAS numerator.
+  const collectedRevenue = monday.collectedRevenue ?? 0
   const deals = monday.deals
-  const roas = safeDivide(revenue, spend)
-  const derived = deriveTargets(targets ?? null)
-  const roasTarget = derived.roas
-  const revTarget = proRata(targets?.revenue ?? 0, range)
-  const dealsTarget = proRata(targets?.deals ?? 0, range)
+  const roas = safeDivide(collectedRevenue, spend)
+  const avgDealValue = safeDivide(closedRevenue, deals)
+  const avgCollected = safeDivide(collectedRevenue, deals)
 
-  const clearedPct = roasTarget > 0 ? Math.round((roas / roasTarget) * 100) : 0
-  const onTarget = roasTarget > 0 && roas >= roasTarget
+  const t = targets
+  const derived = deriveTargets(t ?? null)
+
+  // Pace (day-of-month) targets for the cumulative money/volume metrics.
+  const adSpendPace = proRata(derived.adSpend, range)
+  const dealsPace = proRata(t?.deals ?? 0, range)
+  const closedPace = proRata(t?.revenue ?? 0, range)
+  const collectedPace = proRata(t?.collectedRevenue ?? 0, range)
+  // Ratio targets (not pace-adjusted - ratios don't accumulate over the month).
+  const roasTarget = derived.roas
+  const avgDealTarget = safeDivide(t?.revenue ?? 0, t?.deals ?? 0)
+  const avgCollectedTarget = safeDivide(t?.collectedRevenue ?? 0, t?.deals ?? 0)
+
+  // Kicker health = is the money actually landing on pace (cash collected).
+  const onTrack = collectedPace > 0 && collectedRevenue >= collectedPace
 
   // Weekly revenue trend for the area chart + peak marker.
   const chartData = monday.weekly.map((w) => ({ label: weekLabel(w.weekStart), revenue: w.revenue }))
@@ -97,54 +142,35 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
 
   return (
     <div className="section-card overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-8 items-center">
-        {/* ── Left: headline metric ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr] gap-8 items-center">
+        {/* ── Left: new-business scoreboard ── */}
         <div className="min-w-0">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/70 flex items-center gap-2.5">
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", onTarget ? "bg-[var(--st-live)]" : "bg-[var(--st-warn)]")} />
-            Attribution · Marketing
-          </p>
-          <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">
-            Blended return on ad spend
-          </p>
-          <p className="mt-1 font-mono text-[54px] font-bold leading-none tracking-tight tabular-nums text-foreground">
-            {hasSpend ? formatMultiplier(roas) : "-"}
-          </p>
-          <div className="mt-3 h-0.5 w-16 rounded-full bg-[var(--teal)]" />
-          <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
-            {hasSpend ? (
-              <>
-                <span className="font-medium text-foreground/80">{formatCurrency(revenue)}</span> revenue on{" "}
-                <span className="font-medium text-foreground/80">{formatCurrency(spend)}</span> spend.
-                {roasTarget > 0 && (
-                  <> Target {formatMultiplier(roasTarget)} {onTarget ? `cleared by ${clearedPct}%` : `at ${clearedPct}%`}.</>
-                )}
-              </>
-            ) : (
-              "No ad spend for this period — ROAS unavailable."
-            )}
+            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", onTrack ? "bg-[var(--st-live)]" : "bg-[var(--st-warn)]")} />
+            Marketing · New Business
           </p>
 
-          {/* Sub-stats */}
-          <div className="mt-6 grid grid-cols-3 gap-4">
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Revenue</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{formatCurrency(revenue)}</p>
-              <TargetDelta current={revenue} target={revTarget} />
+          <div className="mt-4">
+            <GroupHead label="Ad spend & returns" caption="vs pace" />
+            <div className="mt-1 divide-y divide-border/30">
+              <MetricRow label="Ad Spend" value={hasSpend ? formatCurrencyDecimal(spend) : "–"} current={spend} target={adSpendPace} tone="neutral" showStatus={hasSpend} />
+              <MetricRow label="Deals" value={String(deals)} current={deals} target={dealsPace} />
+              <MetricRow label="Closed Deal Revenue" value={formatCurrency(closedRevenue)} current={closedRevenue} target={closedPace} />
+              <MetricRow label="Cash Collected" value={formatCurrency(collectedRevenue)} current={collectedRevenue} target={collectedPace} />
             </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Ad Spend</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{hasSpend ? formatCurrencyDecimal(spend) : "-"}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground/60">Deals</p>
-              <p className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-foreground">{deals}</p>
-              <TargetDelta current={deals} target={dealsTarget} />
+          </div>
+
+          <div className="mt-3 border-t border-border/40 pt-3">
+            <GroupHead label="Efficiency" caption="vs target" />
+            <div className="mt-1 divide-y divide-border/30">
+              <MetricRow label="ROAS" value={hasSpend ? formatMultiplier(roas) : "–"} current={roas} target={roasTarget} showStatus={hasSpend} />
+              <MetricRow label="Avg Deal Value" value={deals > 0 ? formatCurrency(avgDealValue) : "–"} current={avgDealValue} target={avgDealTarget} showStatus={deals > 0} />
+              <MetricRow label="Avg Collected / Deal" value={deals > 0 ? formatCurrency(avgCollected) : "–"} current={avgCollected} target={avgCollectedTarget} showStatus={deals > 0} />
             </div>
           </div>
         </div>
 
-        {/* ── Right: weekly revenue trend ── */}
+        {/* ── Right: weekly revenue trend (unchanged) ── */}
         <div className="min-w-0">
           <div className="flex items-baseline justify-between mb-2">
             <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground/60">
