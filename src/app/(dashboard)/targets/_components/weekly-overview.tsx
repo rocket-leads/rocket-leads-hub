@@ -86,7 +86,7 @@ export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: 
           />
           <Bar dataKey="calls" name="Booked" fill="#8967F3" radius={[2, 2, 0, 0]} barSize={16} />
           <Bar dataKey="taken" name="Taken" fill="#8967F366" radius={[2, 2, 0, 0]} barSize={16} />
-          <Bar dataKey="deals" name="Deals" fill="#22c55e" radius={[2, 2, 0, 0]} barSize={16} />
+          <Bar dataKey="deals" name="Deals" fill="#2E9E6B" radius={[2, 2, 0, 0]} barSize={16} />
         </BarChart>
       </ResponsiveContainer>
     </div>
