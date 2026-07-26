@@ -916,10 +916,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           // the name as plain text so we don't have a Link competing with
                           // the row's onClick.
                           <div className="block min-w-0 flex-1" title={client.name}>
-                            <p className="font-semibold text-[14px] leading-tight truncate">{client.name}</p>
-                            {client.firstName && (
-                              <p className="text-[12px] text-muted-foreground/70 truncate">{client.firstName}</p>
-                            )}
+                            <p className="text-[14px] leading-tight truncate">
+                              <span className="font-semibold">{client.name}</span>
+                              {client.firstName && (
+                                <span className="font-normal text-[13px] text-muted-foreground/60">
+                                  {" · "}{client.firstName}
+                                </span>
+                              )}
+                            </p>
                           </div>
                         ) : (
                           <Link
@@ -928,10 +932,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             className="block hover:text-primary transition-colors min-w-0 flex-1"
                             title={client.name}
                           >
-                            <p className="font-semibold text-[14px] leading-tight truncate">{client.name}</p>
-                            {client.firstName && (
-                              <p className="text-[12px] text-muted-foreground/70 truncate">{client.firstName}</p>
-                            )}
+                            <p className="text-[14px] leading-tight truncate">
+                              <span className="font-semibold">{client.name}</span>
+                              {client.firstName && (
+                                <span className="font-normal text-[13px] text-muted-foreground/60">
+                                  {" · "}{client.firstName}
+                                </span>
+                              )}
+                            </p>
                           </Link>
                         )}
                       </div>
