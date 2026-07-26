@@ -79,8 +79,11 @@ export function UserMenu({
   )
 }
 
-const MENU_ITEM =
-  "w-full flex items-center gap-2.5 px-2.5 h-9 rounded-md text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors [&_svg]:h-4 [&_svg]:w-4 [&_svg]:text-muted-foreground/70"
+// Reuse the sidebar's own `.nav-item` (theme.css) so the menu is byte-for-byte
+// identical to the nav above it - same 13.5px Schibsted, 17px icons, purple-wash
+// hover, r-sm. `.nav-item` is px-based, so it isn't shrunk by --ui-scale the way
+// rem utilities are.
+const MENU_ITEM = "nav-item w-full text-left"
 
 function UserMenuItems({ initialLocale }: { initialLocale: Locale }) {
   const router = useRouter()
