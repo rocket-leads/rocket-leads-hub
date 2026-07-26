@@ -25,6 +25,7 @@ import { categorize as sharedCategorize, severityScore as sharedSeverityScore, t
 import { buildSignature, suggestAiAdjustment } from "@/lib/watchlist/learning"
 import type { RecentOverridesResponse } from "@/app/api/watchlist/recent-overrides/route"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
+import { ManagerAvatar } from "@/components/ui/manager-avatar"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -1496,7 +1497,10 @@ function WatchCard({
       }}
     >
       <div className="tc-top">
-        <span className="proj">{owner || "—"}</span>
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <ManagerAvatar name={client.campaignManager} />
+          <span className="proj truncate">{owner || "—"}</span>
+        </span>
         {isNewToday ? (
           <span className="pill newpill">
             <span className="pdot" />

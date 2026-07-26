@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table"
 import { type FilterConfig } from "@/components/ui/filters-popover"
 import { ConditionFilter } from "@/components/ui/condition-filter"
+import { ManagerAvatarPair } from "@/components/ui/manager-avatar"
 import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown, Search } from "lucide-react"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -905,29 +906,35 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   >
                     {/* Client section */}
                     <TableCell className="border-r border-border/40 bg-muted/20 max-w-0">
-                      {onSelectClient ? (
-                        // In slide-over mode, the row click handles selection - render
-                        // the name as plain text so we don't have a Link competing with
-                        // the row's onClick.
-                        <div className="block min-w-0" title={client.name}>
-                          <p className="font-medium text-sm truncate">{client.name}</p>
-                          {client.firstName && (
-                            <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <Link
-                          href={href}
-                          onClick={(e) => e.stopPropagation()}
-                          className="block hover:text-primary transition-colors min-w-0"
-                          title={client.name}
-                        >
-                          <p className="font-medium text-sm truncate">{client.name}</p>
-                          {client.firstName && (
-                            <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
-                          )}
-                        </Link>
-                      )}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ManagerAvatarPair
+                          accountManager={client.accountManager}
+                          campaignManager={client.campaignManager}
+                        />
+                        {onSelectClient ? (
+                          // In slide-over mode, the row click handles selection - render
+                          // the name as plain text so we don't have a Link competing with
+                          // the row's onClick.
+                          <div className="block min-w-0 flex-1" title={client.name}>
+                            <p className="font-medium text-sm truncate">{client.name}</p>
+                            {client.firstName && (
+                              <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <Link
+                            href={href}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block hover:text-primary transition-colors min-w-0 flex-1"
+                            title={client.name}
+                          >
+                            <p className="font-medium text-sm truncate">{client.name}</p>
+                            {client.firstName && (
+                              <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                            )}
+                          </Link>
+                        )}
+                      </div>
                     </TableCell>
                     {/* Onboarding-only cells (Phase / Meta / Kick-off) */}
                     {boardType === "onboarding" && (
