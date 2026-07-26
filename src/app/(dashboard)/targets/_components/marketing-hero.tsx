@@ -106,8 +106,6 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
   const collectedRevenue = monday.collectedRevenue ?? 0
   const deals = monday.deals
   const roas = safeDivide(collectedRevenue, spend)
-  const avgDealValue = safeDivide(closedRevenue, deals)
-  const avgCollected = safeDivide(collectedRevenue, deals)
 
   const t = targets
   const derived = deriveTargets(t ?? null)
@@ -117,10 +115,8 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
   const dealsPace = proRata(t?.deals ?? 0, range)
   const closedPace = proRata(t?.revenue ?? 0, range)
   const collectedPace = proRata(t?.collectedRevenue ?? 0, range)
-  // Ratio targets (not pace-adjusted - ratios don't accumulate over the month).
+  // Ratio target (not pace-adjusted - ratios don't accumulate over the month).
   const roasTarget = derived.roas
-  const avgDealTarget = safeDivide(t?.revenue ?? 0, t?.deals ?? 0)
-  const avgCollectedTarget = safeDivide(t?.collectedRevenue ?? 0, t?.deals ?? 0)
 
   // Kicker health = is the money actually landing on pace (cash collected).
   const onTrack = collectedPace > 0 && collectedRevenue >= collectedPace
@@ -152,14 +148,6 @@ export const MarketingHero = memo(function MarketingHero({ monday, meta, targets
             <MetricRow label="Deals" value={String(deals)} current={deals} target={dealsPace} />
             <MetricRow label="Closed Deal Revenue" value={formatCurrency(closedRevenue)} current={closedRevenue} target={closedPace} />
             <MetricRow label="Cash Collected" value={formatCurrency(collectedRevenue)} current={collectedRevenue} target={collectedPace} />
-          </div>
-
-          <div className="mt-3 border-t border-border/40 pt-3">
-            <p className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50">Efficiency · per deal</p>
-            <div className="divide-y divide-border/30">
-              <MetricRow label="Average Deal Value" value={deals > 0 ? formatCurrency(avgDealValue) : "–"} current={avgDealValue} target={avgDealTarget} showStatus={deals > 0} />
-              <MetricRow label="Average Collected / Deal" value={deals > 0 ? formatCurrency(avgCollected) : "–"} current={avgCollected} target={avgCollectedTarget} showStatus={deals > 0} />
-            </div>
           </div>
         </div>
 

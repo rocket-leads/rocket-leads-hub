@@ -92,6 +92,13 @@ export function MarketingTab() {
   const noShows = m?.noShows ?? 0
   const taken = m?.takenCalls ?? 0
   const deals = m?.deals ?? 0
+  // Per-deal averages + their auto-derived targets (target revenue ÷ target deals).
+  const closedRevenue = m?.closedRevenue ?? 0
+  const collectedRevenue = m?.collectedRevenue ?? 0
+  const avgDealValue = safeDivide(closedRevenue, deals)
+  const avgCollectedPerDeal = safeDivide(collectedRevenue, deals)
+  const avgDealTarget = safeDivide(tgt?.revenue ?? 0, tgt?.deals ?? 0)
+  const avgCollectedTarget = safeDivide(tgt?.collectedRevenue ?? 0, tgt?.deals ?? 0)
   // Opt-ins lives on a separate Monday board with no country attribution.
   // The fetcher populates the value only on the "all" bucket, so we show
   // the tile only when the user is on the All-countries view - under a
@@ -225,25 +232,50 @@ export function MarketingTab() {
         <MarketingStatRow monday={m} targets={tgt} range={range} isLoading={data.mondayLoading} />
         <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
         <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Each revenue pro-rata bar sits on one line with its per-deal average -
+            closely related (avg = revenue ÷ deals). Avg targets auto-derive from
+            Settings (target revenue ÷ target deals). */}
+        <div className="space-y-3">
           {/* Cash collected - the money actually in the door. */}
-          <RevenueProgressBar
-            label="Cash collected"
-            current={collectedProgress.current}
-            proRata={collectedProgress.proRata}
-            monthlyTarget={collectedProgress.monthlyTarget}
-            isLoading={data.mondayLoading}
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3">
+            <RevenueProgressBar
+              label="Cash collected"
+              current={collectedProgress.current}
+              proRata={collectedProgress.proRata}
+              monthlyTarget={collectedProgress.monthlyTarget}
+              isLoading={data.mondayLoading}
+            />
+            <KpiCard
+              label="Avg Collected / Deal"
+              value={deals > 0 ? avgCollectedPerDeal : null}
+              formatted={deals > 0 ? formatCurrency(avgCollectedPerDeal) : "-"}
+              target={avgCollectedTarget || undefined}
+              targetFormatted={avgCollectedTarget ? t("targets.kpi.target_of", locale, { value: formatCurrency(avgCollectedPerDeal), target: formatCurrency(avgCollectedTarget) }) : undefined}
+              variant="volume"
+              isLoading={data.mondayLoading}
+            />
+          </div>
           {/* Closed deal value - total contract value; carries the Stripe cross-check. */}
-          <RevenueProgressBar
-            label="Closed deal revenue"
-            current={closedProgress.current}
-            proRata={closedProgress.proRata}
-            monthlyTarget={closedProgress.monthlyTarget}
-            isLoading={data.mondayLoading}
-            stripeCrossCheck={country === "all" ? m?.stripeNewBusinessRevenue : undefined}
-            onGapClick={() => setStripeGapOpen(true)}
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3">
+            <RevenueProgressBar
+              label="Closed deal revenue"
+              current={closedProgress.current}
+              proRata={closedProgress.proRata}
+              monthlyTarget={closedProgress.monthlyTarget}
+              isLoading={data.mondayLoading}
+              stripeCrossCheck={country === "all" ? m?.stripeNewBusinessRevenue : undefined}
+              onGapClick={() => setStripeGapOpen(true)}
+            />
+            <KpiCard
+              label="Avg Deal Value"
+              value={deals > 0 ? avgDealValue : null}
+              formatted={deals > 0 ? formatCurrency(avgDealValue) : "-"}
+              target={avgDealTarget || undefined}
+              targetFormatted={avgDealTarget ? t("targets.kpi.target_of", locale, { value: formatCurrency(avgDealValue), target: formatCurrency(avgDealTarget) }) : undefined}
+              variant="volume"
+              isLoading={data.mondayLoading}
+            />
+          </div>
         </div>
       </section>
 
