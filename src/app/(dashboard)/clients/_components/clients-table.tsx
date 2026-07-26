@@ -352,11 +352,11 @@ function ClientUpdateCell({
       ) : (
         <ClientUpdateButton mondayItemId={mondayItemId} clientName={clientName} />
       )}
-      {caption && (
-        <span className="text-[11px] tabular-nums text-muted-foreground/60">
-          {t("clients.client_update.last", locale, { date: caption })}
-        </span>
-      )}
+      {/* Always reserve the caption line so "Sent + Last: date" rows and
+          "Update"-only rows have identical height (no row jitter). */}
+      <span className="text-[11px] tabular-nums text-muted-foreground/60" aria-hidden={!caption}>
+        {caption ? t("clients.client_update.last", locale, { date: caption }) : " "}
+      </span>
     </div>
   )
 }
