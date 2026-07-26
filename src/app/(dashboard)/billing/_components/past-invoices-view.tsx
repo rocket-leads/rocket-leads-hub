@@ -343,12 +343,17 @@ function InvoiceLinkCell({
         type="button"
         onClick={copy}
         title="Copy invoice link"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs transition-colors",
+          copied
+            ? "bg-[var(--st-live)]/12 font-semibold text-[color:var(--st-live)]"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+        )}
       >
         {copied ? (
           <>
-            <Check className="h-3 w-3 text-[color:var(--st-live)]" />
-            <span className="text-[color:var(--st-live)]">Copied</span>
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+            Copied
           </>
         ) : (
           <>
