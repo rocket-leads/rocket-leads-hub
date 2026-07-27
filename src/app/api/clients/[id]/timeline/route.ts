@@ -34,6 +34,9 @@ export type TimelineEntry = {
   body: string | null
   /** Author-side label, e.g. "Roy" or "Klant via Trengo". */
   author: string | null
+  /** Author's Hub profile photo (resolved by matching the author name to a
+   *  Hub user), so the timeline shows the real person, not a source logo. */
+  author_avatar?: string | null
   /** ISO timestamp used for sorting. */
   occurred_at: string
   /** Optional outbound link (e.g. Fathom share URL, Monday item URL). */
@@ -173,18 +176,42 @@ export async function GET(
   // Live Monday updates → TimelineEntry. fetchClientItemUpdates doesn't return
   // a stable id, so the entry id uses the createdAt + a hash slice of the
   // text - stable enough that React-key collisions don't fire on re-fetch.
+  // Name → Hub avatar map so a Monday update shows the real person who wrote
+  // it (matched on the creator's name), not a source logo. Roy 2026-07-27.
+  const { data: usersForAvatars } = await supabase
+    .from("users")
+    .select("name, avatar_url")
+  const avatarByName = new Map<string, string>()
+  for (const u of usersForAvatars ?? []) {
+    const nm = (u.name ?? "").trim().toLowerCase()
+    if (!nm || !u.avatar_url) continue
+    avatarByName.set(nm, u.avatar_url) // full name
+    const first = nm.split(/\s+/)[0]
+    if (first && !avatarByName.has(first)) avatarByName.set(first, u.avatar_url) // first-name fallback
+  }
+  const resolveAvatar = (name: string | null | undefined): string | null => {
+    const nm = (name ?? "").trim().toLowerCase()
+    if (!nm) return null
+    return avatarByName.get(nm) ?? avatarByName.get(nm.split(/\s+/)[0]) ?? null
+  }
+
   const mondayUpdateEntries: TimelineEntry[] = mondayUpdates.map((u, idx) => {
-    const previewSrc = u.text.trim()
-    const oneLine = previewSrc.split("\n")[0] ?? ""
+    // Title = first line (a short summary); description = the rest, FULL (not
+    // truncated) so the card can offer "See more" like Monday. Roy 2026-07-27.
+    const full = u.text.trim()
+    const lines = full.split(/\r?\n/)
+    const oneLine = (lines[0] ?? "").trim()
     const title = oneLine.length > 90 ? oneLine.slice(0, 90).trimEnd() + "…" : oneLine || "Monday update"
+    const rest = lines.slice(1).join("\n").trim()
     return {
       id: `monday-live:${u.createdAt}:${idx}`,
       kind: "update",
       source: "monday",
       scope: "internal",
       title,
-      body: previewSrc.length > BODY_PREVIEW_LEN ? truncate(previewSrc, BODY_PREVIEW_LEN) : previewSrc,
+      body: rest || null,
       author: u.creatorName || null,
+      author_avatar: resolveAvatar(u.creatorName),
       occurred_at: u.createdAt,
       link_url: null,
       meta: { live: true, kind: "monday_item_update" },

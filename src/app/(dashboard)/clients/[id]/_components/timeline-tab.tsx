@@ -1,17 +1,21 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import Image from "next/image"
-import { ExternalLink, Clock } from "lucide-react"
+import { ThumbsUp, Reply as ReplyIcon, Plus } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { UserAvatar } from "@/components/ui/user-avatar"
+import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
 import type { TimelineEntry } from "@/app/api/clients/[id]/timeline/route"
 
 type Props = { mondayItemId: string }
+
+/** The reaction set shown when you click "Like" - mirrors Monday's picker. */
+const REACTIONS = ["👍", "👏", "🙏", "❤️", "😀", "✅"] as const
 
 function formatDateTime(iso: string, locale: Locale): string {
   const d = new Date(iso)
@@ -49,9 +53,8 @@ export function TimelineTab({ mondayItemId }: Props) {
     staleTime: 60 * 1000,
   })
 
-  // Roy 2026-06-11 round 2: client timeline shows ONLY Monday updates.
-  // Trengo conversations / Slack messages / meetings clutter the view -
-  // those live in their own surfaces (Klanten Inbox / Meetings tab).
+  // Client timeline shows ONLY Monday updates - the canonical per-client
+  // conversation. Trengo / Slack / meetings live in their own surfaces.
   const entries = useMemo(
     () => (data?.entries ?? []).filter((e) => e.source === "monday"),
     [data?.entries],
@@ -72,9 +75,9 @@ export function TimelineTab({ mondayItemId }: Props) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
       </div>
     )
   }
@@ -94,9 +97,7 @@ export function TimelineTab({ mondayItemId }: Props) {
       <Card>
         <CardContent className="py-10 text-center space-y-1">
           <p className="text-sm font-medium">{t("client.timeline.empty.title", locale)}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("client.timeline.empty.body", locale)}
-          </p>
+          <p className="text-xs text-muted-foreground">{t("client.timeline.empty.body", locale)}</p>
         </CardContent>
       </Card>
     )
@@ -104,73 +105,143 @@ export function TimelineTab({ mondayItemId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Grouped timeline */}
-      {grouped.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            {t("client.timeline.empty.body", locale)}
-          </CardContent>
-        </Card>
-      ) : (
-        grouped.map(([day, dayEntries]) => (
-          <div key={day} className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/80 px-1">
-              {day}
-            </p>
-            <div className="space-y-1.5">
-              {dayEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4"
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Monday brand mark - was a generic form icon. Roy
-                        2026-06-11: "ik wil het Monday logo". */}
-                    <div className="shrink-0 mt-0.5 h-9 w-9 rounded-md bg-muted/60 flex items-center justify-center">
-                      <Image
-                        src="/logos/brands/monday.svg"
-                        alt=""
-                        width={20}
-                        height={20}
-                        className="h-5 w-5 object-contain"
-                        unoptimized
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      {/* Time stamp only - source badge / scope / author
-                          row removed 2026-06-11 (Roy: "die regel mag
-                          helemaal weg, gewoon lekker simpel houden"). */}
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/80">
-                          <Clock className="h-3 w-3" />
-                          {formatDateTime(entry.occurred_at, locale)}
-                        </span>
-                      </div>
-                      <p className="text-[15px] font-medium leading-snug truncate">{entry.title}</p>
-                      {entry.body && (
-                        <p className="text-sm text-muted-foreground/90 leading-relaxed line-clamp-3">
-                          {entry.body}
-                        </p>
-                      )}
-                      {entry.link_url && (
-                        <a
-                          href={entry.link_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          {t("client.timeline.open_link", locale)}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {grouped.map(([day, dayEntries]) => (
+        <div key={day} className="space-y-2">
+          <p className="px-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            {day}
+          </p>
+          <div className="space-y-2">
+            {dayEntries.map((entry) => (
+              <TimelineEntryCard key={entry.id} entry={entry} locale={locale} />
+            ))}
           </div>
-        ))
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * A single Monday-style update card: author photo + name + timestamp, a bold
+ * title, the description (collapsed with a "See more" toggle like Monday), and
+ * a Like / Reply bar. "Like" opens the emoji reaction picker. Roy 2026-07-27.
+ */
+function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Locale }) {
+  const [expanded, setExpanded] = useState(false)
+  const [reaction, setReaction] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    function onDoc(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [pickerOpen])
+
+  const body = entry.body?.trim() ?? ""
+  const needsMore = body.length > 240 || (body.match(/\n/g)?.length ?? 0) >= 3
+
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm transition-colors hover:border-foreground/15">
+      {/* Author row - real Hub photo (matched to the Monday creator), name, time. */}
+      <div className="flex items-center gap-3">
+        <UserAvatar name={entry.author} avatarUrl={entry.author_avatar} autoColor className="size-9 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">{entry.author ?? "Onbekend"}</p>
+          <p className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
+            {formatDateTime(entry.occurred_at, locale)}
+          </p>
+        </div>
+      </div>
+
+      {/* Title + description (See more) */}
+      <div className="mt-3 space-y-1.5">
+        {entry.title && (
+          <p className="text-[15px] font-semibold leading-snug text-foreground">{entry.title}</p>
+        )}
+        {body && (
+          <div>
+            <p
+              className={cn(
+                "whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground/90",
+                !expanded && needsMore && "line-clamp-3",
+              )}
+            >
+              {body}
+            </p>
+            {needsMore && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1 text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
+              >
+                {expanded ? "See less" : "… See more"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Reaction chip (once picked) */}
+      {reaction && (
+        <div className="mt-2.5">
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/[0.07] px-2 py-0.5 text-xs">
+            <span>{reaction}</span>
+            <span className="font-mono tabular-nums text-muted-foreground/70">1</span>
+          </span>
+        </div>
       )}
+
+      {/* Like / Reply bar */}
+      <div className="relative mt-3 flex items-center gap-1 border-t border-border/50 pt-2">
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ThumbsUp className="h-4 w-4" />
+          Like
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ReplyIcon className="h-4 w-4" />
+          Reply
+        </button>
+
+        {/* Emoji reaction picker - opens on Like, mirrors Monday's row. */}
+        {pickerOpen && (
+          <div
+            ref={pickerRef}
+            className="absolute bottom-full left-0 z-20 mb-1 flex items-center gap-1 rounded-full border border-border bg-popover px-2 py-1.5 shadow-lg"
+          >
+            {REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  setReaction(emoji)
+                  setPickerOpen(false)
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-lg transition-transform hover:scale-125"
+              >
+                {emoji}
+              </button>
+            ))}
+            <span className="mx-0.5 h-5 w-px bg-border" />
+            <button
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
