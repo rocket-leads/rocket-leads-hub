@@ -44,13 +44,13 @@ export default async function RootLayout({
   const localeCookie = cookieStore.get("locale")?.value
   const lang = isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE
 
-  // The whole Hub now renders at native 187N scale (--ui-scale: 1) so rem-based
-  // Tailwind utilities and the px-based 187N component classes agree in size
-  // (the old 0.76 density shrank rem to ~76% and mismatched the px chrome). The
-  // per-user density control was retired with the redesign; we force the value
-  // here rather than read the cookie so a stale legacy `ui-scale` cookie can't
-  // shrink the UI back to the old density.
-  const htmlStyle = { "--ui-scale": "1" } as CSSProperties
+  // Compact density for a better overview (Roy prefers zoomed-out). Note: this
+  // scales only rem-based Tailwind utilities (via root font-size); the px-based
+  // 187N classes don't shrink, so a value <1 reintroduces a proportional rem-vs-
+  // px size gap. True "compact AND consistent" needs uniform zoom (see plan) -
+  // this is the interim density knob. Forced here (not cookie-read) so a stale
+  // legacy `ui-scale` cookie can't override it.
+  const htmlStyle = { "--ui-scale": "0.85" } as CSSProperties
 
   // data-theme="corporate" activates the 187N corporate signature (warm cream,
   // editorial type, coral→purple mark, chamfered black CTAs). Light-only — the
