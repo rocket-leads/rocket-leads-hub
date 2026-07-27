@@ -260,11 +260,14 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
               : `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
           </button>
           {repliesOpen && (
-            <div className="mt-2.5 space-y-4 border-l-2 border-border/60 pl-4">
+            <div className="mt-2.5 space-y-2 pl-1">
               {replies.map((r, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="size-7 shrink-0" />
-                  <div className="min-w-0 flex-1 pt-0.5">
+                <div key={i} className="flex items-start gap-2.5">
+                  <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="mt-0.5 size-7 shrink-0" />
+                  {/* Each reply is its own light mini-card (theme `muted`
+                      surface) so replies read as distinct bubbles, not one
+                      running block - Monday style. Roy 2026-07-27. */}
+                  <div className="min-w-0 flex-1 rounded-xl bg-muted/60 px-3 py-2">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span className="text-[13px] font-semibold text-foreground">
                         {r.author ?? "Onbekend"}
@@ -273,7 +276,7 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
                         {formatDateTime(r.occurred_at, locale)}
                       </span>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-muted-foreground/90">
+                    <p className="mt-0.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-foreground/80">
                       {r.body}
                     </p>
                   </div>
