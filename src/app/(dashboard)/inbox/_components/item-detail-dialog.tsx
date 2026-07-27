@@ -582,6 +582,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                   current={itemState}
                   onSetState={setItemState}
                   supportsAssigned={item.kind === "task"}
+                  reverse={item.kind === "task"}
                 />
               </div>
             )}

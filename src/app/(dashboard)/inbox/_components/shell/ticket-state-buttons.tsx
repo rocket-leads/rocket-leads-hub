@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { Check, User, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -22,11 +23,15 @@ export function TicketStateButtons({
   current,
   onSetState,
   supportsAssigned = true,
+  reverse = false,
   className,
 }: {
   current: TicketState
   onSetState: (target: TicketState) => void
   supportsAssigned?: boolean
+  /** Render the secondary (ghost) button on the LEFT and the primary on the
+   *  RIGHT. Roy 2026-07-27: tasks want Assign left / Close right. */
+  reverse?: boolean
   className?: string
 }) {
   let primary: { label: string; target: TicketState; tone: "green" | "orange"; Icon: typeof Check }
@@ -49,36 +54,49 @@ export function TicketStateButtons({
   }
 
   const PrimaryIcon = primary.Icon
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
+  const primaryEl = (
+    <button
+      type="button"
+      onClick={() => onSetState(primary.target)}
+      className={cn(
+        "inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold text-white shadow-sm transition-colors",
+        primary.tone === "green"
+          ? "bg-emerald-500 hover:bg-emerald-600"
+          : "bg-amber-500 hover:bg-amber-600",
+      )}
+    >
+      <PrimaryIcon className="h-4 w-4" strokeWidth={2.5} />
+      {primary.label}
+    </button>
+  )
+  let secondaryEl: ReactNode = null
+  if (secondary) {
+    const SecondaryIcon = secondary.Icon
+    const target = secondary.target
+    secondaryEl = (
       <button
         type="button"
-        onClick={() => onSetState(primary.target)}
-        className={cn(
-          "inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold text-white shadow-sm transition-colors",
-          primary.tone === "green"
-            ? "bg-emerald-500 hover:bg-emerald-600"
-            : "bg-amber-500 hover:bg-amber-600",
-        )}
+        onClick={() => onSetState(target)}
+        className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-transparent px-4 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
       >
-        <PrimaryIcon className="h-4 w-4" strokeWidth={2.5} />
-        {primary.label}
+        <SecondaryIcon className="h-4 w-4" />
+        {secondary.label}
       </button>
-      {secondary &&
-        (() => {
-          const SecondaryIcon = secondary.Icon
-          const target = secondary.target
-          return (
-            <button
-              type="button"
-              onClick={() => onSetState(target)}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-transparent px-4 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <SecondaryIcon className="h-4 w-4" />
-              {secondary.label}
-            </button>
-          )
-        })()}
+    )
+  }
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      {reverse ? (
+        <>
+          {secondaryEl}
+          {primaryEl}
+        </>
+      ) : (
+        <>
+          {primaryEl}
+          {secondaryEl}
+        </>
+      )}
     </div>
   )
 }
