@@ -442,7 +442,7 @@ export function OptimizeWizard({
       {!isLoadingDraft && refreshResult && draftGeneratedAt && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
             <span className="text-muted-foreground">
               Draft van{" "}
               <span className="font-medium text-foreground">
@@ -468,10 +468,10 @@ export function OptimizeWizard({
           wizard. Same chrome als de iteratie flow zelf. */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
         {/* Rail */}
-        <nav className="space-y-3 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+        <nav className="space-y-3 rounded-lg border border-border/60 bg-card p-2 shadow-[var(--shadow-sm)]">
           {/* Iteratie flow sectie */}
           <div>
-            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600">
               {t("pedro.optimize.rail.iteration_flow", locale)}
             </div>
             <div className="space-y-1">
@@ -489,7 +489,7 @@ export function OptimizeWizard({
           </div>
           {/* Overig sectie */}
           <div>
-            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600">
               {t("pedro.optimize.rail.other", locale)}
             </div>
             <div className="space-y-1">
@@ -507,7 +507,7 @@ export function OptimizeWizard({
         </nav>
 
         {/* Right pane - active step content */}
-        <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
+        <div className="rounded-lg border border-border/60 bg-card shadow-[var(--shadow-sm)] overflow-hidden">
           <StepHeader item={activeStepOrOverig} locale={locale} />
           {pickedAd && activeKey !== "pick_ad" && activeKey !== "lp_prompt" && (
             <SourceAdBanner
@@ -730,7 +730,7 @@ function SourceAdBanner({
           </span>
         )}
         {picked.screenshotPath && (
-          <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400 font-semibold px-1.5 rounded bg-emerald-500/10">
+          <span className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold px-1.5 rounded bg-emerald-500/10">
             {t("pedro.optimize.source_ad.screenshot", locale)}
           </span>
         )}
@@ -766,7 +766,7 @@ function StepGate({
   }
   if (!pickedAd) {
     return (
-      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700">
         {t("pedro.optimize.gate.no_ad", locale)}
       </div>
     )
@@ -872,8 +872,8 @@ function SelectVariantsStep({
   }
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5 space-y-3">
-        <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400">
+      <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-5 space-y-3">
+        <div className="flex items-start gap-2 text-sm text-red-700">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-medium">Genereren mislukt</div>
@@ -947,8 +947,8 @@ function ProposalSelectionCard({
   onPick: (key: string) => void
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
-      <div className="text-[10px] uppercase tracking-[0.12em] text-violet-600 dark:text-violet-400 font-semibold">
+    <div className="rounded-lg border border-border/60 bg-card p-4 space-y-3">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-violet-600 font-semibold">
         Iteratie op {proposal.basedOnAd.adName}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1031,7 +1031,7 @@ function GeneratingProgress() {
   const currentLabel = GENERATE_STAGES[currentStageIdx].label
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-muted/20 p-8 space-y-5">
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-8 space-y-5">
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-2">
           <div className="font-heading font-semibold text-base">
@@ -1102,7 +1102,7 @@ function VariantSelectionCard({
           <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
             Tekst op afbeelding
           </div>
-          <div className="text-sm font-bold leading-snug text-violet-600 dark:text-violet-400">
+          <div className="text-sm font-bold leading-snug text-violet-600">
             {variant.headline}
           </div>
         </div>
@@ -1195,7 +1195,7 @@ function EditCopyStep({
   if (!picked) {
     return (
       <div className="space-y-3">
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700">
           Nog geen variant gekozen. Ga terug naar Stap 2 om er één te kiezen.
         </div>
         <button
@@ -1241,7 +1241,7 @@ function EditCopyStep({
         </button>
       </div>
       {missingVariantId && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 flex items-start gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           <div>
             Deze variant heeft geen variant-ID. Inline editen en image-gen werken niet.
@@ -1324,11 +1324,11 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
   }, [variant.adName, headline, primaryCopy])
 
   return (
-    <article className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_0_rgb(0_0_0_/_0.04)] overflow-hidden">
+    <article className="rounded-lg border border-border/60 bg-card shadow-[var(--shadow-sm)] overflow-hidden">
       {/* Header */}
       <header className="px-6 pt-6 pb-4 flex items-start justify-between gap-4 border-b border-border/40">
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 dark:text-violet-400 font-semibold mb-1">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 font-semibold mb-1">
             Variant
           </div>
           <h3 className="font-heading text-xl font-semibold tracking-tight leading-tight">
@@ -1345,7 +1345,7 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
           className={cn(
             "shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md text-xs font-medium transition-colors",
             copied
-              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+              ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/30"
               : "border border-border hover:bg-accent",
           )}
         >
@@ -1370,7 +1370,7 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
             placeholder="(leeg - klik om te bewerken)"
             maxLength={80}
             disabled={!editable}
-            className="text-lg font-bold text-violet-600 dark:text-violet-400 leading-snug"
+            className="text-lg font-bold text-violet-600 leading-snug"
           />
         </section>
 
@@ -1395,9 +1395,9 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
         </section>
 
         {/* Dynamic creative pool - alt headlines + alt primary texts */}
-        <section className="space-y-4 rounded-xl border border-border/40 bg-muted/20 p-5">
+        <section className="space-y-4 rounded-md border border-border/40 bg-muted/20 p-5">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            <Sparkles className="h-3.5 w-3.5 text-violet-600" />
             <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
               Meta dynamic creative pool · 3 headlines × 3 primary texts
             </div>
@@ -1511,7 +1511,7 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
                     {variant.phrasesReused.map((p, i) => (
                       <span
                         key={i}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
+                        className="inline-flex items-center px-2 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 border border-emerald-500/20"
                       >
                         &laquo;{p}&raquo;
                       </span>
@@ -1610,16 +1610,16 @@ function GenerateCreativeImageCard({
 }) {
   const variantId = variant.variantId ?? null
   return (
-    <article className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_0_rgb(0_0_0_/_0.04)] overflow-hidden">
+    <article className="rounded-lg border border-border/60 bg-card shadow-[var(--shadow-sm)] overflow-hidden">
       <header className="px-6 pt-5 pb-4 border-b border-border/40">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 dark:text-violet-400 font-semibold mb-1">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 font-semibold mb-1">
           Variant
         </div>
         <h3 className="font-heading text-lg font-semibold tracking-tight leading-tight">
           {variant.label}
         </h3>
         {variant.headline && (
-          <div className="mt-2 text-sm text-violet-600 dark:text-violet-400 font-medium">
+          <div className="mt-2 text-sm text-violet-600 font-medium">
             {variant.headline}
           </div>
         )}
@@ -1675,7 +1675,7 @@ function PushMetaStep({
           </button>
           <div className="text-xs text-muted-foreground">
             Laatste check: copy, images, budget. Alles gaat naar Meta als{" "}
-            <span className="font-medium text-amber-700 dark:text-amber-400">PAUSED</span>.
+            <span className="font-medium text-amber-700">PAUSED</span>.
           </div>
         </div>
       </div>
@@ -1782,7 +1782,7 @@ function PushVariantReviewCard({
   })
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-4">
+    <div className="rounded-lg border border-border/60 bg-card p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <div className="font-heading font-semibold text-sm">{variant.label}</div>
@@ -1815,7 +1815,7 @@ function PushVariantReviewCard({
             Images ({filledCount}/3)
           </div>
           {filledCount === 0 && (
-            <div className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+            <div className="text-[11px] text-amber-700 inline-flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
               Nog geen images - ga terug naar Stap 3
             </div>
@@ -1845,7 +1845,7 @@ function PushVariantReviewCard({
           ))}
         </div>
         {error && (
-          <div className="mt-2 text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+          <div className="mt-2 text-[11px] text-red-600 inline-flex items-center gap-1">
             <AlertTriangle className="h-3 w-3" />
             {error}
           </div>
@@ -1858,7 +1858,7 @@ function PushVariantReviewCard({
           <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
             Tekst op afbeelding (headline)
           </div>
-          <div className="text-sm font-bold text-violet-600 dark:text-violet-400 leading-snug">
+          <div className="text-sm font-bold text-violet-600 leading-snug">
             {variant.headline}
           </div>
         </div>

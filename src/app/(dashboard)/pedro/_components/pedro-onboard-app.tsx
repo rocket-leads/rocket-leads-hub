@@ -310,14 +310,14 @@ export function PedroOnboardApp({ clients }: Props) {
       <PageHeader
         title={t("pedro.title", locale)}
         actions={
-          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-[blink_2s_infinite]" />
             {t("pedro.status.online", locale)}
           </span>
         }
       />
 
-      <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+      <div className="mb-5 rounded-lg border border-border/60 bg-card p-4 shadow-[var(--shadow-sm)]">
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <ClientPicker

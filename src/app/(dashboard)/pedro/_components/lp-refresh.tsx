@@ -159,7 +159,7 @@ export function LpRefresh({
   return (
     <div className="space-y-5">
       {!hideShellHeader && (
-        <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+        <div className="rounded-lg border border-border/60 bg-card p-5 shadow-[var(--shadow-sm)]">
           <div className="flex items-start gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
               <FileText className="h-4 w-4 text-primary" />
@@ -206,7 +206,7 @@ export function LpRefresh({
 
       {/* Mode-specific input panel */}
       {mode === "optimize-existing" ? (
-        <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+        <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
           <Field
             label="Huidige LP URL"
             hint="bv. https://acme-leads.com — Pedro scrapet de live pagina."
@@ -233,7 +233,7 @@ export function LpRefresh({
         </section>
       ) : (
         <>
-          <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+          <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
             <SectionHeader title="Stijl" body="Toon en visuele richting." />
             <ChipRow
               options={STIJL_OPTIONS}
@@ -241,7 +241,7 @@ export function LpRefresh({
               onChange={setStijl}
             />
           </section>
-          <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+          <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
             <SectionHeader
               title="Lengte"
               body="Korter = sneller laden. Langer = meer overtuiging voor high-ticket."
@@ -252,7 +252,7 @@ export function LpRefresh({
               onChange={setLengte}
             />
           </section>
-          <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+          <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
             <SectionHeader
               title="Optionele steering"
               body="Iets specifieks dat in deze nieuwe LP moet."
@@ -268,7 +268,7 @@ export function LpRefresh({
       )}
 
       {/* Tracking — shared between modes, collapsed by default? No, keep visible: pixel/webhook are easy to forget. */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+      <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
         <SectionHeader
           title="Pixel & tracking"
           body="Wordt direct in de Lovable prompt verwerkt — fbq init + Lead event + form-POST."
@@ -331,7 +331,7 @@ export function LpRefresh({
 
       {/* Output */}
       {lpPrompt && (
-        <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+        <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
           <SectionHeader
             title="Lovable prompt"
             body="Kopieer en plak in Lovable om de pagina te bouwen."
@@ -390,7 +390,7 @@ function ModeButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "text-left rounded-xl border p-4 transition-all flex items-start gap-3",
+        "text-left rounded-md border p-4 transition-all flex items-start gap-3",
         disabled && "opacity-50 cursor-not-allowed",
         !disabled && "hover:border-primary/60",
         active && tone === "primary" && "border-primary bg-primary/10 ring-2 ring-primary/20",

@@ -141,7 +141,7 @@ export function StageActionBar({ clientId, stage, campaignNumber = 1, getCurrent
       <div className="flex items-center gap-2 shrink-0">
         {feedback && (
           <span
-            className={`text-xs font-medium ${feedback.kind === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+            className={`text-xs font-medium ${feedback.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}
           >
             {feedback.kind === "ok" ? "✓ " : "✗ "}
             {feedback.msg}

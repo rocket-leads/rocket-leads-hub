@@ -353,7 +353,7 @@ function OutputBlock({ content, expandFull }: { content: string; expandFull?: bo
           setTimeout(() => setCopied(false), 2000);
         }}
         className={`absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 text-[10px] font-medium bg-background border border-border rounded-md cursor-pointer transition-colors whitespace-nowrap ${
-          copied ? "text-emerald-600 dark:text-emerald-400 border-emerald-500/40" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          copied ? "text-emerald-600 border-emerald-500/40" : "text-muted-foreground hover:text-foreground hover:bg-accent"
         }`}
       >
         {copied ? "Gekopieerd" : "Kopieer"}
@@ -366,7 +366,7 @@ function OutputBlock({ content, expandFull }: { content: string; expandFull?: bo
 function Card({ active, children }: { active?: boolean; children: React.ReactNode }) {
   return (
     <div
-      className={`rounded-2xl border bg-card p-6 mb-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] transition-colors ${
+      className={`rounded-lg border bg-card p-6 mb-5 shadow-[var(--shadow-sm)] transition-colors ${
         active ? "border-primary/30 ring-1 ring-primary/20" : "border-border/60"
       }`}
     >
@@ -1987,7 +1987,7 @@ ${creativeDescriptions}`;
           )}
 
           {importStatus && !autoFilling && (
-            <div className="flex items-start gap-2 mt-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/20 rounded-md text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="flex items-start gap-2 mt-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/20 rounded-md text-xs text-emerald-700">
               <span aria-hidden>✓</span>
               <div className="flex-1">
                 <div>{importStatus}</div>
@@ -2066,7 +2066,7 @@ ${creativeDescriptions}`;
                     <div key={field} className="flex flex-col items-center gap-1.5">
                       <label className="relative cursor-pointer group">
                         <div
-                          className="w-11 h-11 rounded-lg border border-border group-hover:border-primary transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
+                          className="w-11 h-11 rounded-lg border border-border group-hover:border-primary transition-colors shadow-[var(--shadow-sm)]"
                           style={{ background: color }}
                         />
                         <input
@@ -2274,7 +2274,7 @@ ${creativeDescriptions}`;
                           title={markedForRegen ? "Niet regenereren" : "Markeer voor regenereren"}
                           className={`h-[18px] w-[18px] rounded-[4px] border-[1.5px] flex items-center justify-center text-[10px] leading-none transition-all ${
                             markedForRegen
-                              ? "bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400"
+                              ? "bg-amber-500/15 border-amber-500 text-amber-600"
                               : "border-border/60 text-muted-foreground/60 hover:border-amber-500/60 hover:text-amber-500"
                           }`}
                         >
@@ -2299,7 +2299,7 @@ ${creativeDescriptions}`;
               {/* Regenerate-selected panel - only renders when ≥1 marked. */}
               {regenAngleSet.size > 0 && (
                 <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
-                  <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  <div className="text-[11px] text-amber-600 font-medium">
                     {regenAngleSet.size} angle{regenAngleSet.size === 1 ? "" : "s"} gemarkeerd voor regeneratie
                   </div>
                   <textarea
@@ -2438,7 +2438,7 @@ ${creativeDescriptions}`;
             <>
               {/* Editable video scripts */}
               {scriptVideos.map((video, vi) => (
-                <div key={vi} className="bg-muted/40 border border-border/60 rounded-xl p-[1rem_1.125rem] mb-4">
+                <div key={vi} className="bg-muted/40 border border-border/60 rounded-md p-[1rem_1.125rem] mb-4">
                   <input
                     type="text"
                     value={video.title}
@@ -2857,7 +2857,7 @@ ${creativeDescriptions}`;
                           onClick={saveClientDeliverable}
                           disabled={deliverableSaving || !selectedClientId}
                           title="Bundel alle opgeslagen stages tot één client deliverable .md en sla op aan de klant"
-                          className="bg-emerald-500 text-white hover:bg-emerald-600 dark:hover:bg-emerald-400"
+                          className="bg-emerald-500 text-white hover:bg-emerald-600"
                         >
                           {deliverableSaving ? "Opslaan…" : "📄 Sla op als client deliverable"}
                         </Button>
@@ -3056,7 +3056,7 @@ ${creativeDescriptions}`;
                     onClick={saveClientDeliverable}
                     disabled={deliverableSaving || !selectedClientId}
                     title="Bundel alle opgeslagen stages tot één client deliverable .md en sla op aan de klant"
-                    className="bg-emerald-500 text-white hover:bg-emerald-600 dark:hover:bg-emerald-400"
+                    className="bg-emerald-500 text-white hover:bg-emerald-600"
                   >
                     {deliverableSaving ? "Opslaan…" : "📄 Sla op als client deliverable"}
                   </Button>
@@ -3072,7 +3072,7 @@ ${creativeDescriptions}`;
 
       {/* Toast */}
       <div
-        className={`fixed bottom-6 right-6 bg-card border border-primary/30 rounded-[10px] px-4 py-[0.625rem] text-[12.5px] text-foreground flex items-center gap-[7px] z-[100] shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all ${
+        className={`fixed bottom-6 right-6 bg-card border border-primary/30 rounded-[10px] px-4 py-[0.625rem] text-[12.5px] text-foreground flex items-center gap-[7px] z-[100] shadow-[var(--shadow-md)] transition-all ${
           toast ? "translate-y-0 opacity-100" : "translate-y-5 opacity-0 pointer-events-none"
         }`}
       >
@@ -3130,10 +3130,10 @@ function VisualStyleSection({
         <div
           className={`rounded-md border px-3 py-2 text-[11px] leading-tight ${
             qualitySummary.score >= 70
-              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700"
               : qualitySummary.score >= 40
-                ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
-                : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+                ? "border-amber-500/30 bg-amber-500/5 text-amber-700"
+                : "border-red-500/30 bg-red-500/5 text-red-700"
           }`}
         >
           <div className="font-medium mb-0.5">

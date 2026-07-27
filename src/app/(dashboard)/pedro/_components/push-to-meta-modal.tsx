@@ -466,11 +466,11 @@ export function PushToMetaModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-xl">
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-6 py-4 border-b border-border bg-card">
           <div>
-            <div className="text-xs uppercase tracking-wide font-semibold text-sky-600 dark:text-sky-400 mb-1">
+            <div className="text-xs uppercase tracking-wide font-semibold text-sky-600 mb-1">
               Push to Meta
             </div>
             <h2 className="font-heading font-semibold text-lg">
@@ -480,7 +480,7 @@ export function PushToMetaModal({
               Eén nieuwe ad set wordt aangemaakt in dezelfde campagne, met dezelfde
               targeting / audience / placements als de winning ad set (true
               duplicate).{" "}
-              <span className="font-medium text-amber-700 dark:text-amber-400">
+              <span className="font-medium text-amber-700">
                 Status: PAUSED (= concept).
               </span>{" "}
               Niets gaat live, geen euro spend. Verschijnt in Ads Manager onder
@@ -505,7 +505,7 @@ export function PushToMetaModal({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs uppercase tracking-wide font-semibold text-amber-600 dark:text-amber-400">
+                  <div className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                     Kies template ad set
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -531,7 +531,7 @@ export function PushToMetaModal({
                 </div>
               )}
               {candidatesError && (
-                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600">
                   {candidatesError}
                 </div>
               )}
@@ -568,12 +568,12 @@ export function PushToMetaModal({
                             <div className="text-[11px] text-muted-foreground truncate font-mono">
                               {c.campaignName || c.campaignId}
                               {c.campaignIsSelected && (
-                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-sky-500/10 text-sky-700 dark:text-sky-400 text-[10px]">
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-sky-500/10 text-sky-700 text-[10px]">
                                   geselecteerd
                                 </span>
                               )}
                               {!usable && (
-                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px]">
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-amber-500/10 text-amber-700 text-[10px]">
                                   geen rep-ad
                                 </span>
                               )}
@@ -610,7 +610,7 @@ export function PushToMetaModal({
                   partial data" or "Meta validated and rejected".
                   Roy 2026-06-14. */}
               {error && (
-                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 space-y-2">
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 space-y-2">
                   <div className="flex items-start gap-2 whitespace-pre-line">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
@@ -648,7 +648,7 @@ export function PushToMetaModal({
                         setPickerOpen(true)
                         if (!candidates) void loadCandidates()
                       }}
-                      className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
+                      className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 transition-colors"
                     >
                       Kies handmatig een ad set →
                     </button>
@@ -669,7 +669,7 @@ export function PushToMetaModal({
                   override dropdowns. The dropdowns are still available
                   in Geavanceerd as a last-resort. */}
               {launchResponse?.templateIncomplete && !override && (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start justify-between gap-3">
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 flex items-start justify-between gap-3">
                   <div className="flex items-start gap-2 min-w-0">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <div className="min-w-0">
@@ -702,7 +702,7 @@ export function PushToMetaModal({
               )}
 
               <div className="rounded-lg border border-sky-500/40 bg-sky-500/5 p-3 space-y-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-sky-700 dark:text-sky-400 font-semibold">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-sky-700 font-semibold">
                   Ad set (duplicate van winner)
                 </div>
 
@@ -740,7 +740,7 @@ export function PushToMetaModal({
                         <button
                           type="button"
                           onClick={() => setOverride(null)}
-                          className="inline-flex items-center h-7 px-2 text-[11px] rounded-md hover:bg-amber-500/10 text-amber-700 dark:text-amber-400 transition-colors"
+                          className="inline-flex items-center h-7 px-2 text-[11px] rounded-md hover:bg-amber-500/10 text-amber-700 transition-colors"
                         >
                           Reset
                         </button>
@@ -854,13 +854,13 @@ export function PushToMetaModal({
                     input so the CM knows exactly what Meta complained
                     about. */}
                 {hintFor("adset_name") && (
-                  <div className="text-[11px] text-amber-700 dark:text-amber-400 -mt-1 flex items-start gap-1">
+                  <div className="text-[11px] text-amber-700 -mt-1 flex items-start gap-1">
                     <Wand2 className="h-3 w-3 mt-0.5 shrink-0" />
                     <span>{hintFor("adset_name")!.reason}</span>
                   </div>
                 )}
                 {hintFor("daily_budget") && (
-                  <div className="text-[11px] text-amber-700 dark:text-amber-400 -mt-1 flex items-start gap-1">
+                  <div className="text-[11px] text-amber-700 -mt-1 flex items-start gap-1">
                     <Wand2 className="h-3 w-3 mt-0.5 shrink-0" />
                     <span>
                       {hintFor("daily_budget")!.reason}{" "}
@@ -911,7 +911,7 @@ export function PushToMetaModal({
                       </div>
                     </label>
                     {hintFor("targeting") && (
-                      <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1 -mt-1">
+                      <div className="text-[11px] text-amber-700 flex items-start gap-1 -mt-1">
                         <Wand2 className="h-3 w-3 mt-0.5 shrink-0" />
                         <span>{hintFor("targeting")!.reason}</span>
                       </div>
@@ -942,7 +942,7 @@ export function PushToMetaModal({
                         ))}
                       </select>
                       {hintFor("bid_strategy") && (
-                        <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                        <div className="text-[11px] text-amber-700 flex items-start gap-1">
                           <Wand2 className="h-3 w-3 mt-0.5 shrink-0" />
                           <span>{hintFor("bid_strategy")!.reason}</span>
                         </div>
@@ -974,7 +974,7 @@ export function PushToMetaModal({
                         ))}
                       </select>
                       {hintFor("optimization_goal") && (
-                        <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                        <div className="text-[11px] text-amber-700 flex items-start gap-1">
                           <Wand2 className="h-3 w-3 mt-0.5 shrink-0" />
                           <span>{hintFor("optimization_goal")!.reason}</span>
                         </div>
@@ -1095,7 +1095,7 @@ export function PushToMetaModal({
           {hasResults && (
             <div className="space-y-3">
               {launchResponse.fallback && (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
                     <div className="font-medium">Fallback gebruikt</div>
@@ -1114,7 +1114,7 @@ export function PushToMetaModal({
                   href={launchResponse.adsManagerUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 transition-colors"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open nieuwe ad set in Meta Ads Manager
@@ -1130,8 +1130,8 @@ export function PushToMetaModal({
                     className={cn(
                       "flex items-start gap-2 rounded-md px-2.5 py-1.5 text-xs",
                       r.ok
-                        ? "bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
-                        : "bg-red-500/5 text-red-700 dark:text-red-400",
+                        ? "bg-emerald-500/5 text-emerald-700"
+                        : "bg-red-500/5 text-red-700",
                     )}
                   >
                     {r.ok ? (

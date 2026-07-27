@@ -446,13 +446,13 @@ export function BriefRequiredModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-xl">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-6 py-4 border-b border-border bg-card">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <span className="text-xs uppercase tracking-wide font-semibold text-amber-600 dark:text-amber-400">
+              <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                 Brief vereist
               </span>
             </div>
@@ -517,7 +517,7 @@ export function BriefRequiredModal({
               Vult alleen lege velden - laat wat je al typte intact.
             </span>
             {capturedBrandStyle && (
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+              <span className="text-[11px] text-emerald-600 inline-flex items-center gap-1">
                 <Check className="h-3 w-3" />
                 Brand kleuren + fonts opgehaald van website
               </span>
@@ -779,7 +779,7 @@ export function BriefRequiredModal({
         </div>
 
         {error && (
-          <div className="mx-6 mb-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+          <div className="mx-6 mb-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             {error}
           </div>
@@ -793,7 +793,7 @@ export function BriefRequiredModal({
                 Bedrijf en Aanbod zijn verplicht voor je kan opslaan.
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-1 text-emerald-600">
                 <Check className="h-3 w-3" /> Klaar om op te slaan
               </span>
             )}

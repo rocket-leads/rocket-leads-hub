@@ -37,11 +37,11 @@ export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart,
           {env.proposals.map((p, i) => (
             <div
               key={`${p.basedOnAd.adId}-${i}`}
-              className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
+              className="rounded-lg border border-border/60 bg-card p-5 shadow-[var(--shadow-sm)]"
             >
               <div className="flex items-start justify-between mb-4 gap-3">
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
+                  <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-emerald-600 font-semibold mb-1">
                     <Video className="h-3 w-3" />
                     Scripts op winner
                   </div>

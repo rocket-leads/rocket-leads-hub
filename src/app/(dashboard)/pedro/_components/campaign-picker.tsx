@@ -87,7 +87,7 @@ export function CampaignPicker({
         onClick={() => setOpen((s) => !s)}
         disabled={loading}
         className={cn(
-          "inline-flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)] transition-colors hover:bg-muted/40",
+          "inline-flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground shadow-[var(--shadow-sm)] transition-colors hover:bg-muted/40",
           "aria-expanded:bg-muted/40",
           loading && "opacity-60 cursor-not-allowed",
         )}

@@ -312,7 +312,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
   // margin pulls it close to the picker so they read as a stacked pair.
   // Roy 2026-06-13.
   return (
-    <div className="-mt-2 mb-5 rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+    <div className="-mt-2 mb-5 rounded-lg border border-border/60 bg-card shadow-[var(--shadow-sm)]">
       <div className="border-b border-border/60 px-5 py-3 flex items-center justify-between">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -322,13 +322,13 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
         </div>
         <div className="flex items-center gap-2">
           {savedFlash && (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+            <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
               <CheckCircle2 className="h-3.5 w-3.5" />
               Opgeslagen
             </span>
           )}
           {dirty > 0 && !savedFlash && (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
+            <span className="text-xs text-amber-600">
               {dirty} wijziging{dirty === 1 ? "" : "en"} niet opgeslagen
             </span>
           )}
@@ -360,7 +360,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
       </div>
 
       {error && (
-        <div className="border-b border-red-500/30 bg-red-500/5 px-5 py-2 text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+        <div className="border-b border-red-500/30 bg-red-500/5 px-5 py-2 text-xs text-red-600 inline-flex items-center gap-1.5">
           <AlertCircle className="h-3.5 w-3.5" />
           {error}
         </div>
@@ -381,7 +381,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
               {verifyState?.connected ? (
                 <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <div className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700">
                       <CheckCircle2 className="h-4 w-4 shrink-0" />
                       Inspiration library verbonden
                     </div>
@@ -405,7 +405,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
               ) : verifyState ? (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
+                    <div className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       {verifyState.folderId
                         ? "Inspiration root niet bereikbaar"
@@ -585,13 +585,13 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
                 {settings.brief.sector ? (
                   <span className="font-medium text-foreground">{settings.brief.sector}</span>
                 ) : (
-                  <span className="text-amber-600 dark:text-amber-400">
+                  <span className="text-amber-600">
                     niet ingevuld — Pedro&apos;s auto-mode mist branche-signaal. Selecteer hieronder
                     expliciet welke stijlen je wil.
                   </span>
                 )}
                 {!settings.brief.filled && (
-                  <span className="ml-auto text-amber-600 dark:text-amber-400">
+                  <span className="ml-auto text-amber-600">
                     brief incompleet
                   </span>
                 )}

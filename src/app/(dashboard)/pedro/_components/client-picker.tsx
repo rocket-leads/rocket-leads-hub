@@ -127,7 +127,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
                               s.tone === "primary"
                                 ? "bg-primary/10 text-primary"
                                 : s.tone === "emerald"
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  ? "bg-emerald-500/10 text-emerald-600"
                                   : "bg-muted text-muted-foreground"
                             }`}
                           >

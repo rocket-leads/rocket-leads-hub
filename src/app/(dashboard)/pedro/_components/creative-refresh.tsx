@@ -70,7 +70,7 @@ function AdNameChip({ adName }: { adName: string }) {
         "rounded-md border px-2 py-1 text-xs font-mono",
         "transition-colors",
         copied
-          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700"
           : "border-border bg-muted/40 text-foreground hover:bg-muted",
       )}
     >
@@ -236,7 +236,7 @@ export function VariantCard({
           (ad-picker flow). */}
       {variant.sourceHookQuote && variant.sourceHookQuote.length > 0 && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5">
-          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 font-semibold mb-0.5">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 font-semibold mb-0.5">
             Bron-hook uit source ad
           </div>
           <div className="text-xs italic text-foreground">
@@ -252,14 +252,14 @@ export function VariantCard({
           de prompt-rewrite). */}
       {variant.phrasesReused && variant.phrasesReused.length > 0 && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5">
-          <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-400 font-semibold mb-1">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-700 font-semibold mb-1">
             Behoudt uit source ({variant.phrasesReused.length})
           </div>
           <div className="flex flex-wrap gap-1">
             {variant.phrasesReused.map((p, i) => (
               <span
                 key={i}
-                className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30"
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 border border-emerald-500/30"
               >
                 &laquo;{p}&raquo;
               </span>
@@ -435,9 +435,9 @@ function ProposalCard({
   clientId: string | null
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+    <div className="rounded-lg border border-border/60 bg-card p-5 shadow-[var(--shadow-sm)]">
       <div className="mb-4">
-        <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-600 dark:text-sky-400 font-semibold mb-1">
+        <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-600 font-semibold mb-1">
           <ImageIcon className="h-3 w-3" />
           Itereren op winner
         </div>

@@ -112,7 +112,7 @@ export function CopyButton({ text }: { text: string }) {
       }}
       className={`inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium border rounded-md transition-colors ${
         copied
-          ? "text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
+          ? "text-emerald-600 border-emerald-500/40"
           : "text-muted-foreground hover:text-foreground hover:bg-accent border-border"
       }`}
     >
@@ -287,7 +287,7 @@ export function RefreshShell<TProposal>({
           vervangt het hele standaard window+generate block - CreativeRefresh
           gebruikt dit voor de AdPicker flow (campagne + ad kiezen ipv
           window-based auto-winner detection). */}
-      <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)]">
+      <div className="rounded-lg border border-border/60 bg-card p-5 shadow-[var(--shadow-sm)]">
         {!hideShellHeader && (
           <div className="mb-4">
             <div className="font-heading font-semibold text-sm tracking-tight">{title}</div>
@@ -344,7 +344,7 @@ export function RefreshShell<TProposal>({
 
       {/* Loading */}
       {loading && (
-        <div className="rounded-2xl border border-border/60 bg-card p-5 flex items-center gap-3">
+        <div className="rounded-lg border border-border/60 bg-card p-5 flex items-center gap-3">
           <RefreshCw className="h-4 w-4 text-primary animate-spin" />
           <span className="text-sm text-muted-foreground">
             Pedro itereert op de gekozen ad voor &quot;{selectedClientName}&quot; - schrijft 3 varianten…
@@ -354,8 +354,8 @@ export function RefreshShell<TProposal>({
 
       {/* Error */}
       {error && (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5">
-          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 font-medium">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-5">
+          <div className="flex items-center gap-2 text-sm text-red-600 font-medium">
             <AlertTriangle className="h-4 w-4" />
             {error}
           </div>
@@ -364,7 +364,7 @@ export function RefreshShell<TProposal>({
 
       {/* No-winners result */}
       {data && data.mode === "no-winners" && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-2">
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-5 space-y-2">
           <div className="font-heading font-semibold text-[14px] tracking-tight">
             Geen winners in {data.window.days}d window
           </div>
@@ -405,7 +405,7 @@ export function RefreshShell<TProposal>({
           </div>
 
           {data.summary && (
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
               <div className="flex items-start gap-2">
                 <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                 <div className="text-sm text-foreground leading-relaxed">{data.summary}</div>
@@ -414,7 +414,7 @@ export function RefreshShell<TProposal>({
           )}
 
           {data.proposals.length === 0 ? (
-            <div className="rounded-2xl border border-border/60 bg-card p-5 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-border/60 bg-card p-5 text-sm text-muted-foreground">
               Pedro vond winners maar gaf geen proposals terug. Probeer opnieuw of kies een ander window.
             </div>
           ) : (
@@ -422,8 +422,8 @@ export function RefreshShell<TProposal>({
           )}
 
           {data.warnings.length > 0 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
-              <ul className="text-xs text-amber-700 dark:text-amber-400 list-disc pl-5 space-y-0.5">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <ul className="text-xs text-amber-700 list-disc pl-5 space-y-0.5">
                 {data.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
             </div>
@@ -521,7 +521,7 @@ function DriveAutoSave({
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 transition-colors"
         title={msg ?? "Bewaard in Drive"}
       >
         <ExternalLink className="h-3.5 w-3.5" />
@@ -542,7 +542,7 @@ function DriveAutoSave({
   if (state === "error") {
     return (
       <span
-        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium text-red-600 dark:text-red-400"
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium text-red-600"
         title={msg ?? "Drive save mislukt"}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
@@ -605,7 +605,7 @@ function RefreshHistoryPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+    <div className="rounded-md border border-border/60 bg-card overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -628,7 +628,7 @@ function RefreshHistoryPanel({
       {open && rows && rows.length > 0 && (
         <div className="border-t border-border/60 divide-y divide-border/40">
           {deleteError && (
-            <div className="px-4 py-2 text-xs text-red-600 dark:text-red-400 bg-red-500/5 border-b border-red-500/20">
+            <div className="px-4 py-2 text-xs text-red-600 bg-red-500/5 border-b border-red-500/20">
               {deleteError}
             </div>
           )}
@@ -657,13 +657,13 @@ function RefreshHistoryPanel({
                       <span>·</span>
                       <span>{r.proposalCount} proposal{r.proposalCount === 1 ? "" : "s"}</span>
                       {r.savedToInbox && (
-                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600">
                           <Inbox className="h-3 w-3" />
                           inbox
                         </span>
                       )}
                       {r.savedToDrive && (
-                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600">
                           <CloudUpload className="h-3 w-3" />
                           drive
                         </span>
@@ -707,7 +707,7 @@ function RefreshHistoryPanel({
                   }}
                   disabled={isDeleting}
                   title="Verwijder deze refresh + alle gegenereerde varianten"
-                  className="shrink-0 inline-flex items-center justify-center w-10 px-2 text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/5 transition-colors disabled:opacity-50"
+                  className="shrink-0 inline-flex items-center justify-center w-10 px-2 text-muted-foreground/60 hover:text-red-600 hover:bg-red-500/5 transition-colors disabled:opacity-50"
                 >
                   {isDeleting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

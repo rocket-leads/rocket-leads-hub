@@ -128,11 +128,11 @@ export function RegenFeedbackModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-xl">
+      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-6 py-4 border-b border-border bg-card">
           <div>
-            <div className="text-xs uppercase tracking-wide font-semibold text-amber-600 dark:text-amber-400 mb-1 inline-flex items-center gap-1">
+            <div className="text-xs uppercase tracking-wide font-semibold text-amber-600 mb-1 inline-flex items-center gap-1">
               <RefreshCw className="h-3 w-3" />
               Customise slot {slotLabel}
             </div>
@@ -159,7 +159,7 @@ export function RegenFeedbackModal({
         {/* Body */}
         <div className="px-6 py-4 space-y-4">
           {!hasRegenBudget && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 flex items-start gap-2">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <div>
                 Deze slot is al 1× aangepast - geen credits meer over.
@@ -193,7 +193,7 @@ export function RegenFeedbackModal({
           ))}
 
           {error && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               {error}
             </div>

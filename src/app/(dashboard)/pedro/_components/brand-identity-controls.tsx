@@ -238,7 +238,7 @@ export function BrandColorsEditor({
                 onChange={(e) => patch(idx, { hex: e.target.value })}
                 className={cn(
                   "h-7 px-2 rounded border border-border/60 bg-background text-xs font-mono w-28",
-                  !valid && "border-red-500/50 text-red-600 dark:text-red-400",
+                  !valid && "border-red-500/50 text-red-600",
                 )}
                 placeholder="#000000"
                 spellCheck={false}
@@ -261,7 +261,7 @@ export function BrandColorsEditor({
                 }
                 className={cn(
                   "h-7 px-2 rounded border border-border/60 bg-background text-xs",
-                  isDuplicateRole && "border-amber-500/50 text-amber-700 dark:text-amber-400",
+                  isDuplicateRole && "border-amber-500/50 text-amber-700",
                 )}
                 title={
                   ROLE_OPTIONS.find((o) => o.value === (role ?? ""))?.hint ??

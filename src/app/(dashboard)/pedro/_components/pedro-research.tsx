@@ -91,7 +91,7 @@ function CopyButton({ text }: { text: string }) {
       }}
       className={`inline-flex items-center h-6 px-2 text-[10px] font-medium bg-background border rounded-md cursor-pointer transition-colors whitespace-nowrap ${
         copied
-          ? "text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
+          ? "text-emerald-600 border-emerald-500/40"
           : "text-muted-foreground hover:text-foreground hover:bg-accent border-border"
       }`}
     >
@@ -412,7 +412,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
       />
 
       {/* Library card */}
-      <div className="bg-card border border-border/60 rounded-xl mb-5 overflow-hidden">
+      <div className="bg-card border border-border/60 rounded-md mb-5 overflow-hidden">
         <div
           className="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.02)] transition-all"
           onClick={() => setLibraryOpen(!libraryOpen)}
@@ -498,7 +498,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
       </div>
 
       {/* Input card */}
-      <div className="bg-card border border-primary/30 rounded-2xl p-6 mb-5 ring-1 ring-primary/20">
+      <div className="bg-card border border-primary/30 rounded-lg p-6 mb-5 ring-1 ring-primary/20">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="font-heading font-semibold text-base tracking-tight">Research</div>
@@ -605,13 +605,13 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
       </div>
 
       {loading && (
-        <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+        <div className="bg-card border border-border/60 rounded-lg p-6 mb-5">
           <Spinner text={progress || "Pedro doet onderzoek..."} sub="Dit duurt 20-40 seconden" />
         </div>
       )}
 
       {error && (
-        <div className="bg-[rgba(255,80,80,0.06)] border border-[rgba(255,80,80,0.25)] rounded-xl p-4 mb-5 text-[12px] text-[#ff8080]">
+        <div className="bg-[rgba(255,80,80,0.06)] border border-[rgba(255,80,80,0.25)] rounded-md p-4 mb-5 text-[12px] text-[#ff8080]">
           {error}
         </div>
       )}
@@ -619,7 +619,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
       {result && (
         <>
           {/* Save bar */}
-          <div className="bg-card border border-border/60 rounded-xl p-4 mb-5 flex items-center justify-between gap-3 flex-wrap">
+          <div className="bg-card border border-border/60 rounded-md p-4 mb-5 flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-muted-foreground">
               {savedId ? (
                 <span className="text-emerald-500">✓ Opgeslagen in bibliotheek</span>
@@ -641,7 +641,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
               the Apify scrape. Shown above Insights because they're the
               evidence base the rest of the research is grounded in. */}
           {result.competitors && result.competitors.length > 0 && (
-            <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+            <div className="bg-card border border-border/60 rounded-lg p-6 mb-5">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <div className="font-heading font-semibold text-base tracking-tight">Concurrenten gevonden</div>
@@ -715,7 +715,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
               right now. Ordered by days_running desc (longer = stronger
               signal of conversion). */}
           {result.topCompetitorAds && result.topCompetitorAds.length > 0 && (
-            <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+            <div className="bg-card border border-border/60 rounded-lg p-6 mb-5">
               <div className="font-heading font-semibold text-base tracking-tight mb-1">
                 Top live concurrent ads
               </div>
@@ -765,7 +765,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
           )}
 
           {/* Insights */}
-          <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+          <div className="bg-card border border-border/60 rounded-lg p-6 mb-5">
             <div className="font-heading font-semibold text-base tracking-tight mb-4">Insights & patronen</div>
 
             <InsightSection title="Winnende angles" items={result.insights.winningAngles} accent="purple" />
@@ -778,7 +778,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
 
           {/* Example ads */}
           {result.exampleAds.length > 0 && (
-            <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+            <div className="bg-card border border-border/60 rounded-lg p-6 mb-5">
               <div className="font-heading font-semibold text-base tracking-tight mb-4">Voorbeeld ads</div>
               <div className="flex flex-col gap-3">
                 {result.exampleAds.map((ad, i) => (
@@ -803,7 +803,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
 
           {/* Recommendations */}
           {result.recommendations.length > 0 && (
-            <div className="bg-gradient-to-br from-primary/10 to-emerald-500/5 border border-primary/30 rounded-2xl p-6 mb-5">
+            <div className="bg-gradient-to-br from-primary/10 to-emerald-500/5 border border-primary/30 rounded-lg p-6 mb-5">
               <div className="font-heading font-semibold text-base tracking-tight mb-3">Pedro&apos;s aanbevelingen</div>
               <ol className="flex flex-col gap-2 pl-5 list-decimal text-[12.5px] text-foreground leading-[1.6]">
                 {result.recommendations.map((rec, i) => (

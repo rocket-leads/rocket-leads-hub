@@ -479,7 +479,7 @@ export function VariantImagePanel({
               className={cn(
                 "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors",
                 feedbackOpen
-                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  ? "bg-amber-500/10 text-amber-700"
                   : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
             >
@@ -512,7 +512,7 @@ export function VariantImagePanel({
           next refresh prompt for this client. */}
       {feedbackOpen && clientId && (
         <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
-          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 font-semibold inline-flex items-center gap-1">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 font-semibold inline-flex items-center gap-1">
             <MessageSquare className="h-3 w-3" />
             Feedback voor Pedro (per klant onthouden)
           </div>
@@ -535,7 +535,7 @@ export function VariantImagePanel({
               className={cn(
                 "inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-medium transition-colors",
                 feedbackSaved
-                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  ? "bg-emerald-500/10 text-emerald-700"
                   : "bg-amber-600 text-white hover:bg-amber-700 disabled:bg-muted disabled:text-muted-foreground",
               )}
             >
@@ -550,7 +550,7 @@ export function VariantImagePanel({
             </button>
           </div>
           {feedbackError && (
-            <div className="text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+            <div className="text-[11px] text-red-600 inline-flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
               {feedbackError}
             </div>
@@ -578,7 +578,7 @@ export function VariantImagePanel({
             </span>
           )}
           {!references.winnerThumbnail && references.clientPhotos === 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
+            <span className="text-amber-600">
               alleen prompt (geen winner thumb of Drive-foto's gevonden)
             </span>
           )}
@@ -694,7 +694,7 @@ export function VariantImagePanel({
       </div>
 
       {error && (
-        <div className="flex items-start gap-1.5 text-[11px] text-red-600 dark:text-red-400">
+        <div className="flex items-start gap-1.5 text-[11px] text-red-600">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           {error}
         </div>

@@ -175,7 +175,7 @@ export function InlineEditField({
           {isEmpty ? placeholder : value}
         </span>
         {savedFlash && (
-          <Check className="inline-block h-3 w-3 ml-1.5 text-emerald-600 dark:text-emerald-400" />
+          <Check className="inline-block h-3 w-3 ml-1.5 text-emerald-600" />
         )}
       </button>
     )
@@ -226,7 +226,7 @@ export function InlineEditField({
         )}
       </div>
       {error && (
-        <div className="text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+        <div className="text-[11px] text-red-600 inline-flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" />
           {error}
         </div>

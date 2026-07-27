@@ -433,12 +433,24 @@ export async function sendTrengoReplyAsUser(
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
 
-  const payload: Record<string, unknown> = { message, internal_note: internalNote }
+  // Trengo renders the email `message` field itself as HTML (see
+  // docs/trengo-api-audit.md - "just send the new HTML" and Trengo wraps the
+  // thread). There is NO separate outbound `html` param: the `html` in the API
+  // is a RESPONSE-only field on `email_message`, so a `payload.html` was
+  // silently ignored and Trengo sent the plain `message` instead - which
+  // collapsed every newline and stripped the signature <img> (Roy 2026-07-27).
+  // Fix: for email replies, put the rich HTML directly in `message` so
+  // paragraphs, line breaks, and the signature image all survive. WhatsApp /
+  // Slack / internal notes keep the plain text (no email.html set).
+  const emailHtml = email?.html?.trim()
+  const payload: Record<string, unknown> = {
+    message: emailHtml ? email!.html : message,
+    internal_note: internalNote,
+  }
   if (attachmentIds.length > 0) payload.attachment_ids = attachmentIds
 
   if (email) {
     if (email.subject?.trim()) payload.subject = email.subject.trim()
-    if (email.html?.trim()) payload.html = email.html
     // Trengo's v2 message endpoint 500'd on cc/bcc-as-array during the
     // Phase 3 probe but accepted cc-as-string. Receive-side `email_message.cc`
     // is also a single value - treating it as a comma-separated string keeps

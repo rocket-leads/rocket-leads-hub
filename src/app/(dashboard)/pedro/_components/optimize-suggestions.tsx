@@ -45,27 +45,27 @@ const SIGNAL_META: Record<
 > = {
   billing: {
     icon: CreditCard,
-    tone: "text-red-600 dark:text-red-400",
+    tone: "text-red-600",
     label: "Betaalfout",
   },
   live_but_dark: {
     icon: PowerOff,
-    tone: "text-orange-600 dark:text-orange-400",
+    tone: "text-orange-600",
     label: "Live + 0 spend",
   },
   no_leads: {
     icon: AlertTriangle,
-    tone: "text-amber-600 dark:text-amber-400",
+    tone: "text-amber-600",
     label: "0 leads",
   },
   cpl_spike: {
     icon: TrendingUp,
-    tone: "text-rose-600 dark:text-rose-400",
+    tone: "text-rose-600",
     label: "CPL spike",
   },
   other: {
     icon: AlertTriangle,
-    tone: "text-amber-600 dark:text-amber-400",
+    tone: "text-amber-600",
     label: "Action",
   },
 }
@@ -91,7 +91,7 @@ export function OptimizeSuggestions({ selectedClientId, onSelect }: Props) {
         <Header count={null} />
         <div className="flex gap-2 overflow-hidden">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[78px] w-[240px] shrink-0 rounded-xl" />
+            <Skeleton key={i} className="h-[78px] w-[240px] shrink-0 rounded-md" />
           ))}
         </div>
       </div>
@@ -104,7 +104,7 @@ export function OptimizeSuggestions({ selectedClientId, onSelect }: Props) {
     return (
       <div className="mb-4">
         <Header count={0} />
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-2 text-sm text-emerald-700">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
           Geen klanten in Action Needed - alles loopt. Kies hieronder zelf een
           klant om te optimaliseren.
@@ -174,7 +174,7 @@ function SuggestionChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "group shrink-0 w-[260px] text-left rounded-xl border bg-card px-3 py-2.5 shadow-sm transition-all",
+        "group shrink-0 w-[260px] text-left rounded-md border bg-card px-3 py-2.5 shadow-sm transition-all",
         "hover:shadow-md hover:-translate-y-px",
         selected
           ? "border-primary ring-2 ring-primary/30 bg-primary/[0.04]"
