@@ -10,6 +10,7 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import { cn } from "@/lib/utils"
 import { ItemDetailDialog } from "../item-detail-dialog"
 import { ThreadView } from "../chat-pane"
+import { TicketStateButtons } from "./ticket-state-buttons"
 import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
 import type { CurrentUser, InboxUser, FeedRow } from "./types"
 
@@ -229,7 +230,7 @@ function ChatDetail({
   return (
     <div className={cn("relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl")}>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-        <StateSwitch current={current} onSetState={onSetState} />
+        {onSetState && <TicketStateButtons current={current} onSetState={onSetState} />}
         {showDismiss && <DismissButton onClick={onClose} />}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

@@ -460,61 +460,17 @@ function RowActions({
 
   return (
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
+      {/* Roy 2026-07-27: rows carry ONLY the done/reopen checkbox + delete.
+          Snooze / make-task / reassign moved off the row - everything else
+          happens in the detail pane on click. */}
       {isActive ? (
-        <>
-          {/* Prominent green Done button (Roy 2026-06-11: "een groot
-              groen vinkje" - solid emerald so it reads as THE primary
-              row action; secondary chrome around it stays muted). */}
-          <ActionIconButton
-            tone="success"
-            label={isUpdate ? "Markeer als gelezen" : "Markeer als klaar"}
-            onClick={() => onAction(doneAction)}
-            icon={<Check className="h-5 w-5" strokeWidth={2.5} />}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white dark:text-white border-emerald-600 hover:border-emerald-700"
-          />
-          {/* Tasks-only: snooze. The API rejects snoozedUntil for non-task
-              kinds, so we never offer the affordance on updates. */}
-          {!isUpdate && (
-            isSnoozed ? (
-              <ActionIconButton
-                tone="muted"
-                label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} - click to wake`}
-                onClick={() => onAction("unsnooze")}
-                icon={<BellOff className="h-4 w-4" />}
-              />
-            ) : (
-              <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
-            )
-          )}
-          {/* Updates-only: convert to a task. Same affordance the standalone
-              hover button used to be - now lives inline with the rest of
-              the action set so the right-side cluster is consistent. */}
-          {isUpdate && (
-            <ActionIconButton
-              tone="muted"
-              label="Make task"
-              onClick={() => onAction("make_task")}
-              icon={<ListTodo className="h-4 w-4" />}
-            />
-          )}
-          {users && users.length > 0 && (
-            <ReassignButton
-              users={users}
-              currentAssigneeId={item.assigneeId}
-              onPick={(assigneeId) => onAction({ type: "reassign", assigneeId })}
-            />
-          )}
-          <ActionIconButton
-            tone="danger"
-            label="Delete"
-            onClick={() => {
-              if (window.confirm(`Permanently delete this ${isUpdate ? "update" : "task"}?`)) {
-                onAction("delete")
-              }
-            }}
-            icon={<Trash2 className="h-4 w-4" />}
-          />
-        </>
+        <ActionIconButton
+          tone="success"
+          label={isUpdate ? "Markeer als gelezen" : "Markeer als klaar"}
+          onClick={() => onAction(doneAction)}
+          icon={<Check className="h-5 w-5" strokeWidth={2.5} />}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white dark:text-white border-emerald-600 hover:border-emerald-700"
+        />
       ) : (
         <ActionIconButton
           tone="muted"
@@ -523,6 +479,16 @@ function RowActions({
           icon={<RotateCcw className="h-4 w-4" />}
         />
       )}
+      <ActionIconButton
+        tone="danger"
+        label="Delete"
+        onClick={() => {
+          if (window.confirm(`Permanently delete this ${isUpdate ? "update" : "task"}?`)) {
+            onAction("delete")
+          }
+        }}
+        icon={<Trash2 className="h-4 w-4" />}
+      />
     </div>
   )
 }

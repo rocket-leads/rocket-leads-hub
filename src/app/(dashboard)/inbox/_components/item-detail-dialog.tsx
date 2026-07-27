@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles, Pencil, X } from "lucide-react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -15,6 +15,7 @@ import type { InboxComment, InboxItem, InboxKind, InboxSource, TaskStatus } from
 import type { CurrentUser, InboxUser } from "./shell/types"
 import { LinkTrengoContactDialog } from "./link-trengo-dialog"
 import { SourcePill } from "./source-pill"
+import { TicketStateButtons, type TicketState } from "./shell/ticket-state-buttons"
 import { TimelineTab } from "@/app/(dashboard)/clients/[id]/_components/timeline-tab"
 
 type Props = {
@@ -287,6 +288,11 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
       setReplyBody("")
       await queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
       await queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      // A Monday reply lands in that client's Monday updates - refresh the
+      // CLIENT TIMELINE so the reply shows without a manual reload.
+      if (item.source === "monday" && item.clientId) {
+        await queryClient.invalidateQueries({ queryKey: ["timeline", item.clientId] })
+      }
       onChanged()
     } catch (e) {
       setReplyError(e instanceof Error ? e.message : "Reply failed")
@@ -300,7 +306,33 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   const isUpdate = item?.kind === "update"
   const isTask = item?.kind === "task"
   const canDelete = !!item && (item.authorId === currentUser.id || currentUser.role === "admin")
-  const canReplyToSource = !!item && (item.source === "trengo" || item.source === "slack")
+
+  // Map the item's kind-specific status onto the shared Open/Assigned/Closed
+  // model that the 2-button TicketStateButtons control speaks. Tasks get the
+  // full trio (open / in_progress / done); updates only open ⇄ closed
+  // (unread / read) - no assigned state. Roy 2026-07-27.
+  const itemState: TicketState =
+    item?.kind === "update"
+      ? item.status === "unread"
+        ? "open"
+        : "closed"
+      : item?.status === "done" || item?.status === "cancelled"
+        ? "closed"
+        : item?.status === "in_progress"
+          ? "assigned"
+          : "open"
+  function setItemState(target: TicketState) {
+    if (!item) return
+    if (item.kind === "update") {
+      setStatus(target === "closed" ? "read" : "unread")
+    } else {
+      setStatus(target === "closed" ? "done" : target === "assigned" ? "in_progress" : "open")
+    }
+  }
+  // Monday-sourced items ARE Monday updates - replying posts a threaded reply
+  // back onto that Monday update (Roy 2026-07-26).
+  const canReplyToSource =
+    !!item && (item.source === "trengo" || item.source === "slack" || item.source === "monday")
 
   // --- Smart-inbox draft (AI-prefilled outbound message) ------------------
   // For tasks where the automation generated a ready-to-send draft (currently
@@ -425,7 +457,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                     className="flex-1"
                   />
                 ) : (
-                  <DialogTitle className="leading-snug flex-1">{item.title}</DialogTitle>
+                  <h2 className="font-heading text-base font-medium leading-snug flex-1">{item.title}</h2>
                 )}
                 <SourcePill
                   source={item.source}
@@ -541,66 +573,21 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 of the panel now - putting it twice is just clutter. Kept
                 the component definition below in case we need it again. */}
 
-            {/* Update controls - mirror the task Done button (Roy
-                2026-06-11: "Mark as read in het groen met een vinkje,
-                net als bij de taak"). Done = read; reopen state shows
-                a subtle "Markeer als ongelezen" outline button. */}
-            {isUpdate && (
+            {/* Unified 2-button ticket-state control - same control + rules as
+                the external chat detail. Tasks get open/assigned/closed;
+                updates open⇄closed only. Roy 2026-07-27. */}
+            {item.kind !== "chat" && (
               <div className="flex items-center justify-end">
-                {item.status === "unread" ? (
-                  <Button
-                    size="lg"
-                    onClick={() => setStatus("read")}
-                    disabled={updatingStatus}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-5"
-                  >
-                    <Check className="h-5 w-5 mr-2" />
-                    Gelezen
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setStatus("unread")}
-                    disabled={updatingStatus}
-                  >
-                    Markeer als ongelezen
-                  </Button>
-                )}
+                <TicketStateButtons
+                  current={itemState}
+                  onSetState={setItemState}
+                  supportsAssigned={item.kind === "task"}
+                />
               </div>
             )}
 
-            {/* Task controls - single prominent action button. Status
-                pill row was removed 2026-06-11 (Roy: "alleen een groot
-                groen vinkje"); flipping back to Open / Reopen lives in
-                the kebab menu on the parent row. Done tasks show a
-                muted "Reopen" affordance so the dialog still has a way
-                back. */}
             {isTask && (
               <div className="space-y-3">
-                <div className="flex items-center justify-end">
-                  {item.status === "done" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setStatus("open")}
-                      disabled={updatingStatus}
-                    >
-                      Heropen taak
-                    </Button>
-                  ) : (
-                    <Button
-                      size="lg"
-                      onClick={() => setStatus("done")}
-                      disabled={updatingStatus}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-white px-5"
-                    >
-                      <Check className="h-5 w-5 mr-2" />
-                      Klaar
-                    </Button>
-                  )}
-                </div>
-
                 {/* Comments - internal team chat per task. Slack-style:
                     avatars, alternating alignment, Enter-to-send. */}
                 <CommentThread
@@ -763,11 +750,9 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     // behaviour (no focus-trap / scroll-lock - those live on the Popup). Fixes
     // the "useDialogRootContext store undefined" crash. Roy 2026-07-26.
     return (
-      <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
-        <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
-          {body}
-        </div>
-      </DialogPrimitive.Root>
+      <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+        {body}
+      </div>
     )
   }
 
@@ -1469,7 +1454,7 @@ function EditableTitle({
       )}
       title="Click to edit"
     >
-      <DialogTitle className="leading-snug flex-1">{value}</DialogTitle>
+      <h2 className="font-heading text-base font-medium leading-snug flex-1">{value}</h2>
       <Pencil className="h-3.5 w-3.5 mt-1 text-muted-foreground/40 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
     </button>
   )
