@@ -776,6 +776,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       label: t("clients.filter.am", locale),
       value: accountManagerFilter,
       onChange: setAccountManagerFilter,
+      avatars: true,
       options: [
         { value: "All", label: t("clients.filter.am_all", locale) },
         ...accountManagers.map((s) => ({ value: s, label: s })),
@@ -786,6 +787,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       label: t("clients.filter.cm", locale),
       value: campaignManagerFilter,
       onChange: setCampaignManagerFilter,
+      avatars: true,
       options: [
         { value: "All", label: t("clients.filter.cm_all", locale) },
         ...campaignManagers.map((s) => ({ value: s, label: s })),
