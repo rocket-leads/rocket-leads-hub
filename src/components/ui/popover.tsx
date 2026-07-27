@@ -30,9 +30,8 @@ function PopoverContent({
       >
         <PopoverPrimitive.Popup
           className={cn(
-            "min-w-64 origin-(--transform-origin) rounded-2xl border border-border/60 bg-popover p-4 text-popover-foreground",
-            "shadow-[0_8px_24px_-4px_rgb(0_0_0_/_0.10),0_4px_8px_-2px_rgb(0_0_0_/_0.06)]",
-            "dark:shadow-[0_8px_24px_-4px_rgb(0_0_0_/_0.4)]",
+            "min-w-64 origin-(--transform-origin) rounded-lg border border-border/60 bg-popover p-4 text-popover-foreground",
+            "shadow-[var(--shadow-md)]",
             "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
             "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             "duration-100",

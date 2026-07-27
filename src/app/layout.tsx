@@ -3,7 +3,6 @@ import type { CSSProperties } from "react"
 import { cookies } from "next/headers"
 import { Inter, Schibsted_Grotesk, Instrument_Serif, Geist_Mono } from "next/font/google"
 import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/types"
-import { UI_SCALE_COOKIE, normalizeScale } from "@/lib/ui-scale"
 import "./globals.css"
 
 // Inter kept as a fallback face for legacy surfaces.
@@ -45,11 +44,13 @@ export default async function RootLayout({
   const localeCookie = cookieStore.get("locale")?.value
   const lang = isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE
 
-  // Per-user UI density. Only affects legacy rem-based Tailwind pages during the
-  // 187N rollout — the 187N component classes are px-based and render native.
-  const uiScale = normalizeScale(cookieStore.get(UI_SCALE_COOKIE)?.value)
-  const htmlStyle =
-    uiScale != null ? ({ "--ui-scale": String(uiScale) } as CSSProperties) : undefined
+  // The whole Hub now renders at native 187N scale (--ui-scale: 1) so rem-based
+  // Tailwind utilities and the px-based 187N component classes agree in size
+  // (the old 0.76 density shrank rem to ~76% and mismatched the px chrome). The
+  // per-user density control was retired with the redesign; we force the value
+  // here rather than read the cookie so a stale legacy `ui-scale` cookie can't
+  // shrink the UI back to the old density.
+  const htmlStyle = { "--ui-scale": "1" } as CSSProperties
 
   // data-theme="corporate" activates the 187N corporate signature (warm cream,
   // editorial type, coral→purple mark, chamfered black CTAs). Light-only — the

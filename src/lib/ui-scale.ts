@@ -14,7 +14,10 @@
 // (no flash) and the choice survives reloads.
 
 export const UI_SCALE_COOKIE = "ui-scale"
-export const UI_SCALE_BASE = 0.76 // shown as 100% in the picker
+// Vestigial: the density picker was retired in the 187N redesign and the app is
+// pinned to native scale in layout.tsx (--ui-scale: 1). Kept only so any legacy
+// importer keeps compiling; base is 1 so scaleToPercent() stays sane if reused.
+export const UI_SCALE_BASE = 1 // native 187N scale
 export const UI_SCALE_STEP = 0.08 // one click = 10%
 export const UI_SCALE_MIN = 0.56 // 70%
 export const UI_SCALE_MAX = 1.28 // 160%

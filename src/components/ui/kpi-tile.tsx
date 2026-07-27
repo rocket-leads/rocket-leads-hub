@@ -84,7 +84,7 @@ export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]",
+        "rounded-xl border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)]",
         className,
       )}
     >
