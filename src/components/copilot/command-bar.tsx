@@ -7,7 +7,14 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Sparkles, Check, X, ArrowRight, Loader2 } from "lucide-react"
 import { buildPageContext } from "@/lib/copilot/context"
 import { executeAction } from "@/lib/copilot/executors"
-import { useQueueCommand, useCompleteDraft, useCopilotDrafts } from "./use-copilot-drafts"
+import type { CopilotAction } from "@/lib/copilot/tools"
+import { ActionFields, useCopilotRosters } from "./action-fields"
+import {
+  useQueueCommand,
+  useCompleteDraft,
+  usePatchDraftAction,
+  useCopilotDrafts,
+} from "./use-copilot-drafts"
 
 type DoneInfo = { summary: string; message: string; link: string | null }
 
@@ -16,10 +23,15 @@ type DoneInfo = { summary: string; message: string; link: string | null }
  * search (`.cmd-overlay` / `.cmd-panel`). Opens via the `copilot:open` event
  * (palette Actions group) or ⌘J.
  *
- * Flow: type a command → ↵ → loading bar → the proposed action loads inline
- * with a green ✓ (create) / red ✗ (discard). On ✓ the action actually runs
- * client-side (executeAction creates the task), then a persistent confirmation
- * shows what was created + a link to view it. No auto-close.
+ * Flow (Roy 2026-07-27):
+ *   1. ⌘K palette → "Ask AI Co-pilot" hands the typed command here as a
+ *      prefill. We AUTO-SUBMIT it — no second Enter, straight to thinking.
+ *   2. "Thinking…" loading bar (spans the queue POST + server parse, so the
+ *      handoff never flashes the idle hint) while the server parses + enriches.
+ *   3. The proposed action loads inline as an EDITABLE form (client,
+ *      assignee, due date, …). The user tweaks the variables, then
+ *      ✓ Aanmaken (runs the executor) or ✗ discard.
+ *   4. Persistent confirmation showing what was created + a link to view it.
  */
 export function CommandBar() {
   const pathname = usePathname()
@@ -33,14 +45,49 @@ export function CommandBar() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
   const [doneInfo, setDoneInfo] = useState<DoneInfo | null>(null)
+  // Local, editable copy of the ready draft's action. Seeded once per draft
+  // from the server parse, then owned by the form until approve/discard.
+  const [editAction, setEditAction] = useState<CopilotAction | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const initedDraftRef = useRef<string | null>(null)
 
   const queueCommand = useQueueCommand()
   const completeDraft = useCompleteDraft()
+  const patchDraftAction = usePatchDraftAction()
   const draftsQ = useCopilotDrafts()
+  const { users, clients } = useCopilotRosters()
   const activeDraft = activeDraftId
     ? draftsQ.data?.drafts.find((d) => d.id === activeDraftId) ?? null
     : null
+
+  const submit = useCallback(
+    async (raw?: string) => {
+      const userInput = (raw ?? input).trim()
+      if (!userInput || queueCommand.isPending) return
+      const sp = searchParams ? new URLSearchParams(searchParams.toString()) : null
+      const context = buildPageContext(pathname ?? "/", sp)
+      setInput("")
+      setSubmitError(null)
+      setDoneInfo(null)
+      setEditAction(null)
+      initedDraftRef.current = null
+      setActiveDraftId(null)
+      try {
+        const res = await queueCommand.mutateAsync({ input: userInput, context })
+        setActiveDraftId(res.draftId)
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : "Kon deze command niet verwerken.")
+      }
+    },
+    [input, queueCommand, pathname, searchParams],
+  )
+
+  // Latest `submit` without retriggering the open effect (which is keyed on
+  // `open` alone) - lets the prefill auto-submit call the current closure.
+  const submitRef = useRef(submit)
+  useEffect(() => {
+    submitRef.current = submit
+  }, [submit])
 
   const prefillRef = useRef("")
   useEffect(() => {
@@ -65,12 +112,20 @@ export function CommandBar() {
   }, [])
 
   useEffect(() => {
-    if (open) {
-      setInput(prefillRef.current)
-      prefillRef.current = ""
-      setActiveDraftId(null)
-      setSubmitError(null)
-      setDoneInfo(null)
+    if (!open) return
+    const prefill = prefillRef.current.trim()
+    prefillRef.current = ""
+    setInput("")
+    setActiveDraftId(null)
+    setSubmitError(null)
+    setDoneInfo(null)
+    setEditAction(null)
+    initedDraftRef.current = null
+    if (prefill) {
+      // Came from the ⌘K palette with a command already typed → skip the
+      // input entirely and go straight to "Aan het nadenken…".
+      void submitRef.current(prefill)
+    } else {
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open])
@@ -83,22 +138,19 @@ export function CommandBar() {
     return () => clearInterval(t)
   }, [activeDraftId, activeStatus, activeDraft, qc])
 
-  const submit = useCallback(async () => {
-    if (!input.trim() || queueCommand.isPending) return
-    const userInput = input.trim()
-    const sp = searchParams ? new URLSearchParams(searchParams.toString()) : null
-    const context = buildPageContext(pathname ?? "/", sp)
-    setInput("")
-    setSubmitError(null)
-    setDoneInfo(null)
-    setActiveDraftId(null)
-    try {
-      const res = await queueCommand.mutateAsync({ input: userInput, context })
-      setActiveDraftId(res.draftId)
-    } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Kon deze command niet verwerken.")
+  // Seed the editable form once, the moment the draft turns ready. Keyed on
+  // the draft id so re-renders (or drafts-query refetches) don't clobber the
+  // user's in-progress edits.
+  useEffect(() => {
+    if (
+      activeDraft?.status === "ready" &&
+      activeDraft.draftAction &&
+      initedDraftRef.current !== activeDraft.id
+    ) {
+      setEditAction(activeDraft.draftAction)
+      initedDraftRef.current = activeDraft.id
     }
-  }, [input, queueCommand, pathname, searchParams])
+  }, [activeDraft?.status, activeDraft?.id, activeDraft?.draftAction])
 
   function onInputKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") {
@@ -107,37 +159,42 @@ export function CommandBar() {
     }
   }
 
-  // Approve = actually RUN the action (creates the task client-side), then
-  // record the draft as approved for the audit trail. Persistent confirmation.
+  // Approve = actually RUN the (edited) action, persist the edits to the draft
+  // for the audit trail, then mark it approved. Persistent confirmation.
   const approve = useCallback(async () => {
-    const draft = activeDraft
-    if (!draft?.draftAction || !activeDraftId || approving) return
+    if (!editAction || !activeDraftId || approving) return
     setSubmitError(null)
     setApproving(true)
     try {
-      const result = await executeAction(draft.draftAction, router)
+      const result = await executeAction(editAction, router)
       if (!result.ok) {
         setSubmitError(result.message)
         return
       }
+      // Record what actually shipped (edits included), then mark approved.
+      void patchDraftAction.mutateAsync({ id: activeDraftId, action: editAction }).catch(() => {})
       void completeDraft.mutateAsync({ id: activeDraftId, status: "approved" }).catch(() => {})
       setDoneInfo({
-        summary: draft.summary ?? result.message,
+        summary: activeDraft?.summary ?? result.message,
         message: result.message,
         link: result.navigateTo ?? null,
       })
       setActiveDraftId(null)
+      setEditAction(null)
+      initedDraftRef.current = null
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Aanmaken mislukt.")
     } finally {
       setApproving(false)
     }
-  }, [activeDraft, activeDraftId, approving, completeDraft, router])
+  }, [editAction, activeDraft, activeDraftId, approving, completeDraft, patchDraftAction, router])
 
   const dismiss = useCallback(async () => {
     const id = activeDraftId
     setActiveDraftId(null)
     setDoneInfo(null)
+    setEditAction(null)
+    initedDraftRef.current = null
     if (id) {
       try {
         await completeDraft.mutateAsync({ id, status: "dismissed" })
@@ -155,7 +212,15 @@ export function CommandBar() {
     [router],
   )
 
-  const isProcessing = !!activeDraftId && (!activeDraft || activeDraft.status === "pending")
+  // "Thinking" spans the whole gap with no visible state in between: from the
+  // moment the queue POST is in-flight (queueCommand.isPending) through the
+  // server parsing the draft (status pending). Without the isPending half, the
+  // ~2s POST would fall through to the idle hint - the flash the ⌘K handoff hit.
+  const isProcessing =
+    queueCommand.isPending || (!!activeDraftId && (!activeDraft || activeDraft.status === "pending"))
+  // Ready is driven by draft status alone (not editAction) so the idle hint
+  // never flashes in the one frame between status→ready and the seed effect
+  // populating editAction. The ready block itself guards on editAction.
   const isReady = activeDraft?.status === "ready"
   const isFailed = activeDraft?.status === "failed"
   const isIdle = !isProcessing && !isReady && !isFailed && !doneInfo && !submitError
@@ -191,7 +256,7 @@ export function CommandBar() {
             <div className="px-2 py-2">
               <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                Aan het nadenken…
+                Thinking…
               </div>
               <div className="cmd-progress">
                 <span />
@@ -199,29 +264,39 @@ export function CommandBar() {
             </div>
           )}
 
-          {isReady && activeDraft && (
-            <div className="cmd-draft">
-              <div className="cmd-draft-body">{activeDraft.summary}</div>
-              <div className="cmd-draft-actions">
-                <button
-                  type="button"
-                  className="cmd-approve"
-                  onClick={approve}
-                  disabled={approving}
-                  aria-label="Aanmaken"
-                >
-                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  Aanmaken
-                </button>
-                <button
-                  type="button"
-                  className="cmd-reject"
-                  onClick={dismiss}
-                  disabled={approving}
-                  aria-label="Annuleer"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+          {/* Editable proposal - the user reviews + tweaks the variables
+              (client, assignee, due date, …) then approves or discards. */}
+          {isReady && activeDraft && editAction && (
+            <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+              <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3.5 py-2">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                  Review &amp; edit
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="cmd-approve"
+                    onClick={approve}
+                    disabled={approving}
+                    aria-label="Aanmaken"
+                  >
+                    {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    Aanmaken
+                  </button>
+                  <button
+                    type="button"
+                    className="cmd-reject"
+                    onClick={dismiss}
+                    disabled={approving}
+                    aria-label="Annuleer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-3.5 py-3">
+                <ActionFields action={editAction} onChange={setEditAction} users={users} clients={clients} />
               </div>
             </div>
           )}
