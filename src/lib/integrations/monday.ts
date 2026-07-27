@@ -794,6 +794,13 @@ export type MondayItemWithUpdates = {
  * notes from a client's row in the Current Clients board (board-level commentary), distinct
  * from the per-lead updates in the client's lead board.
  */
+export type ItemUpdateReply = {
+  text: string
+  /** Full ISO timestamp of the reply. */
+  createdAt: string
+  creatorName: string
+}
+
 export type ItemUpdate = {
   text: string
   createdAt: string
@@ -802,6 +809,9 @@ export type ItemUpdate = {
    *  saying "wacht met factureren" carries more decisive weight than a
    *  campaign manager note). Empty when Monday didn't return a creator. */
   creatorName: string
+  /** Threaded replies to this update (Monday's `replies`), oldest first. The
+   *  timeline nests these under the main update behind a "N replies" toggle. */
+  replies: ItemUpdateReply[]
 }
 
 export async function fetchItemUpdates(
@@ -819,8 +829,11 @@ export async function fetchItemUpdates(
         updates(limit: 50) {
           text_body
           created_at
-          creator {
-            name
+          creator { name }
+          replies {
+            text_body
+            created_at
+            creator { name }
           }
         }
       }
@@ -830,12 +843,31 @@ export async function fetchItemUpdates(
   const item = data.items?.[0]
   if (!item) return []
 
+  type RawReply = { text_body?: string; created_at?: string; creator?: { name?: string } | null }
   return (item.updates ?? [])
-    .map((u: { text_body?: string; created_at?: string; creator?: { name?: string } | null }) => ({
-      text: (u.text_body ?? "").trim(),
-      createdAt: (u.created_at ?? "").slice(0, 10),
-      creatorName: (u.creator?.name ?? "").trim(),
-    }))
+    .map(
+      (u: {
+        text_body?: string
+        created_at?: string
+        creator?: { name?: string } | null
+        replies?: RawReply[] | null
+      }) => ({
+        text: (u.text_body ?? "").trim(),
+        createdAt: (u.created_at ?? "").slice(0, 10),
+        creatorName: (u.creator?.name ?? "").trim(),
+        // Replies keep their FULL timestamp (not date-sliced) so the thread
+        // reads in true order. Oldest-first to match Monday's reply order.
+        replies: (u.replies ?? [])
+          .map((r) => ({
+            text: (r.text_body ?? "").trim(),
+            createdAt: r.created_at ?? "",
+            creatorName: (r.creator?.name ?? "").trim(),
+          }))
+          .filter((r: ItemUpdateReply) => r.text)
+          // Oldest reply first (chronological thread order).
+          .sort((a: ItemUpdateReply, b: ItemUpdateReply) => a.createdAt.localeCompare(b.createdAt)),
+      }),
+    )
     .filter((u: ItemUpdate) => u.text && u.createdAt >= cutoffStr)
 }
 

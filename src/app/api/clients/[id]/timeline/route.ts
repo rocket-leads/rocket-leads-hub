@@ -37,6 +37,14 @@ export type TimelineEntry = {
   /** Author's Hub profile photo (resolved by matching the author name to a
    *  Hub user), so the timeline shows the real person, not a source logo. */
   author_avatar?: string | null
+  /** Threaded replies to this update (Monday `replies`), nested behind a
+   *  "N replies" toggle in the UI. Only main updates carry these. */
+  replies?: Array<{
+    author: string | null
+    author_avatar: string | null
+    body: string
+    occurred_at: string
+  }>
   /** ISO timestamp used for sorting. */
   occurred_at: string
   /** Optional outbound link (e.g. Fathom share URL, Monday item URL). */
@@ -212,6 +220,12 @@ export async function GET(
       body: rest || null,
       author: u.creatorName || null,
       author_avatar: resolveAvatar(u.creatorName),
+      replies: (u.replies ?? []).map((r) => ({
+        author: r.creatorName || null,
+        author_avatar: resolveAvatar(r.creatorName),
+        body: r.text,
+        occurred_at: r.createdAt,
+      })),
       occurred_at: u.createdAt,
       link_url: null,
       meta: { live: true, kind: "monday_item_update" },
