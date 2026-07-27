@@ -26,7 +26,7 @@ export const DICTIONARY = {
   // ─── Sidebar nav ──────────────────────────────────────────────────────
   "nav.home": { nl: "Home", en: "Home" },
   "nav.watch_list": { nl: "Watch list", en: "Watch list" }, // brand term
-  "nav.clients": { nl: "Huidige klanten", en: "Current clients" },
+  "nav.clients": { nl: "Klanten", en: "Clients" },
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
   "nav.calendar": { nl: "Kalender", en: "Calendar" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
@@ -360,6 +360,13 @@ export const DICTIONARY = {
   "clients.payment.complete": { nl: "Voldaan", en: "Complete" },
   "clients.payment.open": { nl: "Open", en: "Open" },
   "clients.payment.overdue": { nl: "Te laat", en: "Overdue" },
+
+  // Quick-filter pills on the clients table
+  "clients.presets.all": { nl: "Alles", en: "All" },
+  "clients.presets.live": { nl: "Live", en: "Live" },
+  "clients.presets.critical": { nl: "Kritiek / Let op", en: "Critical / Warning" },
+  "clients.presets.overdue": { nl: "Te laat", en: "Overdue" },
+  "clients.presets.label": { nl: "Snelfilters", en: "Quick filters" },
 
   // Health reasons + MRR/budget label suffix
   "clients.health.reason.no_campaign": { nl: "Geen campagne geselecteerd", en: "No campaign selected" },

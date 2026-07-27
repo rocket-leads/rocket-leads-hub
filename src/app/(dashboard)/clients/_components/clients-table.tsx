@@ -15,6 +15,7 @@ import {
 import { type FilterConfig } from "@/components/ui/filters-popover"
 import { ConditionFilter } from "@/components/ui/condition-filter"
 import { ManagerAvatarPair } from "@/components/ui/manager-avatar"
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill"
 import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown, Search } from "lucide-react"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -54,6 +55,34 @@ function StLabel({ tone, label }: { tone: StTone; label: string }) {
       <span className="sd" />
       {label}
     </span>
+  )
+}
+
+/**
+ * Quick-filter pill on the clients table. Same chrome as the Watch List
+ * summary pills (coloured dot + mono uppercase label + count via `StatusPill`),
+ * dimmed when inactive so the active filter reads at a glance. Toggling writes
+ * into the filter section rather than filtering locally, so the state stays
+ * visible + editable there.
+ */
+function PresetToggle({ tone, label, count, active, onClick }: {
+  tone: StatusTone
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`transition-opacity hover:opacity-100 ${active ? "opacity-100" : "opacity-55"}`}
+    >
+      <StatusPill tone={tone}>
+        {label} <span className="tabular-nums">{count}</span>
+      </StatusPill>
+    </button>
   )
 }
 
@@ -488,6 +517,62 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return billingSummaries[client.stripeCustomerId] ?? null
   }, [billingSummaries])
 
+  // Quick-filter pills (current board) - watch-list-style status labels (dot +
+  // mono uppercase + count), deliberately a different chrome from both the
+  // Performance/Finance tab toggle and the filter dropdown. Multi-select: each
+  // pill toggles its own filter dimension independently and writes into the
+  // matching filter in the filter section, so they stack.
+  //   · Live           → status = Live
+  //   · Critical/Warn  → health ∈ {critical, warning} (+ forces status = Live)
+  //   · Overdue        → payment = Overdue
+  // "All" clears every pill. Live + Critical belong to the Performance layout,
+  // Overdue to Finance, so turning a pill on flips to the view whose columns
+  // make it legible.
+  const presetCounts = useMemo(() => {
+    if (boardType !== "current") return { live: 0, atRisk: 0, overdue: 0 }
+    let live = 0
+    let atRisk = 0
+    let overdue = 0
+    for (const c of clients) {
+      const isLive = mondayStatusToHub(c.campaignStatus, c.boardType) === "live"
+      const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId]).status
+      if (isLive) live++
+      if (isLive && (health === "critical" || health === "warning")) atRisk++
+      if (getPaymentStatus(c)?.status === "overdue") overdue++
+    }
+    return { live, atRisk, overdue }
+  }, [clients, boardType, kpiSummaries, getPaymentStatus])
+
+  const liveActive = statusFilter === "live"
+  const atRiskActive = healthFilter === "AtRisk"
+  const overdueActive = paymentStatusFilter === "Overdue"
+  const allActive = !liveActive && !atRiskActive && !overdueActive
+
+  const clearPresets = useCallback(() => {
+    setStatusFilter("All")
+    setHealthFilter("All")
+    setPaymentStatusFilter("All")
+  }, [])
+  const toggleLive = useCallback(() => {
+    const turningOn = statusFilter !== "live"
+    setStatusFilter(turningOn ? "live" : "All")
+    if (turningOn) setViewPersist("performance")
+  }, [statusFilter, setViewPersist])
+  const toggleAtRisk = useCallback(() => {
+    const turningOn = healthFilter !== "AtRisk"
+    setHealthFilter(turningOn ? "AtRisk" : "All")
+    if (turningOn) {
+      // Critical/Warning implies looking at live campaigns.
+      setStatusFilter("live")
+      setViewPersist("performance")
+    }
+  }, [healthFilter, setViewPersist])
+  const toggleOverdue = useCallback(() => {
+    const turningOn = paymentStatusFilter !== "Overdue"
+    setPaymentStatusFilter(turningOn ? "Overdue" : "All")
+    if (turningOn) setViewPersist("finance")
+  }, [paymentStatusFilter, setViewPersist])
+
   const filtered = useMemo(() => {
     return clients.filter((c) => {
       const matchesSearch =
@@ -511,6 +596,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       const matchesHealth = healthFilter === "All" || (() => {
         if (boardType !== "current") return true
         const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId])
+        // "AtRisk" is the quick-filter pill's combined value: critical OR
+        // warning. The dropdown still filters on the exact single statuses.
+        if (healthFilter === "AtRisk") return health.status === "critical" || health.status === "warning"
         return health.status.toLowerCase() === healthFilter.toLowerCase()
       })()
       return matchesSearch && matchesStatus && matchesPhase && matchesAM && matchesCM && matchesPayment && matchesHealth
@@ -789,6 +877,42 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </>
         )}
       </div>
+
+      {/* Quick-filter pills - watch-list-style status labels, distinct chrome
+          from the Performance/Finance tab toggle and the filter dropdown.
+          Clicking toggles the matching filter in the filter section. */}
+      {boardType === "current" && (
+        <div className="flex items-center gap-5" role="group" aria-label={t("clients.presets.label", locale)}>
+          <PresetToggle
+            tone="neutral"
+            label={t("clients.presets.all", locale)}
+            count={clients.length}
+            active={allActive}
+            onClick={clearPresets}
+          />
+          <PresetToggle
+            tone="success"
+            label={t("clients.presets.live", locale)}
+            count={presetCounts.live}
+            active={liveActive}
+            onClick={toggleLive}
+          />
+          <PresetToggle
+            tone="warning"
+            label={t("clients.presets.critical", locale)}
+            count={presetCounts.atRisk}
+            active={atRiskActive}
+            onClick={toggleAtRisk}
+          />
+          <PresetToggle
+            tone="danger"
+            label={t("clients.presets.overdue", locale)}
+            count={presetCounts.overdue}
+            active={overdueActive}
+            onClick={toggleOverdue}
+          />
+        </div>
+      )}
 
       {/* Table */}
       <div className="-mx-1">
