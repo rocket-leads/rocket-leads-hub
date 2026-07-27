@@ -9,7 +9,6 @@ import { BillingTab } from "./billing-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { InboxTab } from "./inbox-tab"
 import { HomeTab } from "./home-tab"
-import { TimelineTab } from "./timeline-tab"
 import { PedroTab } from "./pedro-tab"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -48,7 +47,6 @@ type Props = {
  */
 type TopGroup = "performance" | "conversations" | "pedro" | "admin"
 type PerformanceView = "overview" | "campaigns"
-type ConversationsView = "inbox" | "timeline"
 type AdminView = "billing" | "settings"
 
 function NoAccess() {
@@ -97,11 +95,6 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
   // and coming back lands on the same sub-tab.
   const [activeGroup, setActiveGroup] = useState<TopGroup>("performance")
   const [performanceView, setPerformanceView] = useState<PerformanceView>("overview")
-  // Default to Activity (the cross-source chronological feed) so the AM/CM
-  // lands on "what's happened with this client" first; switching to Inbox is
-  // one click away when they want to act. Per Roy's plan: surface the
-  // activity view as the primary CRM-style canvas for one client.
-  const [conversationsView, setConversationsView] = useState<ConversationsView>("timeline")
   // Default to Settings on the left so admin lands on metadata first
   // (Roy 2026-05-22 reorder: Settings ↔ Billing). When the user has
   // billing access, the strip still shows Billing on the right.
@@ -210,31 +203,19 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
       )}
 
       {/* CONVERSATIONS - interactive Inbox + read-only Timeline */}
+      {/* Conversations = the internal inbox locked to this client (exact same
+          InboxShell + right-bar detail pane, which itself contains the CLIENT
+          TIMELINE). Kept identical to the main inbox so the two surfaces are
+          one and the same - the old Activity/Inbox sub-tab split is gone. Roy
+          2026-07-27: these two are linked, mirror any change across both. */}
       {activeGroup === "conversations" && (
-        <div className="space-y-4">
-          <SegmentedTabs<ConversationsView>
-            items={[
-              { id: "timeline", label: t("client.tab.sub.timeline", locale) },
-              { id: "inbox", label: t("client.tab.sub.inbox", locale) },
-            ]}
-            value={conversationsView}
-            onChange={setConversationsView}
-          />
-
-          {conversationsView === "inbox" && (
-            <InboxTab
-              mondayItemId={client.mondayItemId}
-              clientName={client.name}
-              currentUser={currentUser}
-              trengoContactId={client.trengoContactId || null}
-              canViewCommunication={access.canViewCommunication}
-            />
-          )}
-
-          {conversationsView === "timeline" && (
-            <TimelineTab mondayItemId={client.mondayItemId} />
-          )}
-        </div>
+        <InboxTab
+          mondayItemId={client.mondayItemId}
+          clientName={client.name}
+          currentUser={currentUser}
+          trengoContactId={client.trengoContactId || null}
+          canViewCommunication={access.canViewCommunication}
+        />
       )}
 
       {/* PEDRO - single view, no sub-toggle */}
