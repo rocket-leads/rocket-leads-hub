@@ -63,7 +63,7 @@ export function SidebarCollapseToggle() {
       className={cn(
         "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-card",
         "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-        "transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]",
+        "transition-colors shadow-[var(--shadow-sm)]",
       )}
     >
       {collapsed ? (

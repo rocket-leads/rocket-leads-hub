@@ -68,12 +68,12 @@ export function ApiHealthBanner() {
   const isPlural = data.invalid.length > 1
 
   return (
-    <div className="bg-amber-500/15 border-b border-amber-500/40 text-amber-900 dark:text-amber-100">
+    <div className="bg-amber-500/15 border-b border-amber-500/40 text-amber-900">
       <div className="px-8 py-2.5 flex items-center gap-3">
-        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
         <div className="flex-1 text-sm font-medium leading-tight">
           {isPlural ? "API tokens may be expired" : "API token may be expired"}
-          <span className="font-normal text-amber-900/70 dark:text-amber-100/70 ml-2">
+          <span className="font-normal text-amber-900/70 ml-2">
             · {services} — verify live or reconnect via Settings.
           </span>
         </div>
@@ -82,7 +82,7 @@ export function ApiHealthBanner() {
           onClick={reverify}
           disabled={reverifying}
           className={cn(
-            "inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-100 text-xs font-medium transition-colors disabled:opacity-50",
+            "inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-medium transition-colors disabled:opacity-50",
             reverifying && "cursor-wait",
           )}
           title="Re-check the token live against the provider"
@@ -92,7 +92,7 @@ export function ApiHealthBanner() {
         </button>
         <Link
           href="/settings?tab=tokens"
-          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 text-xs font-semibold transition-colors"
+          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 text-xs font-semibold transition-colors"
         >
           Fix it
           <ArrowRight className="h-3 w-3" />
@@ -102,7 +102,7 @@ export function ApiHealthBanner() {
           onClick={() => setDismissed(true)}
           label="Verberg tot volgende refresh"
           stopPropagation={false}
-          className="text-amber-900/60 hover:text-amber-900 dark:text-amber-100/60 dark:hover:text-amber-100"
+          className="text-amber-900/60 hover:text-amber-900"
         />
       </div>
     </div>

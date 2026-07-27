@@ -415,7 +415,7 @@ function CreateCalendarEventFields({
       <p
         className={cn(
           "text-xs leading-snug",
-          missingEmail ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+          missingEmail ? "text-amber-600" : "text-muted-foreground",
         )}
       >
         {hasClient
@@ -505,5 +505,5 @@ export function Field({ label, children }: { label: string; children: React.Reac
 
 export const fieldClass = cn(
   "w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm outline-none transition-colors",
-  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30",
+  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
 )

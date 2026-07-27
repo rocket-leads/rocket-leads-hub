@@ -155,7 +155,7 @@ export function InvoiceActionMenu({
                 <FileMinus2 className="h-3.5 w-3.5" />
                 Credit note…
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openAction("void")} className="text-red-600 dark:text-red-400">
+              <DropdownMenuItem onClick={() => openAction("void")} className="text-red-600">
                 <Ban className="h-3.5 w-3.5" />
                 Void invoice
               </DropdownMenuItem>
@@ -205,7 +205,7 @@ export function InvoiceActionMenu({
                   Voiding cancels the invoice – the customer owes nothing and it can&apos;t be reopened.
                   Use this for an invoice sent in error.
                 </p>
-                <p className="inline-flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                <p className="inline-flex items-start gap-1.5 text-amber-600">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   This cannot be undone.
                 </p>

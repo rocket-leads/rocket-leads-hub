@@ -125,7 +125,7 @@ function MoveButton({
 
   const baseCls = "shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors"
   const stateCls = isOverridden
-    ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+    ? "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/15"
     : "border-border/40 text-muted-foreground/60 hover:border-border hover:text-foreground hover:bg-muted/40"
 
   return (
@@ -299,7 +299,7 @@ function MoveDialog({
         <div className="space-y-4 py-2">
           {/* Active override pill */}
           {manualOverride && (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700">
               {t("watchlist.move.current_override", locale, {
                 category: targetLabel[manualOverride.category],
                 days: String(Math.max(0, Math.ceil((new Date(manualOverride.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))),
@@ -346,7 +346,7 @@ function MoveDialog({
           </div>
 
           {error && (
-            <div className="text-[11px] text-red-600 dark:text-red-400">{error}</div>
+            <div className="text-[11px] text-red-600">{error}</div>
           )}
         </div>
 
@@ -662,7 +662,7 @@ function MarkDoneDialog({
           </div>
 
           {error && (
-            <div className="text-[11px] text-red-600 dark:text-red-400">{error}</div>
+            <div className="text-[11px] text-red-600">{error}</div>
           )}
         </div>
 
@@ -989,7 +989,7 @@ function CreateTaskDialog({
               value={title}
               disabled={prefilling || submitting}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+              className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
             />
           </div>
 
@@ -1004,7 +1004,7 @@ function CreateTaskDialog({
               onChange={(e) => setBody(e.target.value)}
               placeholder={t("watchlist.task_dialog.field.body_placeholder", locale)}
               rows={6}
-              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y disabled:opacity-60"
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y disabled:opacity-60"
             />
           </div>
 
@@ -1018,7 +1018,7 @@ function CreateTaskDialog({
               value={dueDate}
               disabled={submitting}
               onChange={(e) => setDueDate(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm tabular-nums dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+              className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm tabular-nums focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
             />
           </div>
 
@@ -1176,7 +1176,7 @@ function WatchSection({
   if (items.length === 0) return null
 
   return (
-    <div className="rounded-2xl border border-border/40 overflow-hidden bg-card">
+    <div className="rounded-lg border border-border/40 overflow-hidden bg-card">
       {/* Header - only filled element. The body below stays blank with a
           continuous colored left stripe carrying the category cue down.
           Roy 2026-06-11 v3: ditched the full-block wash because the body
@@ -1410,7 +1410,7 @@ function NoDataSection({
       </button>
 
       {open && (
-        <div className="rounded-xl border border-border/30 overflow-hidden">
+        <div className="rounded-md border border-border/30 overflow-hidden">
           <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
             <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.col.client", locale)}</span>
             <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("watchlist.no_data.col_reason", locale)}</span>

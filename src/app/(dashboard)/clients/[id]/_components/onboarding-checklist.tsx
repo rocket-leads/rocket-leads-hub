@@ -72,7 +72,7 @@ export function OnboardingChecklist({ client }: Props) {
   const percent = Math.round((completed / total) * 100)
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+    <div className="rounded-lg border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Rocket className="h-4 w-4 text-primary" />

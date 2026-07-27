@@ -33,28 +33,28 @@ export type TopTab<T extends string = string> = {
 const ACCENT_CLASSES: Record<TabAccent, { icon: string; count: string; bar: string }> = {
   primary: { icon: "text-primary", count: "text-primary", bar: "bg-primary" },
   violet: {
-    icon: "text-violet-500 dark:text-violet-400",
-    count: "text-violet-600 dark:text-violet-300",
+    icon: "text-violet-500",
+    count: "text-violet-600",
     bar: "bg-violet-500",
   },
   sky: {
-    icon: "text-sky-500 dark:text-sky-400",
-    count: "text-sky-600 dark:text-sky-300",
+    icon: "text-sky-500",
+    count: "text-sky-600",
     bar: "bg-sky-500",
   },
   emerald: {
-    icon: "text-emerald-500 dark:text-emerald-400",
-    count: "text-emerald-600 dark:text-emerald-300",
+    icon: "text-emerald-500",
+    count: "text-emerald-600",
     bar: "bg-emerald-500",
   },
   red: {
-    icon: "text-red-500 dark:text-red-400",
-    count: "text-red-600 dark:text-red-300",
+    icon: "text-red-500",
+    count: "text-red-600",
     bar: "bg-red-500",
   },
   amber: {
-    icon: "text-amber-500 dark:text-amber-400",
-    count: "text-amber-600 dark:text-amber-300",
+    icon: "text-amber-500",
+    count: "text-amber-600",
     bar: "bg-amber-500",
   },
 }
@@ -126,7 +126,7 @@ export function TopTabs<T extends string>({
               {!compact && label}
               {done && !active && (
                 <span
-                  className="ml-0.5 inline-flex items-center justify-center text-emerald-500 dark:text-emerald-400"
+                  className="ml-0.5 inline-flex items-center justify-center text-emerald-500"
                   aria-label="opgeslagen"
                   title="Opgeslagen voor deze klant"
                 >

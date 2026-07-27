@@ -15,7 +15,7 @@ type Props = {
  */
 export function BillingSectionShell({ icon: Icon, title, subtitle, actions, children }: Props) {
   return (
-    <section className="rounded-xl border border-border/60 bg-card/30 overflow-hidden">
+    <section className="rounded-md border border-border/60 bg-card/30 overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-border/60 bg-muted/20">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">

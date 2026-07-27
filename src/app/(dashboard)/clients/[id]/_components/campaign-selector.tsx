@@ -282,7 +282,7 @@ function SaveIndicator({
   }
   if (savedAt && Date.now() - savedAt < 3000) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600">
         <Check className="h-3 w-3" strokeWidth={3} />
         Opgeslagen
       </span>

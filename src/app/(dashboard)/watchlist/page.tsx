@@ -85,9 +85,9 @@ async function WatchListData() {
 
 function MissingTokenState({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
         <div className="space-y-1">
           <h2 className="font-heading text-lg font-semibold">Monday API token ontbreekt</h2>
           <p className="text-sm text-muted-foreground">

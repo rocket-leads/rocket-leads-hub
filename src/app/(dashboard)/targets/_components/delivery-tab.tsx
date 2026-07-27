@@ -333,7 +333,7 @@ function RetentionCard({
 }) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col gap-3 h-full">
+      <div className="bg-card rounded-lg border border-border/60 shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col gap-3 h-full">
         <div className="h-3 w-20 bg-muted rounded animate-pulse" />
         <div className="h-7 w-28 bg-muted rounded animate-pulse" />
       </div>
@@ -348,7 +348,7 @@ function RetentionCard({
     "text-foreground"
 
   return (
-    <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col h-full">
+    <div className="bg-card rounded-lg border border-border/60 shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col h-full">
       <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">{label}</span>
       {sublabel && (
         <span className="text-[9px] text-muted-foreground/50 mt-0.5">{sublabel}</span>

@@ -72,7 +72,7 @@ const AutoTextarea = React.forwardRef<HTMLTextAreaElement, AutoTextareaProps>(
         // padding, focus ring. The `resize-none` is intentional - the
         // auto-grow logic above handles sizing.
         className={cn(
-          "w-full rounded-lg border border-input bg-transparent px-3.5 py-2 text-sm leading-snug transition-colors outline-none resize-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 dark:bg-input/30",
+          "w-full rounded-lg border border-input bg-transparent px-3.5 py-2 text-sm leading-snug transition-colors outline-none resize-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50",
           className,
         )}
         {...rest}

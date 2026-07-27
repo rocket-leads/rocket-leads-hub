@@ -25,7 +25,7 @@ export function SetupChecklistBanner({ items }: { items: ChecklistItem[] }) {
   }
 
   return (
-    <div className="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/5 overflow-hidden">
+    <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/5 overflow-hidden">
       <div className="px-4 py-3 border-b border-amber-500/30 flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-amber-500" />
         <div className="text-sm font-medium text-foreground">

@@ -89,7 +89,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
 
   if (deliverableQuery.isLoading) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)] flex items-center gap-3 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
         Pedro deliverable laden…
       </div>
@@ -99,7 +99,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
   // Empty state - no deliverable saved yet
   if (!deliverable) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex items-center justify-between gap-3">
+      <div className="rounded-lg border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <FileText className="h-4 w-4 text-muted-foreground/60 shrink-0" />
           <div className="min-w-0">
@@ -128,7 +128,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
 
   return (
     <>
-      <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+      <div className="rounded-lg border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)]">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
             <FileText className="h-4 w-4 text-primary shrink-0" />
@@ -200,7 +200,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
           onClick={() => setViewOpen(false)}
         >
           <div
-            className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+            className="bg-background border border-border rounded-md shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">

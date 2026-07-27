@@ -166,7 +166,7 @@ function InspirationLibraryCard() {
   }, [])
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
+    <div className="rounded-lg border border-border/60 bg-card p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -175,7 +175,7 @@ function InspirationLibraryCard() {
           <div className="font-heading font-semibold text-sm">AD CREATIVES INSPIRATION</div>
         </div>
         {savedFlash && (
-          <span className="text-xs text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+          <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Opgeslagen
           </span>
@@ -217,7 +217,7 @@ function InspirationLibraryCard() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+        <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 inline-flex items-center gap-1.5">
           <AlertCircle className="h-3.5 w-3.5" />
           {error}
         </div>
@@ -228,7 +228,7 @@ function InspirationLibraryCard() {
           {verifyState.connected ? (
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1.5">
+                <span className="text-sm font-medium text-emerald-700 inline-flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4" />
                   Verbonden — {verifyState.subfolders.filter((s) => s.found).length} subfolders ·{" "}
                   {verifyState.subfolders.reduce((n, s) => n + s.fileCount, 0)} refs
@@ -262,7 +262,7 @@ function InspirationLibraryCard() {
             </div>
           ) : verifyState.folderId ? (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 space-y-1">
-              <div className="text-sm font-medium text-amber-700 dark:text-amber-400 inline-flex items-center gap-1.5">
+              <div className="text-sm font-medium text-amber-700 inline-flex items-center gap-1.5">
                 <AlertCircle className="h-4 w-4" />
                 Niet bereikbaar
               </div>
@@ -412,7 +412,7 @@ function GlobalDefaultsCard() {
   }, [])
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
+    <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3 flex items-center justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -424,13 +424,13 @@ function GlobalDefaultsCard() {
         </div>
         <div className="flex items-center gap-2">
           {savedFlash && (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+            <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
               <CheckCircle2 className="h-3.5 w-3.5" />
               Opgeslagen
             </span>
           )}
           {dirty > 0 && !savedFlash && (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
+            <span className="text-xs text-amber-600">
               {dirty} wijziging{dirty === 1 ? "" : "en"} niet opgeslagen
             </span>
           )}
@@ -462,7 +462,7 @@ function GlobalDefaultsCard() {
       </div>
 
       {error && (
-        <div className="border-b border-red-500/30 bg-red-500/5 px-5 py-2 text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+        <div className="border-b border-red-500/30 bg-red-500/5 px-5 py-2 text-xs text-red-600 inline-flex items-center gap-1.5">
           <AlertCircle className="h-3.5 w-3.5" />
           {error}
         </div>

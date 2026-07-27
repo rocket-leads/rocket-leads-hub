@@ -506,7 +506,7 @@ export function CreateInvoiceDialog({
 
         {step === "success" && success ? (
           <div className="space-y-3 py-2">
-            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-2">
+            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-600 inline-flex items-center gap-2">
               <Check className="h-4 w-4" />
               Invoice {success.number ?? "draft"} sent to the customer.
             </div>
@@ -531,7 +531,7 @@ export function CreateInvoiceDialog({
                 (Stripe send OK, Monday status stuck on "Overdue", invoice date
                 not advanced) silently rot until someone notices. */}
             {success.warnings.length > 0 && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 space-y-1">
                 <p className="font-medium inline-flex items-center gap-1.5">
                   <AlertCircle className="h-3.5 w-3.5" />
                   Stripe send went through, but Monday didn't fully sync:
@@ -706,7 +706,7 @@ export function CreateInvoiceDialog({
                         </p>
                       )}
                       {tax === 0 && !hasTaxId && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1.5 inline-flex items-start gap-1">
+                        <p className="text-[11px] text-amber-600 pt-1.5 inline-flex items-start gap-1">
                           <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
                           <span>Preview-mismatch: Stripe past 20% BG VAT toe op send. Controleer de definitieve factuur na verzenden.</span>
                         </p>
@@ -878,7 +878,7 @@ export function CreateInvoiceDialog({
                           {fmtDateLong(prorationPreview.to)}
                         </p>
                       ) : prorationMonthly.trim() ? (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        <p className="text-[11px] text-amber-600">
                           Payment date is today or past - no partial period to prorate. Add the full amount as a normal line instead.
                         </p>
                       ) : null}

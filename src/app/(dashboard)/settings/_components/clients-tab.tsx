@@ -248,7 +248,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
           return (
             <div
               key={client.mondayItemId}
-              className="rounded-xl border border-border/60 bg-card overflow-hidden"
+              className="rounded-md border border-border/60 bg-card overflow-hidden"
             >
               <button
                 type="button"

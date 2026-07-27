@@ -9,7 +9,7 @@ export function Panel({ className, padded = false, ...props }: PanelProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/60 bg-card",
+        "rounded-md border border-border/60 bg-card",
         "shadow-[var(--shadow-md)]",
         padded && "p-5",
         className

@@ -77,7 +77,7 @@ export function FiltersPopover({ filters, align = "start" }: Props) {
                 {f.label}
               </label>
               <Select value={f.value} onValueChange={(v) => f.onChange(v ?? f.options[0]?.value ?? "")}>
-                <SelectTrigger className="w-full h-9 bg-background dark:bg-input/30">
+                <SelectTrigger className="w-full h-9 bg-background">
                   <SelectValue>{f.options.find((o) => o.value === f.value)?.label ?? f.value}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>

@@ -37,8 +37,8 @@ function StatusPill({ service, data }: { service: { id: string; label: string };
     <div
       className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
         data.ok
-          ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-          : "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+          ? "border-green-500/30 bg-green-500/10 text-green-600"
+          : "border-red-500/30 bg-red-500/10 text-red-600"
       }`}
       title={data.message}
     >

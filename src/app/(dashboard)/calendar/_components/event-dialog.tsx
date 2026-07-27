@@ -349,9 +349,9 @@ function ResponsePill({
   status: CalendarAttendee["responseStatus"]
 }) {
   const map = {
-    accepted: { label: "Yes", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-    declined: { label: "No", className: "bg-red-500/15 text-red-700 dark:text-red-400" },
-    tentative: { label: "Maybe", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+    accepted: { label: "Yes", className: "bg-emerald-500/15 text-emerald-700" },
+    declined: { label: "No", className: "bg-red-500/15 text-red-700" },
+    tentative: { label: "Maybe", className: "bg-amber-500/15 text-amber-700" },
     needsAction: { label: "Awaiting", className: "bg-muted text-muted-foreground" },
   } as const
   const m = map[status]

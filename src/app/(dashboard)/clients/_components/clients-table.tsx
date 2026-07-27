@@ -104,10 +104,10 @@ function DeltaPill({ pct }: { pct: number }) {
   const isDown = pct < 0
   const isHighUp = pct >= 25
   const colorClass = isDown
-    ? "text-emerald-600 dark:text-emerald-400"
+    ? "text-emerald-600"
     : isHighUp
-    ? "text-red-500 dark:text-red-400"
-    : "text-amber-600 dark:text-amber-400"
+    ? "text-red-500"
+    : "text-amber-600"
   const Icon = isDown ? ChevronDown : ChevronUp
   return (
     <span className={`inline-flex items-center gap-0.5 font-medium ${colorClass}`}>
@@ -374,7 +374,7 @@ function ClientUpdateCell({
   return (
     <div className="leading-tight inline-flex flex-col items-center gap-0.5">
       {sentThisWeek ? (
-        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           {t("clients.client_update.sent_this_week", locale)}
         </span>

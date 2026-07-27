@@ -90,7 +90,7 @@ export function ColumnOverrides({ mondayItemId }: Props) {
               placeholder={globalDefaults[key] ?? "Default"}
               value={currentOverrides[key] ?? ""}
               onChange={(e) => handleChange(key, e.target.value)}
-              className="w-full h-8 rounded-md bg-muted/40 dark:bg-white/5 border-0 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/30"
+              className="w-full h-8 rounded-md bg-muted/40 border-0 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/30"
             />
           </div>
         ))}

@@ -29,18 +29,18 @@ export type ActionIconButtonState = "done" | "error" | null | undefined
 
 const TONE_CLASSES: Record<ActionIconButtonTone, string> = {
   success:
-    "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40",
+    "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 hover:text-emerald-700 border-emerald-500/20 hover:border-emerald-500/40",
   danger:
-    "bg-muted/50 text-muted-foreground hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 border-border hover:border-red-500/40",
+    "bg-muted/50 text-muted-foreground hover:bg-red-500/15 hover:text-red-600 border-border hover:border-red-500/40",
   muted:
     "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-border",
 }
 
 const STATE_CLASSES: Record<Exclude<ActionIconButtonState, null | undefined>, string> = {
   done:
-    "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/15",
+    "bg-emerald-500/15 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/15",
   error:
-    "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/40 hover:bg-red-500/10",
+    "bg-red-500/10 text-red-600 border-red-500/40 hover:bg-red-500/10",
 }
 
 export function ActionIconButton({

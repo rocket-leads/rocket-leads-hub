@@ -58,17 +58,17 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback(this.state.error, this.reset)
       return (
         <div className="m-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
-          <div className="flex items-center gap-2 mb-2 font-semibold text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2 mb-2 font-semibold text-amber-700">
             <AlertTriangle className="h-4 w-4" />
             Something went wrong rendering {this.props.label ?? "this section"}.
           </div>
-          <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mb-3 font-mono break-all">
+          <p className="text-xs text-amber-700/80 mb-3 font-mono break-all">
             {this.state.error.message || String(this.state.error)}
           </p>
           <button
             type="button"
             onClick={this.reset}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20"
           >
             <RefreshCw className="h-3 w-3" /> Try again
           </button>

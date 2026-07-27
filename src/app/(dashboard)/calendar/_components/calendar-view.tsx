@@ -1526,7 +1526,7 @@ function DayColumn({
           className="absolute left-1 right-1 z-20 rounded-md border-l-2 border-amber-500 bg-amber-500/30 pointer-events-none"
           style={{ top: previewTop, height: halfHourPx }}
         >
-          <div className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 tabular-nums">
+          <div className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 tabular-nums">
             {format(topToTime(previewTop, day), "HH:mm")}
           </div>
         </div>
@@ -1642,10 +1642,10 @@ function TaskBlock({
     >
       <div className="text-[11px] font-medium leading-tight truncate">
         {done && (
-          <span className="text-emerald-600 dark:text-emerald-400 mr-0.5">✓</span>
+          <span className="text-emerald-600 mr-0.5">✓</span>
         )}
         {!done && overdue && (
-          <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>
+          <span className="font-semibold text-red-600">⚠ </span>
         )}
         <span className="tabular-nums text-muted-foreground mr-1">
           {timeLabel}
@@ -1843,10 +1843,10 @@ function TaskChip({
       title={tooltipParts.join(" ")}
     >
       {!done && overdue && (
-        <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>
+        <span className="font-semibold text-red-600">⚠ </span>
       )}
       {done && (
-        <span className="text-emerald-600 dark:text-emerald-400 mr-0.5">✓</span>
+        <span className="text-emerald-600 mr-0.5">✓</span>
       )}
       {title}
       {clientName && (

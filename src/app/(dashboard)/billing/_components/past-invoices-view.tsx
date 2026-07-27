@@ -294,7 +294,7 @@ function Stat({
           ? "text-emerald-500"
           : ""
   return (
-    <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
+    <div className="rounded-md border border-border/60 bg-card px-4 py-3">
       <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">
         {label}
       </p>

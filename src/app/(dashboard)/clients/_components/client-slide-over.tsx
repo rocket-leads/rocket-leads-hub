@@ -341,7 +341,7 @@ function SlideOverNavHeader({
           type="button"
           onClick={onBack}
           className={cn(
-            "group/back inline-flex items-center justify-center gap-2 h-11 rounded-xl",
+            "group/back inline-flex items-center justify-center gap-2 h-11 rounded-md",
             "border border-emerald-400/40 bg-emerald-500/95 backdrop-blur-md text-white",
             "shadow-2xl ring-1 ring-emerald-900/30",
             "transition-all hover:bg-emerald-500 hover:border-emerald-300/60 active:translate-y-px",
@@ -458,7 +458,7 @@ function ClientSwitcher({
     // `SlideOverNavHeader` so the Back button + this switcher share one
     // visual frame.
     <div
-      className="rounded-xl border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
+      className="rounded-md border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >

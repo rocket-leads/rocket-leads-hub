@@ -73,7 +73,7 @@ export function DraftsPanel({
   const isEmpty = drafts.length === 0 && pendingInputs.length === 0
 
   return (
-    <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+    <div className="rounded-md border border-border bg-card/40 overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />

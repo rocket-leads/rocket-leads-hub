@@ -215,7 +215,7 @@ export function MarketingTab() {
       {/* Platform / spend-source notes - Google spend can't be country-split, and
           the sheet may not be shared with the service account yet. */}
       {(data.googleAdsError || data.googleExcludedForCountry) && (
-        <div className="-mt-5 text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
+        <div className="-mt-5 text-[11px] text-amber-600 inline-flex items-center gap-1.5">
           <AlertTriangle className="h-3 w-3 shrink-0" />
           {data.googleAdsError
             ? "Google Ads spend unavailable - share the Actual sheet tab (Viewer) with the Hub's Google service account."
@@ -382,7 +382,7 @@ export function MarketingTab() {
               the cron now refuses to cache empty results so a retry usually
               fixes it). Errors flow through this banner too. */}
           {!data.metaLoading && !hasMetaSpend && (
-            <div className="text-[11px] text-amber-600 dark:text-amber-400 px-1 inline-flex items-center gap-1.5">
+            <div className="text-[11px] text-amber-600 px-1 inline-flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3" />
               {data.metaError
                 ? `Ad spend data not loaded: ${data.metaError}`
@@ -432,7 +432,7 @@ export function MarketingTab() {
             {cancellations > 0 && <span>{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>}
             {cancellations > 0 && notUpdatedTotal > 0 && <span> · </span>}
             {notUpdatedTotal > 0 && (
-              <span className="text-amber-600 dark:text-amber-400">
+              <span className="text-amber-600">
                 {notUpdatedTotal} past appointment{notUpdatedTotal === 1 ? "" : "s"} not yet updated by closer (empty sales outcome)
               </span>
             )}
@@ -503,7 +503,7 @@ function StripeGapModal({
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-foreground/25 supports-backdrop-filter:backdrop-blur-sm" onClick={onClose} />
       <div
-        className="bg-popover ring-1 ring-foreground/10 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
+        className="bg-popover ring-1 ring-foreground/10 rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden"
         style={{ position: "fixed", top: "10vh", left: "50%", transform: "translateX(-50%)", width: "92vw", maxWidth: "60rem", maxHeight: "80vh" }}
       >
         <div className="px-5 py-4 border-b border-border/40">

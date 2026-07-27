@@ -128,9 +128,9 @@ export function PedroTab({
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-20 rounded-2xl" />
-        <Skeleton className="h-32 rounded-2xl" />
-        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-20 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
       </div>
     )
   }
@@ -381,7 +381,7 @@ function BriefingSection({
         )}
 
         {error && (
-          <div className="text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+          <div className="text-xs text-red-600 inline-flex items-center gap-1.5">
             <AlertCircle className="h-3 w-3" />
             {error}
           </div>
@@ -511,7 +511,7 @@ function KickoffSection({
 
         {result && (
           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" />
               Website gescand — branding bijgewerkt
             </div>
@@ -551,7 +551,7 @@ function KickoffSection({
         )}
 
         {error && (
-          <div className="text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+          <div className="text-xs text-red-600 inline-flex items-center gap-1.5">
             <AlertCircle className="h-3 w-3" />
             {error}
           </div>

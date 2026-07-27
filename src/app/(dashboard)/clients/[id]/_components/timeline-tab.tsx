@@ -147,7 +147,7 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
   const needsMore = body.length > 240 || (body.match(/\n/g)?.length ?? 0) >= 3
 
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm transition-colors hover:border-foreground/15">
+    <div className="rounded-md border border-border bg-card px-4 py-3.5 shadow-sm transition-colors hover:border-foreground/15">
       {/* Author row - real Hub photo (matched to the Monday creator), name, time. */}
       <div className="flex items-center gap-3">
         <UserAvatar name={entry.author} avatarUrl={entry.author_avatar} autoColor className="size-9 shrink-0" />
@@ -265,7 +265,7 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
                 // Each reply is its own light mini-card (theme `muted` surface)
                 // with the avatar INSIDE, top-aligned next to the name/message -
                 // Monday style. Roy 2026-07-27.
-                <div key={i} className="flex items-start gap-2.5 rounded-xl bg-muted/60 px-3 py-2.5">
+                <div key={i} className="flex items-start gap-2.5 rounded-md bg-muted/60 px-3 py-2.5">
                   <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="size-7 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

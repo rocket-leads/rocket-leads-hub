@@ -60,7 +60,7 @@ function AutomationCard({
     muted: "bg-muted text-muted-foreground",
   }
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-4 transition-colors">
+    <div className="rounded-md border border-border bg-card px-4 py-4 transition-colors">
       <div className="flex items-start gap-4">
         <div
           className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${tones[tone]}`}
@@ -293,7 +293,7 @@ function RunNowPanel() {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-4 space-y-3">
+    <div className="rounded-md border border-border bg-card px-4 py-4 space-y-3">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <p className="text-sm font-semibold inline-flex items-center gap-2">

@@ -495,7 +495,7 @@ export function ConnectedEntity({
                         </span>
                       )}
                       {entity.status === "warning" && entity.statusLabel && (
-                        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400 shrink-0">
+                        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 shrink-0">
                           {entity.statusLabel}
                         </span>
                       )}

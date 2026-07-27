@@ -84,7 +84,7 @@ export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)]",
+        "rounded-md border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)]",
         className,
       )}
     >
@@ -104,8 +104,8 @@ export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-md px-1.5 h-[20px] text-[11px] font-medium tabular-nums",
-              isPositive && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-              isNegative && "bg-red-500/10 text-red-600 dark:text-red-400",
+              isPositive && "bg-emerald-500/10 text-emerald-700",
+              isNegative && "bg-red-500/10 text-red-600",
               isNeutral && "bg-muted/60 text-muted-foreground",
             )}
           >

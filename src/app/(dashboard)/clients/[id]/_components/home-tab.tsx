@@ -48,21 +48,21 @@ const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: st
   action: {
     bg: "bg-red-500/10",
     border: "border-red-500/40",
-    text: "text-red-500 dark:text-red-400",
+    text: "text-red-500",
     dot: "bg-red-500",
     labelKey: "client.home.health.action",
   },
   watch: {
     bg: "bg-amber-500/10",
     border: "border-amber-500/40",
-    text: "text-amber-600 dark:text-amber-400",
+    text: "text-amber-600",
     dot: "bg-amber-500",
     labelKey: "client.home.health.watch",
   },
   good: {
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/40",
-    text: "text-emerald-600 dark:text-emerald-400",
+    text: "text-emerald-600",
     dot: "bg-emerald-500",
     labelKey: "client.home.health.good",
   },
@@ -162,7 +162,7 @@ function HealthCard({
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] space-y-2">
+      <div className="rounded-lg border border-border/60 bg-card px-5 py-4 shadow-[var(--shadow-sm)] space-y-2">
         <Skeleton className="h-4 w-16" />
         <Skeleton className="h-7 w-20" />
         <Skeleton className="h-3 w-32" />
@@ -173,7 +173,7 @@ function HealthCard({
   // Same chrome shell as KpiCard so the four-up grid lines up cleanly; the
   // tone classes layer color on top of the shared border + radius.
   return (
-    <div className={`rounded-2xl px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] border ${tone.bg} ${tone.border}`}>
+    <div className={`rounded-lg px-5 py-4 shadow-[var(--shadow-sm)] border ${tone.bg} ${tone.border}`}>
       <div className="flex items-center gap-2 mb-3">
         <Activity className={`h-3.5 w-3.5 ${tone.text}`} />
         <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>{t("client.home.health.label", locale)}</span>

@@ -86,7 +86,7 @@ export function ChannelPill({
 }) {
   if (channel === "whatsapp") {
     return (
-      <Badge variant="outline" className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+      <Badge variant="outline" className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700">
         <MessageCircle className="h-3 w-3" />
         WhatsApp
       </Badge>
@@ -94,7 +94,7 @@ export function ChannelPill({
   }
   if (channel === "email") {
     return (
-      <Badge variant="outline" className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400">
+      <Badge variant="outline" className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700">
         <Mail className="h-3 w-3" />
         Email
       </Badge>
@@ -288,14 +288,14 @@ export function WhatsAppPreview({
     // the pane vertically even when the bubble is short, so there's no
     // empty white strip below.
     <div
-      className="px-6 py-5 bg-[#ece5dd] dark:bg-[#1f2733] min-h-full"
+      className="px-6 py-5 bg-[#ece5dd] min-h-full"
       style={{
         backgroundImage:
           "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)",
         backgroundSize: "16px 16px",
       }}
     >
-      <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-md bg-white dark:bg-zinc-900 shadow-sm px-4 py-3 space-y-2 ring-1 ring-black/[0.04]">
+      <div className="ml-auto max-w-[88%] rounded-lg rounded-tr-md bg-white shadow-sm px-4 py-3 space-y-2 ring-1 ring-black/[0.04]">
         <div className="flex items-baseline gap-1.5">
           <span
             className="text-[13px] leading-relaxed text-foreground/50 select-none shrink-0"
@@ -444,7 +444,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
   }, [body])
 
   return (
-    <div className="px-6 py-5 bg-muted/30 dark:bg-zinc-900/40 min-h-full">
+    <div className="px-6 py-5 bg-muted/30 min-h-full">
       <div className="max-w-3xl mx-auto rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
         {/* Subject row - sticks at top with a thin border, like a real
             email composer. */}
@@ -692,11 +692,11 @@ export function ClientUpdateDialog({
 
         {testMode && parts && (
           <div className="mx-6 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 space-y-2">
-            <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+            <p className="text-[11px] leading-relaxed text-amber-700">
               <strong>Test mode</strong> - bericht gaat naar het ingevulde adres hieronder, niet naar de klant. FROM channel, template en body blijven realistisch.
             </p>
             <div className="flex items-center gap-2">
-              <label className="text-[10px] uppercase tracking-wider text-amber-700/70 dark:text-amber-400/70 font-medium shrink-0 w-16">
+              <label className="text-[10px] uppercase tracking-wider text-amber-700/70 font-medium shrink-0 w-16">
                 {channel === "email" ? "To (email)" : "To (phone)"}
               </label>
               {channel === "email" ? (
@@ -717,7 +717,7 @@ export function ClientUpdateDialog({
                 />
               )}
             </div>
-            <p className="text-[10px] text-amber-700/60 dark:text-amber-400/60">
+            <p className="text-[10px] text-amber-700/60">
               Opgeslagen in je browser - hoef je niet opnieuw te typen.
             </p>
           </div>

@@ -88,7 +88,7 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
         const isAgent = msg.author_type === "User"
         return (
           <div key={msg.id} className={`flex ${isAgent ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] rounded-xl px-3.5 py-2 ${
+            <div className={`max-w-[80%] rounded-md px-3.5 py-2 ${
               isAgent
                 ? "bg-primary/10 rounded-tr-sm"
                 : "bg-muted rounded-tl-sm"

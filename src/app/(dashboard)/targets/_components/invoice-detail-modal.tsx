@@ -127,7 +127,7 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-foreground/25 supports-backdrop-filter:backdrop-blur-sm" onClick={onClose} />
 
-      <div style={{ position: "fixed", top: "15vh", left: "50%", transform: "translateX(-50%)", width: "90vw", maxWidth: "48rem", height: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} className="bg-popover ring-1 ring-foreground/10 rounded-2xl shadow-2xl z-50">
+      <div style={{ position: "fixed", top: "15vh", left: "50%", transform: "translateX(-50%)", width: "90vw", maxWidth: "48rem", height: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} className="bg-popover ring-1 ring-foreground/10 rounded-lg shadow-2xl z-50">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-border/40 shrink-0">
           <div>

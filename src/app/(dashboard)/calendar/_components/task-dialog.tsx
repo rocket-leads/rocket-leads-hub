@@ -256,16 +256,16 @@ function StatusPill({ status }: { status: string }) {
     open: { label: "Open", className: "bg-muted text-muted-foreground" },
     in_progress: {
       label: "In progress",
-      className: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+      className: "bg-blue-500/15 text-blue-700",
       icon: <Clock className="size-3" />,
     },
     done: {
       label: "Done",
-      className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+      className: "bg-emerald-500/15 text-emerald-700",
       icon: <CircleCheck className="size-3" />,
     },
     cancelled: { label: "Cancelled", className: "bg-muted text-muted-foreground" },
-    unread: { label: "Unread", className: "bg-blue-500/15 text-blue-700 dark:text-blue-400" },
+    unread: { label: "Unread", className: "bg-blue-500/15 text-blue-700" },
     read: { label: "Read", className: "bg-muted text-muted-foreground" },
   }
   const m = map[status] ?? { label: status, className: "bg-muted text-muted-foreground" }
@@ -286,7 +286,7 @@ function PriorityPill({ priority }: { priority: string }) {
   const map: Record<string, { label: string; className: string }> = {
     high: {
       label: "High",
-      className: "bg-red-500/15 text-red-700 dark:text-red-400",
+      className: "bg-red-500/15 text-red-700",
     },
     normal: { label: "Normal", className: "bg-muted text-muted-foreground" },
     low: { label: "Low", className: "bg-muted text-muted-foreground" },

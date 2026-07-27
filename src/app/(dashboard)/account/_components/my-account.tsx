@@ -55,7 +55,7 @@ export function MyAccount({
 }: Props) {
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
+      <div className="rounded-md border border-border/60 bg-card px-4 py-3">
         <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60 font-medium">Signed in as</p>
         <div className="mt-2 flex items-center gap-4">
           <AvatarEditor userName={userName} avatarUrl={avatarUrl} />
@@ -285,7 +285,7 @@ function GoogleCalendarCard({
               className={`text-[10px] font-medium rounded-full px-2 py-0.5 ${
                 usingSignIn
                   ? "bg-muted text-muted-foreground"
-                  : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                  : "bg-cyan-500/15 text-cyan-700"
               }`}
             >
               {usingSignIn ? "Sign-in account" : "Different account"}
@@ -667,7 +667,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
   const groupOrder = Object.keys(grouped).sort()
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+    <div className="rounded-md border border-border/60 bg-card px-4 py-4">
       <div className="flex items-start gap-4">
         <div className="h-9 w-9 rounded-lg bg-cyan-500/10 text-cyan-500 flex items-center justify-center shrink-0">
           <Inbox className="h-4 w-4" />
@@ -774,7 +774,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                               <span className="text-xs truncate flex-1 min-w-0">{c.name}</span>
                               {silentSubscribed ? (
                                 <span
-                                  className="text-[10px] tabular-nums shrink-0 text-amber-600 dark:text-amber-500 font-medium"
+                                  className="text-[10px] tabular-nums shrink-0 text-amber-600 font-medium"
                                   title="Subscribed but no events ingested in the last 7 days - webhook may not be delivering for this channel"
                                 >
                                   0/7d
@@ -836,7 +836,7 @@ function PlatformCard({
 }) {
   const t = TONE_CLASSES[tone]
   return (
-    <div className={`rounded-xl border ${connected ? "border-border" : "border-border/40"} bg-card px-4 py-4`}>
+    <div className={`rounded-md border ${connected ? "border-border" : "border-border/40"} bg-card px-4 py-4`}>
       <div className="flex items-start gap-4">
         <div className={`h-9 w-9 rounded-lg ${t.bg} ${t.text} flex items-center justify-center shrink-0`}>
           {icon}
@@ -1018,7 +1018,7 @@ function BrowserNotificationsCard() {
 
   if (supported === null) {
     return (
-      <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+      <div className="rounded-md border border-border/60 bg-card px-4 py-4">
         <div className="text-xs text-muted-foreground/60">Loading…</div>
       </div>
     )
@@ -1026,14 +1026,14 @@ function BrowserNotificationsCard() {
 
   if (!supported) {
     return (
-      <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-4 text-xs text-muted-foreground">
+      <div className="rounded-md border border-border/40 bg-muted/20 px-4 py-4 text-xs text-muted-foreground">
         Deze browser ondersteunt geen push notificaties (Safari op iOS pas vanaf 16.4).
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+    <div className="rounded-md border border-border/60 bg-card px-4 py-4">
       <div className="flex items-start gap-4">
         <div
           className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${

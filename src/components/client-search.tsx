@@ -135,7 +135,7 @@ export function ClientSearch() {
           setOpen(true)
           fetchClients()
         }}
-        className="flex items-center gap-2 h-10 w-72 rounded-lg border border-border bg-card px-3.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
+        className="flex items-center gap-2 h-10 w-72 rounded-lg border border-border bg-card px-3.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[var(--shadow-sm)]"
       >
         <Search className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 text-left">{t("search.trigger.placeholder", locale)}</span>

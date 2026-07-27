@@ -281,7 +281,7 @@ export function CommandBar() {
               Render the candidates as clickable buttons; a click opens that
               client. Solution-first: no error, no raw ids, clients only. */}
           {isReady && editAction?.type === "choose_client" && (
-            <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+            <div className="rounded-md border border-border bg-card/40 overflow-hidden">
               <div className="border-b border-border/40 bg-muted/30 px-3.5 py-2.5 text-[13px] text-foreground">
                 {editAction.question}
               </div>
@@ -312,7 +312,7 @@ export function CommandBar() {
           {/* Editable proposal - the user reviews + tweaks the variables
               (client, assignee, due date, …) then approves or discards. */}
           {isReady && activeDraft && editAction && editAction.type !== "choose_client" && (
-            <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+            <div className="rounded-md border border-border bg-card/40 overflow-hidden">
               <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3.5 py-2">
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <Sparkles className="h-3 w-3 text-primary" />

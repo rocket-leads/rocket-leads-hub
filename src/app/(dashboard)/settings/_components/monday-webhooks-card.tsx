@@ -146,7 +146,7 @@ export function MondayWebhooksCard() {
         </p>
 
         {!status?.secretConfigured && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700">
             <strong>MONDAY_WEBHOOK_SECRET</strong> is not set in env. Set it
             in Vercel + your local <code>.env</code> before registering -
             Monday will reject incoming events without it.
@@ -154,7 +154,7 @@ export function MondayWebhooksCard() {
         )}
 
         {status?.secretConfigured && status.publicReachable === false && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700">
             <strong>You&apos;re on a non-public host</strong> (<code>{status.currentOrigin}</code>).
             Monday only accepts publicly-reachable HTTPS endpoints, so
             Register / Reset are disabled here - running them would delete
@@ -201,7 +201,7 @@ export function MondayWebhooksCard() {
                       <li key={event} className="flex items-center justify-between">
                         <code className="text-foreground/80">{event}</code>
                         {present ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">
+                          <span className="text-emerald-600">
                             ✓ #{present.id}
                           </span>
                         ) : (

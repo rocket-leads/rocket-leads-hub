@@ -185,11 +185,11 @@ export function StripeCustomerCard({
         // tell them apart. Picking one writes it as the single linked customer
         // (replacing the others).
         <div className="space-y-3">
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
               <p className="font-medium">This client has {multiple.length} Stripe customers linked.</p>
-              <p className="text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+              <p className="text-amber-700/80 mt-0.5">
                 A client should have exactly one. Pick the correct one below — it becomes the single
                 linked customer and the other is removed. Invoicing is blocked until this is resolved.
               </p>

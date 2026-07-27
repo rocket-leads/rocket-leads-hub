@@ -17,7 +17,7 @@ function ClientsLoading() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-72 rounded-lg" />
-      <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+      <div className="rounded-lg border border-border/60 bg-card p-5 space-y-3 shadow-[var(--shadow-sm)]">
         {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
       </div>
     </div>
@@ -55,7 +55,7 @@ async function ClientsData({ session, locale }: { session: Session | null; local
 
   if (error) {
     return (
-      <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-5 py-4 text-sm text-destructive">
+      <div className="rounded-md border border-destructive/20 bg-destructive/5 px-5 py-4 text-sm text-destructive">
         {error}{" "}
         {error.includes("token") && (
           <Link href="/settings" className="underline font-medium">

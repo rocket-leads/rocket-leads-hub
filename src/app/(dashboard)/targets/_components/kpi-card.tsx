@@ -69,7 +69,7 @@ export const KpiCard = memo(function KpiCard({
 }: KpiCardProps) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col gap-3 h-full">
+      <div className="bg-card rounded-lg border border-border/60 shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col gap-3 h-full">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="h-8 w-28" />
       </div>
@@ -78,7 +78,7 @@ export const KpiCard = memo(function KpiCard({
 
   if (error) {
     return (
-      <div className="bg-card rounded-2xl border border-red-500/20 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col items-center justify-center gap-1.5 h-full">
+      <div className="bg-card rounded-lg border border-red-500/20 shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col items-center justify-center gap-1.5 h-full">
         <AlertCircle className="w-4 h-4 text-red-500" />
         {onRetry && (
           <button onClick={onRetry} className="text-[10px] text-primary hover:underline flex items-center gap-1">
@@ -99,7 +99,7 @@ export const KpiCard = memo(function KpiCard({
 
   return (
     <div className={cn(
-      "bg-card rounded-2xl shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] px-5 py-4 flex flex-col h-full",
+      "bg-card rounded-lg shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col h-full",
       isEstimated
         ? "border border-dashed border-primary/50"
         : "border border-border/60",
@@ -112,7 +112,7 @@ export const KpiCard = memo(function KpiCard({
           {isMtdPlaceholder && (
             <span
               title="Showing MTD numbers while your selected range loads"
-              className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-pulse"
+              className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 animate-pulse"
             >
               MTD
             </span>

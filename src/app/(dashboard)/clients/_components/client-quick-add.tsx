@@ -197,7 +197,7 @@ export function ClientQuickAdd({ mondayItemId, clientName, currentUser }: Props)
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm p-3">
+    <div className="rounded-md border border-border bg-card shadow-sm p-3">
       <div className="flex items-start gap-2">
         <div className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           {kind === "task" ? (

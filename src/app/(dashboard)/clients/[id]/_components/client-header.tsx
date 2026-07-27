@@ -145,11 +145,11 @@ export function ClientHeader({ client, canViewBilling }: Props) {
 
   return (
     <div className="mb-6">
-      <div className="-mx-4 px-4 py-4 rounded-xl bg-gradient-to-r from-muted/30 to-transparent">
+      <div className="-mx-4 px-4 py-4 rounded-md bg-gradient-to-r from-muted/30 to-transparent">
         <div className="flex items-start justify-between gap-4">
           {/* Left: Avatar + name + status */}
           <div className="flex items-start gap-4 min-w-0">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary/80 to-primary/40 flex items-center justify-center shrink-0 shadow-sm shadow-primary/10">
+            <div className="h-12 w-12 rounded-md bg-gradient-to-br from-primary/80 to-primary/40 flex items-center justify-center shrink-0 shadow-sm shadow-primary/10">
               <span className="text-sm font-heading font-bold text-white tracking-tight">
                 {getInitials(client.name)}
               </span>
