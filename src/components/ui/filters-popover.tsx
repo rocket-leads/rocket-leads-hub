@@ -15,6 +15,9 @@ export type FilterConfig = {
   onChange: (next: string) => void
   /** Options to render. The first option is treated as the "All / cleared" state. */
   options: Array<{ value: string; label: string }>
+  /** When true, option labels are people - render their profile avatar
+   *  (photo or coloured initials) before the name in the value dropdown. */
+  avatars?: boolean
 }
 
 type Props = {

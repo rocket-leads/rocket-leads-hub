@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Filter, Plus, Trash2 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select"
+import { ManagerAvatar } from "./manager-avatar"
 import type { FilterConfig } from "./filters-popover"
 
 type Props = {
@@ -136,13 +137,28 @@ export function ConditionFilter({ filters, align = "start" }: Props) {
                       <SelectValue placeholder="Select a value">
                         {f.value === cleared
                           ? undefined
-                          : f.options.find((o) => o.value === f.value)?.label ?? f.value}
+                          : (() => {
+                              const label = f.options.find((o) => o.value === f.value)?.label ?? f.value
+                              return (
+                                <span className="inline-flex min-w-0 items-center gap-1.5">
+                                  {f.avatars && <ManagerAvatar name={label} size="sm" />}
+                                  <span className="truncate">{label}</span>
+                                </span>
+                              )
+                            })()}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {valueOptions.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
-                          {o.label}
+                          {f.avatars ? (
+                            <span className="inline-flex items-center gap-2">
+                              <ManagerAvatar name={o.label} size="sm" />
+                              {o.label}
+                            </span>
+                          ) : (
+                            o.label
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
