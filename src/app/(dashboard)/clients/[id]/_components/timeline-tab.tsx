@@ -260,14 +260,14 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
               : `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
           </button>
           {repliesOpen && (
-            <div className="mt-2.5 space-y-2 pl-1">
+            <div className="mt-2.5 space-y-2">
               {replies.map((r, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="mt-0.5 size-7 shrink-0" />
-                  {/* Each reply is its own light mini-card (theme `muted`
-                      surface) so replies read as distinct bubbles, not one
-                      running block - Monday style. Roy 2026-07-27. */}
-                  <div className="min-w-0 flex-1 rounded-xl bg-muted/60 px-3 py-2">
+                // Each reply is its own light mini-card (theme `muted` surface)
+                // with the avatar INSIDE, top-aligned next to the name/message -
+                // Monday style. Roy 2026-07-27.
+                <div key={i} className="flex items-start gap-2.5 rounded-xl bg-muted/60 px-3 py-2.5">
+                  <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="size-7 shrink-0" />
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span className="text-[13px] font-semibold text-foreground">
                         {r.author ?? "Onbekend"}
