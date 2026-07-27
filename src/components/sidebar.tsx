@@ -174,8 +174,10 @@ export async function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Brand lockup: circular Rocket Leads mark + wordmark + live pill. */}
-      <div className="brand">
+      {/* Brand lockup: circular Rocket Leads mark + wordmark + live pill.
+          pl-3 aligns the logo's left edge with the nav icons + user avatar
+          (all at 12px) - .brand's default 8px left made it sit 4px outdented. */}
+      <div className="brand pl-3">
         <Link href={homeHref} aria-label="Rocket Leads" className="brand-mark">
           <Image
             src="/logos/logo-mark-circular.svg"
