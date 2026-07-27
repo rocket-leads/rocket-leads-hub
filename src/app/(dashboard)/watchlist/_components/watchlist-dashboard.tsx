@@ -1466,7 +1466,6 @@ function WatchCard({
 }) {
   const { client, insight, kpi, daysInBucket, isNewToday, manualOverride } = item
   const id = client.mondayItemId
-  const owner = client.campaignManager?.trim() || client.accountManager?.trim() || ""
   const prio = col === "action" ? "p1" : col === "watch" ? "p2" : "p3"
 
   const kpiLabels: string[] = []
@@ -1497,10 +1496,8 @@ function WatchCard({
       }}
     >
       <div className="tc-top">
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <ManagerAvatar name={client.campaignManager} />
-          <span className="proj truncate">{owner || "—"}</span>
-        </span>
+        {/* Campaign manager's photo only - the name is redundant next to it. */}
+        <ManagerAvatar name={client.campaignManager} />
         {isNewToday ? (
           <span className="pill newpill">
             <span className="pdot" />
