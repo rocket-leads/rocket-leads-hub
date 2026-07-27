@@ -86,12 +86,25 @@ export type CreateCalendarEventAction = {
   addMeetLink?: boolean
 }
 
+/** A disambiguation prompt. When the input clearly points at a client but the
+ *  name matches several (Zumex → 3 Zumex entities) or is a near-miss typo, we
+ *  don't fail with prose — we hand the user a short list of clients to pick
+ *  from. Each option navigates to that client on click. NOT run by
+ *  executeAction: the UI renders the options and fires navigate_to_client for
+ *  the chosen one. Clients only — the team opens clients, not contacts. */
+export type ChooseClientAction = {
+  type: "choose_client"
+  question: string
+  options: { clientId: string; name: string }[]
+}
+
 export type CopilotAction =
   | CreateTaskAction
   | CreateReminderAction
   | TriggerPedroRefreshAction
   | NavigateToClientAction
   | CreateCalendarEventAction
+  | ChooseClientAction
 
 export const COPILOT_TOOLS: Anthropic.Tool[] = [
   {
@@ -206,6 +219,28 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["clientId"],
+    },
+  },
+  {
+    name: "clarify_client",
+    description:
+      "Use when the input clearly refers to a CLIENT but you can't pin it to exactly one: the name matches SEVERAL clients (e.g. 'Zumex' → 'Juice Concepts | Zumex', 'Zumex Group ES', 'Zumex België') OR it's a near-miss / typo of one or a few clients ('Zumax' → 'Zumex …'). Return the 2-5 most likely CLIENTS, best match first, so the user can click one to open it. This is STRONGLY preferred over replying with a free-text clarifying question — never ask 'which one did you mean?' in prose when this tool applies. Only include real clients from the roster, never contacts/persons. If exactly one client clearly matches, use navigate_to_client instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clientIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Monday item IDs of the 2-5 candidate clients, best match first. Use the literal ids from the client roster - never invent ids.",
+        },
+        question: {
+          type: "string",
+          description:
+            "Short, friendly one-liner in the user's language, e.g. 'Bedoel je Zumex?' or 'Which Zumex did you mean?'. Positive and brief - no list of ids, the UI renders the options as buttons.",
+        },
+      },
+      required: ["clientIds"],
     },
   },
   {

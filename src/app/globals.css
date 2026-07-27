@@ -684,6 +684,15 @@ input[type="number"] {
   border-radius: 4px;
 }
 
+/* ...except the command palette / AI Co-pilot input: the blinking caret is
+   enough, no accent ring. Must live here (unlayered) to beat the rule above -
+   the same override in theme.css lost because 187n is in @layer(components). */
+.cmd-search input:focus,
+.cmd-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 /* React Day Picker - match the dashboard's dark theme */
 .rdp-rl {
   --rdp-accent-color: var(--primary);

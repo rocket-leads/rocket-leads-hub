@@ -43,6 +43,10 @@ export function ActionFields({
       return <NavigateFields draft={action} onChange={onChange} clients={clients} locale={locale} />
     case "create_calendar_event":
       return <CreateCalendarEventFields draft={action} onChange={onChange} clients={clients} locale={locale} />
+    case "choose_client":
+      // Disambiguation is rendered as clickable options by the command bar,
+      // not as an editable form — nothing to show here.
+      return null
   }
 }
 

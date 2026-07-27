@@ -26,6 +26,10 @@ export async function executeAction(
       return executeNavigate(action, router)
     case "create_calendar_event":
       return executeCreateCalendarEvent(action)
+    case "choose_client":
+      // Not executed directly — the UI renders the options and fires a
+      // navigate_to_client for whichever client the user clicks.
+      return { ok: false, message: "Kies een client om te openen." }
   }
 }
 

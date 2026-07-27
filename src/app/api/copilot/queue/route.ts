@@ -172,6 +172,7 @@ async function processDraft(args: {
       toolUse.name,
       toolUse.input as Record<string, unknown>,
       { sessionUserId: userId },
+      visibleClients,
     )
     if (!action) {
       await markFailed(supabase, draftId, `Unknown tool '${toolUse.name}'.`)
@@ -297,6 +298,8 @@ TOOL SELECTION (the single most important rule: SELF vs OTHER):
 - Only when the task is for ANOTHER named person ("maak een taak voor Mike", "wijs aan Sanne toe", "create a task for Roy", "Lara moet X doen") → use create_task with that person's id from the roster.
 - Pedro / new creatives / ad variants → trigger_pedro_refresh.
 - "open / show / ga naar [client]" → navigate_to_client.
+- BARE ENTITY LOOKUP: when the input is only a client name (or unmistakably refers to just one client) with no action verb — e.g. "Zumex", "Vlex", "Juice Concepts", "open Zumex" — default to navigate_to_client for that client. Opening the client page is the safe default: do NOT reply with a clarifying question that lists possible actions ("would you like to open / create a task / schedule a meeting?"). The team almost always just wants to open the client. Prefer real clients over any contact/person sub-entry.
+- CLIENT DISAMBIGUATION: when the input points at a client but you can't pin it to exactly one — the name matches several clients ("Zumex" → 3 Zumex clients) or is a typo / near-miss ("Zumax" → "Zumex …") — DO NOT return a free-text question and DO NOT dump ids in prose. Call clarify_client with the 2-5 best-matching CLIENTS (best first); the UI turns them into clickable buttons that open the client on click. Only when nothing in the roster plausibly matches should you fall back to a short plain-text question.
 - "nodig [naam] uit", "plan meeting met [naam]", "invite X for a meeting", "meeting met X dinsdag 10u", "schiet een meeting in voor dinsdag 10 uur" → create_calendar_event. The host is always the signed-in user. The invitee can be (a) an existing client in the roster → set clientId, OR (b) someone NOT in the roster → set attendeeName as a free-form label. If the user pastes an email in the command, set attendeeEmail too. The action stays valid even when the named person is unknown or no person is named at all — the user fills in the missing pieces in the editor. Title defaults: clientId set → "{Company or ClientFirstName} x ${userFirstName} Meeting"; attendeeName set → "{AttendeeName} x ${userFirstName} Meeting"; neither → "Meeting". Default duration 30 min and addMeetLink=true unless the user said otherwise.
 
 When you pick create_reminder you must still classify the 'kind' parameter:
@@ -342,8 +345,32 @@ function normalizeAction(
   name: string,
   input: Record<string, unknown>,
   ctx: { sessionUserId: string },
+  clients: MondayClient[],
 ): CopilotAction | null {
   switch (name) {
+    case "clarify_client": {
+      // Map the LLM's candidate ids back to real roster clients (drops any
+      // invented/contact ids), dedupe, cap at 5. One survivor → just open it;
+      // several → a clickable choose_client card; none → let the caller fail.
+      const rawIds = Array.isArray(input.clientIds) ? input.clientIds : []
+      const seen = new Set<string>()
+      const options = rawIds
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => clients.find((c) => c.mondayItemId === id))
+        .filter((c): c is MondayClient => !!c)
+        .filter((c) => (seen.has(c.mondayItemId) ? false : (seen.add(c.mondayItemId), true)))
+        .slice(0, 5)
+        .map((c) => ({ clientId: c.mondayItemId, name: c.name }))
+      if (options.length === 0) return null
+      if (options.length === 1) {
+        return { type: "navigate_to_client", clientId: options[0].clientId }
+      }
+      const question =
+        typeof input.question === "string" && input.question.trim()
+          ? input.question.trim()
+          : "Welke client bedoel je?"
+      return { type: "choose_client", question, options }
+    }
     case "create_task":
       if (typeof input.title !== "string" || typeof input.assigneeId !== "string") return null
       return {
@@ -441,6 +468,8 @@ function describeAction(
       return `Run Pedro creative refresh for ${clientName(action.clientId)}${action.days ? ` (${action.days}d lookback)` : ""}`
     case "navigate_to_client":
       return `Open ${clientName(action.clientId)}${action.tab ? ` → ${action.tab}` : ""}`
+    case "choose_client":
+      return action.question
     case "create_calendar_event": {
       const parts = [`Calendar invite: "${action.title ?? "Meeting"}"`]
       if (action.clientId) {

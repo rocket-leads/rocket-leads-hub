@@ -61,7 +61,7 @@ function openCopilotComposer(prefill: string) {
 }
 
 /**
- * Global command palette (⌘K) - one search across clients, tasks, messages,
+ * Global command palette (⌘X) - one search across clients, tasks, messages,
  * and pages, styled to the 187N `.cmdk` trigger + `.cmd-overlay` palette. Data
  * is fetched once per session on first open and filtered client-side so typing
  * is instant. Selecting a client opens its slide-over over the current page;
@@ -97,11 +97,19 @@ export function GlobalSearch() {
     }
   }, [loaded])
 
-  // ⌘K / Ctrl+K toggles from anywhere; Esc closes. Skip when the toggle would
-  // fire mid-typing in another field.
+  // ⌘X / Ctrl+X toggles from anywhere; Esc closes. ⌘X is also the OS "cut"
+  // shortcut, so when focus is in an editable field we let the browser cut
+  // instead of hijacking it to open the palette.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "x") {
+        const el = e.target as HTMLElement | null
+        const editable =
+          !!el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.isContentEditable)
+        if (editable) return
         e.preventDefault()
         setOpen((prev) => {
           if (!prev) load()
@@ -180,16 +188,30 @@ export function GlobalSearch() {
       })
     }
 
-    const clientItems: FlatItem[] = (q ? data.clients.filter((c) => has(c.name)) : [])
-      .slice(0, 6)
-      .map((c) => ({
-        key: `client:${c.id}`,
-        type: "CLIENT" as const,
-        icon: Users,
-        label: c.name,
-        sub: c.status ? c.status[0].toUpperCase() + c.status.slice(1) : null,
-        run: () => openClient(c.id),
-      }))
+    // A query is a "strong" hit on a name when it's the prefix of a whole word
+    // in it ("zumex" → "Juice Concepts | Zumex", "juice" → "Juice Concepts") -
+    // a much better this-is-the-thing signal than a mid-word substring. Used to
+    // rank the best client first and to gate direct-navigation promotion below.
+    const wordPrefixHit = (name: string) =>
+      name
+        .toLowerCase()
+        .split(/[\s|/·,–-]+/)
+        .some((w) => w.length > 0 && w.startsWith(q))
+
+    const clientMatches = q ? data.clients.filter((c) => has(c.name)) : []
+    // Word-prefix matches float to the top so the default Enter target is the
+    // client the user most likely meant, even amid other substring matches.
+    const clientSorted = [...clientMatches].sort(
+      (a, b) => Number(wordPrefixHit(b.name)) - Number(wordPrefixHit(a.name)),
+    )
+    const clientItems: FlatItem[] = clientSorted.slice(0, 6).map((c) => ({
+      key: `client:${c.id}`,
+      type: "CLIENT" as const,
+      icon: Users,
+      label: c.name,
+      sub: c.status ? c.status[0].toUpperCase() + c.status.slice(1) : null,
+      run: () => openClient(c.id),
+    }))
 
     const taskItems: FlatItem[] = (
       q ? data.tasks.filter((t) => has(t.title) || has(t.clientName)) : []
@@ -219,9 +241,14 @@ export function GlobalSearch() {
         run: () => goto("/inbox"),
       }))
 
-    const pageItems: FlatItem[] = PAGES.filter(
-      (p) => !q || p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q),
-    )
+    // Rank pages that match on their LABEL ("billing" → Billing) above ones
+    // that only match on their sub-caption, so a section name lands the page
+    // itself first, and `pageLabelMatches` gates page promotion below.
+    const pageLabelMatches = q ? PAGES.filter((p) => p.label.toLowerCase().includes(q)) : []
+    const pageSubMatches = q
+      ? PAGES.filter((p) => !p.label.toLowerCase().includes(q) && p.sub.toLowerCase().includes(q))
+      : PAGES
+    const pageItems: FlatItem[] = [...pageLabelMatches, ...pageSubMatches]
       .slice(0, q ? 6 : PAGES.length)
       .map((p) => ({
         key: `page:${p.href}`,
@@ -232,13 +259,30 @@ export function GlobalSearch() {
         run: () => goto(p.href),
       }))
 
-    const groups = [
-      { label: "Actions", items: actionItems },
-      { label: "Clients", items: clientItems },
-      { label: "Tasks", items: taskItems },
-      { label: "Messages", items: messageItems },
-      { label: "Pages", items: pageItems },
-    ].filter((g) => g.items.length > 0)
+    // Direct-navigation intent: when the whole query is a substring of a
+    // client name (or a page label), the user is looking something up - not
+    // dictating a command - so promote that match above "Ask AI Co-pilot" and
+    // make it the default Enter target. Any extra command words ("... nieuwe
+    // creatives maken") break the substring match and fall through to the
+    // Co-pilot. Require ≥2 chars so a single letter doesn't hijack the top row.
+    // Prefer a client over a page, matching how the team actually navigates.
+    const actionsGroup = { label: "Actions", items: actionItems }
+    const clientsGroup = { label: "Clients", items: clientItems }
+    const tasksGroup = { label: "Tasks", items: taskItems }
+    const messagesGroup = { label: "Messages", items: messageItems }
+    const pagesGroup = { label: "Pages", items: pageItems }
+
+    const promoteClient = q.length >= 2 && clientMatches.some((c) => wordPrefixHit(c.name))
+    const promotePage =
+      !promoteClient && q.length >= 2 && pageLabelMatches.some((p) => wordPrefixHit(p.label))
+
+    const ordered = promoteClient
+      ? [clientsGroup, actionsGroup, pagesGroup, tasksGroup, messagesGroup]
+      : promotePage
+        ? [pagesGroup, actionsGroup, clientsGroup, tasksGroup, messagesGroup]
+        : [actionsGroup, clientsGroup, tasksGroup, messagesGroup, pagesGroup]
+
+    const groups = ordered.filter((g) => g.items.length > 0)
 
     const flat = groups.flatMap((g) => g.items)
     return { groups, flat }
@@ -281,7 +325,7 @@ export function GlobalSearch() {
       >
         <Search />
         <span className="placeholder">Search clients, tasks, messages…</span>
-        <span className="kbd">⌘K</span>
+        <span className="kbd">⌘X</span>
       </button>
 
       {open && typeof document !== "undefined" && createPortal(
