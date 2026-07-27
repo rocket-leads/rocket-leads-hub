@@ -346,20 +346,30 @@
  * stays one shade lighter than the page so the rail visually separates
  * without a heavy border. */
 
-/* Global UI density — the whole Hub renders as if at ~76% browser zoom so
- * more content fits on screen and wide tables need less horizontal
- * scrolling. We scale the root font-size (rem) rather than using `zoom`
- * on purpose: the inbox + chat panes are laid out with calc(100vh - …),
- * and `zoom` would break those height calculations (leaving gaps). Every
- * Tailwind spacing/text/width utility is rem-based, so this shrinks the
- * whole UI proportionally while the vh-based full-height layouts stay
- * correct. Bump --ui-scale toward 1 for a larger UI, down for denser.
- * Roy 2026-07. */
+/* Global UI density — the whole Hub renders zoomed-out so more content fits.
+ * We use CSS `zoom` (not root font-size) so BOTH rem-based Tailwind utilities
+ * AND the px-based 187N component classes shrink together — a font-size scale
+ * only shrank rem and left the px chrome full-size, causing size mismatches.
+ * The one thing zoom disturbs is viewport-height layout: `100vh` still resolves
+ * to the REAL viewport, so a zoomed full-height element renders short. We
+ * compensate at the two places it matters: body min-height here, and the inbox
+ * panes' `calc(100vh/var(--ui-scale) - …)`. Bump --ui-scale toward 1 for a
+ * larger UI, down for denser. Roy 2026-07. */
 :root {
-  --ui-scale: 0.76;
+  --ui-scale: 0.8;
+  /* Reciprocal of the zoom, for un-zooming viewport-height math. Used via
+     multiplication (`* var(--ui-unzoom)`) rather than `/ var(--ui-scale)` in
+     Tailwind arbitrary values, because a `/` inside `[...]` is misparsed as an
+     opacity modifier and the class silently fails to generate. */
+  --ui-unzoom: calc(1 / var(--ui-scale));
 }
 html {
-  font-size: calc(100% * var(--ui-scale));
+  font-size: 100%;
+}
+body {
+  zoom: var(--ui-scale);
+  /* Fill the viewport after zoom (100dvh renders at scale× otherwise). */
+  min-height: calc(100dvh / var(--ui-scale));
 }
 :root {
   /* Collapsible sidebar width — toggled by SidebarCollapseToggle. The

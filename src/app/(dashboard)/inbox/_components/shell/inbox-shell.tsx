@@ -900,8 +900,8 @@ export function InboxShell({
   const externalLoading = canViewComms && threadsQuery.isLoading
   const internalLoading = tasksQuery.isLoading || updatesQuery.isLoading
   const containerH = locked
-    ? "h-[calc(100vh-320px)] min-h-[440px]"
-    : "h-[calc(100vh-208px)] min-h-[520px]"
+    ? "h-[calc(100vh*var(--ui-unzoom)_-_320px)] min-h-[440px]"
+    : "h-[calc(100vh*var(--ui-unzoom)_-_208px)] min-h-[520px]"
 
   const scopeItems: Array<{ id: InboxScope; label: string }> = [
     { id: "internal", label: t("inbox.shell.scope.internal", locale) },

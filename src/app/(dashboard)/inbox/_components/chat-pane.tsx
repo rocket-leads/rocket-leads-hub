@@ -480,7 +480,7 @@ export function ChatPane({
           the left, slide-in detail on the right, no inline column shifts. */}
       <div
         className={cn(
-          "grid grid-cols-1 h-[calc(100vh-280px)] min-h-[500px]",
+          "grid grid-cols-1 h-[calc(100vh*var(--ui-unzoom)_-_280px)] min-h-[500px]",
           // Non-docked: list 30% / chat 70% (Roy 2026-06-12). Previously
           // 50/50 which left the actual conversation cramped on email
           // threads with long quoted history. fr units stay clean once

@@ -44,13 +44,11 @@ export default async function RootLayout({
   const localeCookie = cookieStore.get("locale")?.value
   const lang = isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE
 
-  // Compact density for a better overview (Roy prefers zoomed-out). Note: this
-  // scales only rem-based Tailwind utilities (via root font-size); the px-based
-  // 187N classes don't shrink, so a value <1 reintroduces a proportional rem-vs-
-  // px size gap. True "compact AND consistent" needs uniform zoom (see plan) -
-  // this is the interim density knob. Forced here (not cookie-read) so a stale
-  // legacy `ui-scale` cookie can't override it.
-  const htmlStyle = { "--ui-scale": "0.85" } as CSSProperties
+  // Compact density via uniform CSS `zoom` (applied on <body> in globals.css),
+  // so rem utilities and px-based 187N chrome shrink together and stay
+  // consistent at any density. Forced here (not cookie-read) so a stale legacy
+  // `ui-scale` cookie can't override it. Bump toward 1 for larger, down for denser.
+  const htmlStyle = { "--ui-scale": "0.8" } as CSSProperties
 
   // data-theme="corporate" activates the 187N corporate signature (warm cream,
   // editorial type, coral→purple mark, chamfered black CTAs). Light-only — the
@@ -63,7 +61,9 @@ export default async function RootLayout({
       style={htmlStyle}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background text-foreground">{children}</body>
+      {/* min-height is set (zoom-compensated) on `body` in globals.css - a
+          Tailwind min-h-screen class here would override it uncompensated. */}
+      <body className="bg-background text-foreground">{children}</body>
     </html>
   )
 }
