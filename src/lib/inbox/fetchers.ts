@@ -274,12 +274,19 @@ export async function listInboxItems(
     query = query.is("thread_key", null)
   }
 
-  // Mentions-only: just the @-mention update rows (they carry a
-  // `trengo_mention_in_thread_key` in source_ref). Lets the Mentioned view load
-  // ALL mentions across both statuses (To-do + Done) without dragging in every
-  // other read update. Roy 2026-07-16.
+  // Trengo @-mention rows carry a `trengo_mention_in_thread_key` in source_ref
+  // AND live inside their Trengo conversation thread. They belong to the
+  // External "Mentioned" view exclusively:
+  //   - mentionsOnly: return ONLY those rows (the Mentioned view, both
+  //     To-do + Done statuses). Roy 2026-07-16.
+  //   - otherwise: EXCLUDE them. They surface in External > Mentioned (and in
+  //     the conversation), so also listing them as standalone Internal Updates
+  //     was a duplicate. Roy 2026-07-27. Monday / Hub internal-note mentions
+  //     don't set this key, so they correctly stay in the Updates feed.
   if (filters.mentionsOnly) {
     query = query.not("source_ref->>trengo_mention_in_thread_key", "is", null)
+  } else {
+    query = query.is("source_ref->>trengo_mention_in_thread_key", null)
   }
 
   if (filters.statuses) {
@@ -573,7 +580,11 @@ export async function getInboxBadgeCounts(
       .eq("status", "unread")
       // Same de-dup as listInboxItems - chat-substrate events are counted
       // by the chats query below, never by tasks/updates badges.
-      .is("thread_key", null),
+      .is("thread_key", null)
+      // Trengo @-mentions live in the External "Mentioned" view only, so they
+      // must not inflate the Updates badge either (keeps the badge consistent
+      // with the Internal Updates list). Roy 2026-07-27.
+      .is("source_ref->>trengo_mention_in_thread_key", null),
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })

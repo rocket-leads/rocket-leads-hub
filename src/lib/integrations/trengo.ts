@@ -293,16 +293,39 @@ export async function findAmWaChannel(
  * (niet)persoonlijk kanaal". By letting Trengo own the contact step we
  * sidestep the privacy mismatch entirely.
  */
+/** Convert a plain-text message body into minimal email HTML.
+ *
+ *  Trengo renders an outbound email `message` as HTML, so raw "\n" line breaks
+ *  collapse into a single wall of text - Roy 2026-07-27 flagged weekly-update
+ *  mails arriving completely unspaced (bullets + paragraphs run together). We
+ *  HTML-escape the text first (so a stray "<" in a client name can't inject
+ *  markup or vanish), then turn every newline into a <br> so the exact line and
+ *  paragraph structure the AM composed in the Hub survives into the sent mail.
+ *
+ *  Callers pass PLAIN TEXT only - never pre-built HTML. Both current callers
+ *  (weekly client update + task-drafted email reply) route through
+ *  `sendEmailToAddressAsUser`, which applies this once. */
+export function plainTextToEmailHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+  return escaped.replace(/\r\n|\r|\n/g, "<br>")
+}
+
 export async function sendEmailToAddressAsUser(args: {
   userToken: string
   channelId: number
   email: string
   name?: string
   subject: string
+  /** Plain text - converted to email HTML (\n → <br>) before sending. */
   body: string
 }): Promise<{ ticketId: string; messageId: string }> {
-  const { userToken, channelId, email, name, subject, body } = args
+  const { userToken, channelId, email, name, subject } = args
   const displayName = name ?? email
+  // Trengo treats the email `message` as HTML - keep the composed line breaks.
+  const body = plainTextToEmailHtml(args.body)
 
   // Each candidate is a different shape of body that `POST /v2/tickets`
   // might accept. We try them in order; first 2xx that returns a ticket

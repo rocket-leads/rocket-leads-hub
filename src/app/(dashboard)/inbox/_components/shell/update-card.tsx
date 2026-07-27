@@ -119,7 +119,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
           className="shrink-0"
         />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <span className="font-semibold text-foreground">{item.authorName}</span>
             {item.assigneeName && item.assigneeId !== item.authorId && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -134,7 +134,7 @@ export function UpdateCard({ item, currentUserId, reactions, onReactionsChange, 
             )}
             <span className="font-mono text-[11px] text-muted-foreground/50 tabular-nums">· {fmtRelative(item.createdAt)}</span>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
             <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide">
               <span className={cn("h-1.5 w-1.5 rounded-full", kind.dot)} />
               {kindLabel}

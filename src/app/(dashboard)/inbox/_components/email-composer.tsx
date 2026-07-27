@@ -59,6 +59,11 @@ type Props = {
    *  screenshot lands as an attachment. Non-image clipboard contents fall
    *  through to TipTap's normal paste behavior. */
   onPasteFiles?: (files: File[]) => void
+  /** Called with the channel's raw signature HTML once it loads (or null).
+   *  The parent appends it to the outgoing email at send time so the sent
+   *  mail carries the signature exactly as Trengo defined it, while the
+   *  editor above stays message-only. */
+  onSignatureChange?: (signature: string | null) => void
   /** Disabled while a send is in flight or uploads are running. */
   disabled?: boolean
 }
@@ -86,6 +91,7 @@ export function EmailComposer({
   htmlBody,
   onHtmlBodyChange,
   onPasteFiles,
+  onSignatureChange,
   disabled = false,
 }: Props) {
   const [ccBccExpanded, setCcBccExpanded] = useState(cc.length > 0 || bcc.length > 0)
@@ -141,14 +147,16 @@ export function EmailComposer({
         autolink: true,
         HTMLAttributes: { class: "underline text-primary" },
       }),
-      // Inline images. Required for the auto-injected channel signature to
-      // render - Trengo signatures embed brand graphics as <img src="...">.
-      // Without this extension TipTap silently drops the <img> nodes on
-      // setContent and the AM sees text-only signatures.
+      // Block-level images. Pasted screenshots stack as their own block
+      // instead of floating inline with the surrounding text. The channel
+      // signature is no longer injected into the editor (it renders as a
+      // read-only block below + is appended at send), so we don't need the
+      // inline behaviour that used to keep signature graphics on the text
+      // line. Roy 2026-07-27.
       Image.configure({
-        inline: true,
+        inline: false,
         allowBase64: true,
-        HTMLAttributes: { class: "inline-block max-w-full h-auto" },
+        HTMLAttributes: { class: "block max-w-full h-auto" },
       }),
     ],
     content: htmlBody,
@@ -161,12 +169,12 @@ export function EmailComposer({
     },
     editorProps: {
       attributes: {
-        // `[&_img]` caps the auto-injected signature graphic in the *composer
-        // preview* only - this class lives on the contenteditable node, not in
-        // getHTML(), so the sent email keeps the signature at full size. Roy
-        // 2026-07-24: the branded portrait signature was dominating the pane.
+        // `[&_img]` caps pasted screenshots in the *composer preview* only -
+        // this class lives on the contenteditable node, not in getHTML(), so
+        // the sent email keeps images at full size. The branded signature is
+        // no longer inside the editor (see the read-only preview below).
         class:
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[140px] px-3 py-2 [&_img]:!max-h-28 [&_img]:!w-auto [&_img]:!object-contain",
+          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[140px] px-3 py-2 [&_img]:!max-h-40 [&_img]:!w-auto [&_img]:!object-contain",
       },
       // Intercept clipboard image data and route to the parent's file
       // upload pipeline (📎 attachment flow). Non-image clipboard contents
@@ -195,28 +203,23 @@ export function EmailComposer({
     editor?.setEditable(!disabled)
   }, [editor, disabled])
 
-  // Signature management:
-  //   - Inject the channel's signature whenever the editor is empty AND the
-  //     signature has loaded. Covers both first-open AND post-send re-fill.
-  //   - When parent resets htmlBody to "" (after a send), force-clear the
-  //     editor so the next render's emptiness check passes and re-injects.
-  // Trengo placeholders like [agent.first_name] stay literal - Trengo
-  // substitutes them server-side at send time.
+  // Editor reset: when the parent clears htmlBody to "" after a successful
+  // send, force-clear the editor so the composer is empty for the next
+  // reply. The signature is NOT injected here anymore - it renders as a
+  // read-only preview below and is appended by the parent at send time.
   useEffect(() => {
     if (!editor) return
-    const sig = channel?.signature
-    // Programmatic reset from parent (after a successful send): clear the
-    // editor so the empty-check below re-injects the signature.
     if (htmlBody === "" && !editor.isEmpty) {
       editor.commands.clearContent()
     }
-    if (sig && editor.isEmpty) {
-      // Two blank lines ABOVE the signature so the AM has natural room to
-      // type the actual reply. setContent replaces the whole doc - fine
-      // here because we just confirmed isEmpty.
-      editor.commands.setContent(`<p></p><p></p>${sig}`)
-    }
-  }, [editor, channel?.signature, htmlBody])
+  }, [editor, htmlBody])
+
+  // Report the channel signature up to the parent so it can append it to the
+  // outgoing email HTML at send time. Trengo placeholders like
+  // [agent.first_name] stay literal - Trengo substitutes them server-side.
+  useEffect(() => {
+    onSignatureChange?.(channel?.signature ?? null)
+  }, [channel?.signature, onSignatureChange])
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -278,6 +281,25 @@ export function EmailComposer({
       <div className="bg-card min-h-[140px]">
         <EditorContent editor={editor} />
       </div>
+
+      {/* Read-only signature block, stacked BELOW the message. Trengo ships
+          the signature as raw HTML (often a two-column <table>: salutation
+          left, portrait right). The `.inbox-signature-preview` styles force
+          everything to stack vertically + cap the portrait so it reads as a
+          signature, not a floated image. The original HTML is appended to the
+          outgoing mail verbatim by the parent at send time - this is preview
+          only. Roy 2026-07-27. */}
+      {channel?.signature && (
+        <div className="border-t border-border/60 bg-muted/20 px-3.5 py-3">
+          <p className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/55">
+            Signature
+          </p>
+          <div
+            className="inbox-signature-preview text-[13px] text-foreground/80"
+            dangerouslySetInnerHTML={{ __html: channel.signature }}
+          />
+        </div>
+      )}
     </div>
   )
 }

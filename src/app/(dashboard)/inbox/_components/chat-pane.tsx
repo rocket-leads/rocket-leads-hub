@@ -1357,6 +1357,10 @@ function ThreadMessages({
   const [emailCc, setEmailCc] = useState<string[]>([])
   const [emailBcc, setEmailBcc] = useState<string[]>([])
   const [emailHtml, setEmailHtml] = useState("")
+  // Raw channel signature HTML, reported up by the EmailComposer. Kept out of
+  // `emailHtml` (which stays message-only so the send gate reads the typed
+  // message) and appended to the outgoing mail in sendReply. Roy 2026-07-27.
+  const [emailSignature, setEmailSignature] = useState<string | null>(null)
   // @-mention picker state (only active in internal-note mode).
   const [mentionStart, setMentionStart] = useState<number | null>(null)
   const [mentionQuery, setMentionQuery] = useState("")
@@ -1820,18 +1824,22 @@ function ThreadMessages({
         }
         // Templates can't carry text or attachments - Trengo / Meta limit.
       } else if (sendingEmail) {
+        // Append the channel signature (kept out of the editor) below the
+        // typed message so the sent mail carries it exactly as Trengo defined
+        // it. Two <br> for natural spacing; omitted when there's no signature.
+        const fullHtml = composeEmailHtml(emailHtml, emailSignature)
         // Plain-text fallback derived from the HTML so email clients that
         // strip HTML still see something readable. Trengo also generates
         // its own plain text but having a hand-derived one in `message`
         // costs nothing.
-        const plain = htmlToPlain(emailHtml)
+        const plain = htmlToPlain(fullHtml)
         payload.message = plain
         payload.attachmentIds = attachments.map((a) => a.id)
         payload.email = {
           subject: emailSubject || undefined,
           cc: emailCc,
           bcc: emailBcc,
-          html: emailHtml,
+          html: fullHtml,
         }
       } else {
         payload.message = trimmed
@@ -2204,6 +2212,7 @@ function ThreadMessages({
                 onBccChange={setEmailBcc}
                 htmlBody={emailHtml}
                 onHtmlBodyChange={setEmailHtml}
+                onSignatureChange={setEmailSignature}
                 onPasteFiles={(files) => uploadFiles(files)}
                 disabled={sending || uploadingCount > 0}
               />
@@ -2698,6 +2707,16 @@ function htmlToPlain(html: string): string {
   } catch {
     return html.replace(/<[^>]+>/g, "")
   }
+}
+
+/** Join the AM's typed message HTML with the channel signature block. The
+ *  signature is kept out of the editor (rendered as a read-only preview) so
+ *  the send gate reads the typed message only; here we stitch them back
+ *  together for the outgoing mail. Two <br> give natural spacing; when there's
+ *  no signature the message is returned untouched. */
+function composeEmailHtml(messageHtml: string, signature: string | null): string {
+  if (!signature) return messageHtml
+  return `${messageHtml}<br><br>${signature}`
 }
 
 /** Empty-html check that ignores TipTap's "empty doc" representations
@@ -3617,10 +3636,11 @@ function EmailMessageCard({
     overflow-wrap: anywhere;
     padding: 14px 16px;
   }
+  p { margin: 0 0 10px; }
   img { max-width: 100% !important; height: auto !important; }
   a { color: #6d28d9; }
   table { max-width: 100% !important; }
-  blockquote { border-left: 3px solid #e4e4e7; padding-left: 12px; color: #525252; margin-left: 0; }
+  blockquote { border-left: 3px solid #e4e4e7; padding-left: 12px; color: #525252; margin: 8px 0 8px 4px; }
 </style>
 </head><body>${msg.bodyHtml}</body></html>`
     : null
@@ -3632,7 +3652,7 @@ function EmailMessageCard({
           Hidden when Trengo didn't ship a subject (legacy rows + non-
           email channels that slipped through). */}
       {msg.emailSubject && (
-        <div className="px-4 pt-3 pb-1.5 bg-card">
+        <div className="px-4 pt-3.5 pb-2 bg-card">
           <h3 className="text-sm font-semibold text-foreground leading-snug break-words">
             {msg.emailSubject}
           </h3>
@@ -3708,7 +3728,7 @@ function EmailMessageCard({
           style={{ width: "100%", height, border: "none", display: "block", background: "#fff" }}
         />
       ) : (
-        <div className="px-4 py-3 bg-background text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+        <div className="px-4 py-3.5 bg-background text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
           {msg.body || (
             <span className="italic text-muted-foreground/60">No body content.</span>
           )}

@@ -221,6 +221,37 @@
 .set-row.danger { border-bottom-color: color-mix(in srgb, var(--st-error) 14%, transparent); }
 @media (max-width: 1080px) { .set-grid { grid-template-columns: 1fr; } .set-rail { position: static; flex-direction: row; flex-wrap: wrap; } }
 
+/* ============================================================================
+   Inbox spacing rhythm. One scale for the detail-pane + chat-pane surfaces so
+   every stacked section, divider, and composer field shares the same vertical
+   beat instead of the ad-hoc py-2 / pt-3 / pt-4 / -mx-1 fragments that had
+   accumulated. Bridged to 187N tokens (--line-faint) so it tracks the theme.
+   Roy 2026-07-27 alignment pass. */
+:root {
+  --inbox-pane-pad: 20px;     /* outer detail/chat pane inset */
+  --inbox-section-gap: 16px;  /* between stacked sections */
+  --inbox-card-pad-x: 16px;   /* email card + note horizontal pad */
+}
+/* A stacked section that sits under a hairline divider. Replaces the repeated
+   `border-t border-border/40 pt-3` (which fought the parent `space-y-4` and
+   produced squeezed 12-vs-16px gaps). The parent's space-y already supplies the
+   gap ABOVE, so this only owns the divider + breathing room below it. */
+.inbox-section {
+  border-top: 1px solid var(--line-faint);
+  padding-top: var(--inbox-section-gap);
+}
+
+/* Read-only email-signature preview in the composer. The Trengo signature is
+   raw HTML (often a two-column <table>: salutation-left, portrait-right). We
+   inject it verbatim but force everything to stack vertically and cap the
+   branded portrait so it reads as a signature, not a floated image. The actual
+   sent HTML keeps the table intact - this styling is preview-only. */
+.inbox-signature-preview :is(table, tbody, tr) { display: block; width: 100% !important; }
+.inbox-signature-preview :is(td, th) { display: block; width: 100% !important; padding: 0 !important; }
+.inbox-signature-preview img { max-height: 4rem !important; width: auto !important; height: auto !important; object-fit: contain; }
+.inbox-signature-preview p { margin: 0 0 4px; }
+.inbox-signature-preview a { color: var(--primary); }
+
 /* Sortable table headers wrap their label in a <button>; form controls don't
    inherit text-transform/font, so those headers rendered mixed-case next to the
    plain <th> cells. Force inheritance so every header matches the 187N mono
