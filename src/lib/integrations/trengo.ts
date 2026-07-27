@@ -21,6 +21,53 @@ async function getTrengoToken(): Promise<string> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * POST JSON to a Trengo endpoint with a specific (usually per-user) token,
+ * retrying on 429 "Too Many Attempts." with the server's `Retry-After` header
+ * (falling back to exponential backoff, capped at 8s).
+ *
+ * Why: interactive sends (email reply, weekly update) share the AM's personal
+ * Trengo token with the every-minute private-inbox poll cron
+ * (pull-trengo-private-channels). When the poll drains the token's rolling
+ * rate window, a raw single-shot send surfaced Trengo's 429 straight to the AM
+ * as "Trengo send failed (429): Too Many Attempts." A couple of short backoff
+ * retries let the send land once the window resets instead of failing the
+ * click. Roy 2026-07-27.
+ *
+ * Returns the final Response (which may still be non-2xx) so callers keep their
+ * existing status handling; only the 429-retry loop lives here.
+ */
+export async function trengoPostWithRetry(
+  url: string,
+  token: string,
+  payload: unknown,
+  retries = 3,
+): Promise<Response> {
+  let res!: Response
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+    if (res.status === 429 && attempt < retries) {
+      const retryAfter = parseInt(res.headers.get("retry-after") ?? "", 10)
+      const delay =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : 1000 * 2 ** attempt
+      await sleep(Math.min(delay, 8000))
+      continue
+    }
+    return res
+  }
+  return res
+}
+
 async function trengoFetch<T>(path: string, retries = 3): Promise<T> {
   const token = (await getTrengoToken()).trim()
   const url = `https://app.trengo.com/api/v2${path}`
@@ -423,20 +470,13 @@ async function sendBodyIntoTicket(args: {
   subject: string
   body: string
 }): Promise<{ ticketId: string; messageId: string }> {
-  const sendRes = await fetch(
+  const sendRes = await trengoPostWithRetry(
     `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`,
+    args.userToken,
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.userToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        message: args.body,
-        subject: args.subject,
-        internal_note: false,
-      }),
+      message: args.body,
+      subject: args.subject,
+      internal_note: false,
     },
   )
   if (!sendRes.ok) {
@@ -521,20 +561,13 @@ export async function createEmailMessageForContact(args: {
   // Step 2 - send the message into the new ticket. Mirrors the regular
   // outbound email reply payload (subject re-stated for clarity even
   // though the ticket already carries it).
-  const sendRes = await fetch(
+  const sendRes = await trengoPostWithRetry(
     `https://app.trengo.com/api/v2/tickets/${ticketId}/messages`,
+    args.userToken,
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.userToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        message: args.body,
-        subject: args.subject,
-        internal_note: false,
-      }),
+      message: args.body,
+      subject: args.subject,
+      internal_note: false,
     },
   )
   if (!sendRes.ok) {

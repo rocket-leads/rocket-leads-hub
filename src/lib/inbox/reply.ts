@@ -1,7 +1,7 @@
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/notifications/push"
-import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/trengo"
+import { updateTrengoContactName, fetchWaTemplates, trengoPostWithRetry } from "@/lib/integrations/trengo"
 import { postItemUpdate } from "@/lib/integrations/monday"
 import { convertMentionNamesToHandles } from "@/lib/inbox/trengo-mentions"
 
@@ -461,15 +461,14 @@ export async function sendTrengoReplyAsUser(
     if (bccStr) payload.bcc = bccStr
   }
 
-  const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
+  // Retry on 429 with backoff: the AM's token is shared with the every-minute
+  // private-inbox poll, so a burst throttle is common and shouldn't fail an
+  // interactive send. Roy 2026-07-27.
+  const res = await trengoPostWithRetry(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/messages`,
+    token,
+    payload,
+  )
 
   if (res.status === 401 || res.status === 403) {
     // Stored token rejected by Trengo (revoked / wrong workspace). Bubble
