@@ -236,7 +236,7 @@ export function CmCompetitorsStep({
 
       {/* Find competitors phase */}
       {!suggested && !hasScraped && (
-        <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+        <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h3 className="text-sm font-semibold mb-1">
@@ -280,7 +280,7 @@ export function CmCompetitorsStep({
 
       {/* Suggested competitors list */}
       {suggested && (
-        <section className="rounded-xl border border-border/60 bg-card/50 p-5 space-y-3">
+        <section className="rounded-md border border-border/60 bg-card/50 p-5 space-y-3">
           <div>
             <h3 className="text-sm font-semibold">
               {t("onboarding.wizard.cm_comp.suggested.title", locale).replace(
@@ -440,7 +440,7 @@ function AdCard({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card overflow-hidden transition-colors",
+        "rounded-md border bg-card overflow-hidden transition-colors",
         ad.selected_by_am
           ? "border-emerald-500/40 ring-2 ring-emerald-500/20"
           : "border-border/60",
@@ -504,7 +504,7 @@ function AdCard({
         )}
       </div>
       {!ad.creative_preview_url && (
-        <div className="px-3 pb-3 text-[10px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+        <div className="px-3 pb-3 text-[10px] text-amber-700 inline-flex items-center gap-1">
           <AlertCircle className="h-2.5 w-2.5" />
           {t("onboarding.wizard.cm_comp.ads.no_preview", locale)}
         </div>

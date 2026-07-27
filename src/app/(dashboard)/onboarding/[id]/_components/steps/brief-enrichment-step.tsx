@@ -171,7 +171,7 @@ export function BriefEnrichmentStep({
   if (!suggestions) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-border/60 bg-card/50 p-5">
+        <div className="rounded-md border border-border/60 bg-card/50 p-5">
           <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             {t("onboarding.wizard.enrich.start.title", locale)}
@@ -200,8 +200,8 @@ export function BriefEnrichmentStep({
 
         {insufficientTranscript && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs flex items-start gap-2">
-            <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <span className="text-amber-700 dark:text-amber-300">
+            <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <span className="text-amber-700">
               {t("onboarding.wizard.enrich.insufficient", locale)}
             </span>
           </div>
@@ -324,7 +324,7 @@ function SuggestionRow({
   return (
     <li
       className={cn(
-        "rounded-xl border bg-card/50 p-4 transition-colors",
+        "rounded-md border bg-card/50 p-4 transition-colors",
         decision === true && "border-emerald-500/30 bg-emerald-500/5",
         decision === false && "border-border/40 opacity-60",
         decision === undefined && "border-border/60",
@@ -339,7 +339,7 @@ function SuggestionRow({
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
               suggestion.mode === "replace"
-                ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                ? "bg-amber-500/15 text-amber-700"
                 : "bg-primary/10 text-primary",
             )}
           >

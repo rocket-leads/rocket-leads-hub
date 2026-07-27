@@ -164,7 +164,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
 
       {/* Error state */}
       {query.isError && (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-5 py-4 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/20 bg-destructive/5 px-5 py-4 text-sm text-destructive">
           {query.error instanceof Error ? query.error.message : "Failed to load wizard"}
         </div>
       )}
@@ -173,10 +173,10 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* Left rail — gegroepeerd per AM/CM sectie (Roy 2026-06-11) */}
-          <nav className="space-y-3 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+          <nav className="space-y-3 rounded-lg border border-border/60 bg-card p-2 shadow-[var(--shadow-sm)]">
             {/* AM section */}
             <div>
-              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600">
                 {t("onboarding.wizard.section.am", locale)}
               </div>
               <div className="space-y-1">
@@ -195,7 +195,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
             </div>
             {/* CM section */}
             <div>
-              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600">
                 {t("onboarding.wizard.section.cm", locale)}
               </div>
               <div className="space-y-1">
@@ -215,7 +215,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
           </nav>
 
           {/* Right pane - active step's action UI */}
-          <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
+          <div className="rounded-lg border border-border/60 bg-card shadow-[var(--shadow-sm)] overflow-hidden">
             {activeStep ? (
               <StepRenderer
                 step={activeStep}

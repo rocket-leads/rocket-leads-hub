@@ -86,7 +86,7 @@ export function HandoffStep({
     const date = new Date(content.handoffAt)
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center">
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-6 text-center">
           <Rocket className="h-10 w-10 text-emerald-500 mx-auto mb-3" />
           <h3 className="text-lg font-semibold mb-1">
             {t("onboarding.wizard.handoff.done.title", locale)}
@@ -106,12 +106,12 @@ export function HandoffStep({
           </p>
           <div className="text-xs text-muted-foreground">
             {content.cmNotified ? (
-              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-1 text-emerald-700">
                 <MessageSquare className="h-3 w-3" />
                 {t("onboarding.wizard.handoff.done.cm_notified", locale)}
               </span>
             ) : content.cmNotifyError ? (
-              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 text-amber-700">
                 <AlertCircle className="h-3 w-3" />
                 {t("onboarding.wizard.handoff.done.cm_not_notified", locale)}: {content.cmNotifyError}
               </span>
@@ -175,8 +175,8 @@ export function HandoffStep({
 
       {!client.campaignManager && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs flex items-start gap-2">
-          <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <span className="text-amber-700 dark:text-amber-300">
+          <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+          <span className="text-amber-700">
             {t("onboarding.wizard.handoff.no_cm_warning", locale)}
           </span>
         </div>

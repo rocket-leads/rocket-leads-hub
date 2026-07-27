@@ -68,15 +68,15 @@ export function PlaceholderStep({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs flex items-start gap-2">
-        <Wrench className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <span className="text-amber-700 dark:text-amber-300">
+        <Wrench className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+        <span className="text-amber-700">
           {t("onboarding.wizard.placeholder.coming", locale)}
         </span>
       </div>
 
       {step.done ? (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+          <span className="inline-flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="h-3.5 w-3.5" />
             {t("onboarding.wizard.placeholder.done_label", locale)}
           </span>

@@ -126,7 +126,7 @@ function OnboardingLoading() {
   return (
     <div className="space-y-3">
       {[...Array(4)].map((_, i) => (
-        <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+        <Skeleton key={i} className="h-24 w-full rounded-lg" />
       ))}
     </div>
   )

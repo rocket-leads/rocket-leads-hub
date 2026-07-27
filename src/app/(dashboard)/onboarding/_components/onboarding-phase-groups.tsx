@@ -55,7 +55,7 @@ type Props = {
 export function OnboardingPhaseGroups({ groups, locale }: Props) {
   if (groups.every((g) => g.rows.length === 0)) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card px-5 py-12 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border border-border/60 bg-card px-5 py-12 text-center text-sm text-muted-foreground">
         {t("onboarding.overview.empty", locale)}
       </div>
     )
@@ -92,7 +92,7 @@ function PhaseSection({
   const cfg = PHASE_VISUAL_CONFIG[phase]
   const Icon = cfg.icon
   return (
-    <div className="rounded-2xl border border-border/40 overflow-hidden bg-card">
+    <div className="rounded-lg border border-border/40 overflow-hidden bg-card">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

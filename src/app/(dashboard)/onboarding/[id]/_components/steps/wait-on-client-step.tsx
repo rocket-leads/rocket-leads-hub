@@ -172,8 +172,8 @@ export function WaitOnClientStep({
 
       {status?.allGreen && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs flex items-start gap-2">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <span className="text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+          <span className="text-emerald-700">
             {t("onboarding.wizard.wait.all_green", locale)}
           </span>
         </div>
@@ -226,7 +226,7 @@ function SignalRow({
   return (
     <li
       className={cn(
-        "rounded-xl border bg-card/50 p-3 flex items-center gap-3 transition-colors",
+        "rounded-md border bg-card/50 p-3 flex items-center gap-3 transition-colors",
         detected
           ? "border-emerald-500/30 bg-emerald-500/5"
           : "border-border/60",
@@ -244,7 +244,7 @@ function SignalRow({
           className={cn(
             "text-xs truncate",
             detected
-              ? "text-emerald-700 dark:text-emerald-400"
+              ? "text-emerald-700"
               : "text-muted-foreground",
           )}
         >

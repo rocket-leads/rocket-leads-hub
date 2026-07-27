@@ -637,7 +637,7 @@ export function KickoffLiveStep({
       )}
 
       {/* Hub connections - typeahead pickers writing straight to Monday */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
           {t("onboarding.wizard.kickoff.hub_connections.title", locale)}
@@ -692,7 +692,7 @@ export function KickoffLiveStep({
       {/* Klant-acties — checkbox per item. AM tickt zodra de klant
           de actie bevestigd heeft (Roy 2026-06-11). Stap 4 wait-on-
           client leest deze signalen i.p.v. auto-detectie. */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-3">
           {t("onboarding.wizard.kickoff.resources.title", locale)}
         </h3>
@@ -757,7 +757,7 @@ export function KickoffLiveStep({
 
 
       {/* Aanbod — wat we leveren + prijs per maand + cycle picker. */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-1">
           {t("onboarding.wizard.kickoff.aanbod.title", locale)}
         </h3>
@@ -869,7 +869,7 @@ export function KickoffLiveStep({
       </section>
 
       {/* Brief template - fill live during the call */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <h3 className="text-sm font-semibold">
             {t("onboarding.wizard.kickoff.brief.title", locale)}
@@ -985,7 +985,7 @@ export function KickoffLiveStep({
       {/* Formulier leads — vragen op de landingspagina. Eerste 3 zijn
           de standaard (naam/telefoon/email, niet verwijderbaar);
           AM voegt custom vragen toe via plus-knop. */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-1">
           {t("onboarding.wizard.kickoff.form_fields.title", locale)}
         </h3>
@@ -1018,7 +1018,7 @@ export function KickoffLiveStep({
       {/* Automations — Zapier flows die afgaan bij een nieuwe lead.
           Default alles aan want dat is het standaard pakket; AM
           untickt alleen wat niet geldt. */}
-      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <section className="rounded-md border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-1">
           {t("onboarding.wizard.kickoff.automations.title", locale)}
         </h3>
@@ -1141,7 +1141,7 @@ function PaymentStatusRow({
         <div className="font-medium">
           {t("onboarding.wizard.kickoff.status.payment.label", locale)}
         </div>
-        <div className={cn("text-muted-foreground", paid && "text-emerald-700 dark:text-emerald-400")}>
+        <div className={cn("text-muted-foreground", paid && "text-emerald-700")}>
           {label}
           {paid && status?.lastPaidAt && (
             <span className="text-muted-foreground/70 ml-1">
@@ -1217,7 +1217,7 @@ function CheckboxResourceRow({
         ) : null}
       </button>
       <div className="flex-1 min-w-0">
-        <div className={cn("text-sm font-medium", checked && "text-emerald-700 dark:text-emerald-400")}>
+        <div className={cn("text-sm font-medium", checked && "text-emerald-700")}>
           {label}
         </div>
         {url && (
@@ -1509,7 +1509,7 @@ function RecapDialog({
         )}
 
         {sentAt && (
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+          <p className="text-[11px] text-emerald-600">
             {t("onboarding.wizard.kickoff.recap.sent_at", locale)}
             {new Date(sentAt).toLocaleString(locale === "en" ? "en-GB" : "nl-NL", {
               day: "numeric",
@@ -1635,7 +1635,7 @@ function BrandIdentitySection({
 }) {
   const hasUrl = websiteUrl.trim().length > 0
   return (
-    <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+    <section className="rounded-md border border-border/60 bg-card/50 p-4">
       <div className="flex items-center justify-between gap-3 mb-3">
         <h3 className="text-sm font-semibold flex items-center gap-2">
           <Palette className="h-3.5 w-3.5 text-primary" />

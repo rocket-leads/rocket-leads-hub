@@ -124,7 +124,7 @@ export function CmBriefStep({ step: _step, allSteps, hiddenContent, locale }: Pr
           })}
         </section>
       ) : (
-        <div className="rounded-xl border border-border/60 bg-card/30 px-5 py-10 text-center">
+        <div className="rounded-md border border-border/60 bg-card/30 px-5 py-10 text-center">
           <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <h3 className="text-sm font-medium mb-1">
             {t("onboarding.wizard.cm_brief.empty.title", locale)}
@@ -139,8 +139,8 @@ export function CmBriefStep({ step: _step, allSteps, hiddenContent, locale }: Pr
           voor deze stap komen er nog aan', dat je daar neerzet wat er
           straks gebeurt op deze stap". */}
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs flex items-start gap-2">
-        <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <span className="text-amber-700 dark:text-amber-300">
+        <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+        <span className="text-amber-700">
           {t("onboarding.wizard.cm_brief.future_tool", locale)}
         </span>
       </div>

@@ -50,7 +50,7 @@ export function StepRenderer({
           {t("onboarding.wizard.step_label", locale)} {step.order} / {allSteps.length}
         </span>
         {step.critical && (
-          <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-red-500/10 text-red-700 dark:text-red-400 text-[9px] font-medium">
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-red-500/10 text-red-700 text-[9px] font-medium">
             {t("onboarding.wizard.critical_pill", locale)}
           </span>
         )}

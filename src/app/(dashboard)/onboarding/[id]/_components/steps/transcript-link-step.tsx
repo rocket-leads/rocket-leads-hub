@@ -107,10 +107,10 @@ export function TranscriptLinkStep({
   if (step.done && linkedContent) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            <Check className="h-4 w-4 text-emerald-600" />
+            <span className="text-sm font-medium text-emerald-700">
               {t("onboarding.wizard.transcript.linked.title", locale)}
             </span>
           </div>
@@ -202,7 +202,7 @@ export function TranscriptLinkStep({
       )}
 
       {!candidatesQuery.isLoading && candidates.length === 0 && (
-        <div className="rounded-xl border border-border/60 bg-card/50 px-5 py-10 text-center">
+        <div className="rounded-md border border-border/60 bg-card/50 px-5 py-10 text-center">
           <Video className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <h3 className="text-sm font-medium mb-1">
             {t("onboarding.wizard.transcript.empty.title", locale)}
@@ -265,7 +265,7 @@ function CandidateRow({
   return (
     <li
       className={cn(
-        "rounded-xl border bg-card/50 p-4 transition-colors",
+        "rounded-md border bg-card/50 p-4 transition-colors",
         isTop ? "border-primary/40 bg-primary/5" : "border-border/60",
       )}
     >
