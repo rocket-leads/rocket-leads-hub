@@ -264,23 +264,30 @@ export async function GET(
     if (typeof msgId === "string" && msgId) eventMsgIds.add(`${e.source}:${msgId}`)
   }
   const dedupedTrengo = trengoEntries.filter((t) => !eventMsgIds.has(`trengo:${t.meta?.conversation_id}`))
-  // Monday updates: no source_msg_id from fetchClientItemUpdates, so de-dup
-  // by (source=monday, kind=update, occurred_at exact match, title-prefix).
-  // Conservative - only drops the live copy when an inbox_event clearly
-  // looks like the same message.
-  const eventMondayKeys = new Set<string>()
-  for (const e of eventEntries) {
-    if (e.source === "monday" && e.kind === "update") {
-      eventMondayKeys.add(`${e.occurred_at}|${(e.title ?? "").slice(0, 60)}`)
-    }
-  }
-  const dedupedMonday = mondayUpdateEntries.filter(
-    (m) => !eventMondayKeys.has(`${m.occurred_at}|${(m.title ?? "").slice(0, 60)}`),
+  // Monday updates de-dup — prefer the LIVE fetch over the inbox_event copy.
+  // The webhook stores a generic "Monday user" when it can't resolve the
+  // author, while the live fetch carries the real creator name + threaded
+  // replies + resolved avatar. So when both cover the same update (matched on
+  // DATE + title-prefix — normalized because events keep a full timestamp and
+  // live entries are date-only), we DROP the event copy and keep the live one.
+  // Roy 2026-07-27: fixes "Monday user" showing for updates whose author is
+  // clearly known. Event-only updates (older than the live 50-window) survive.
+  const dayTitleKey = (occurredAt: string | null, title: string | null) =>
+    `${(occurredAt ?? "").slice(0, 10)}|${(title ?? "").slice(0, 60)}`
+  const liveMondayKeys = new Set<string>()
+  for (const m of mondayUpdateEntries) liveMondayKeys.add(dayTitleKey(m.occurred_at, m.title))
+  const dedupedEventEntries = eventEntries.filter(
+    (e) =>
+      !(
+        e.source === "monday" &&
+        e.kind === "update" &&
+        liveMondayKeys.has(dayTitleKey(e.occurred_at, e.title))
+      ),
   )
 
   // Merge + sort by occurred_at desc, cap to MAX_ENTRIES so a noisy client
   // doesn't flood the page.
-  const merged = [...eventEntries, ...meetingEntries, ...dedupedMonday, ...dedupedTrengo]
+  const merged = [...dedupedEventEntries, ...meetingEntries, ...mondayUpdateEntries, ...dedupedTrengo]
     .sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1))
     .slice(0, MAX_ENTRIES)
 

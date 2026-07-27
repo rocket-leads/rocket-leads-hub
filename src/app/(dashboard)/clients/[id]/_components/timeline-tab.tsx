@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ThumbsUp, Reply as ReplyIcon, Plus } from "lucide-react"
+import { ThumbsUp, Reply as ReplyIcon, Plus, ChevronDown } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { UserAvatar } from "@/components/ui/user-avatar"
@@ -168,7 +168,7 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
           <div>
             <p
               className={cn(
-                "whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground/90",
+                "whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed text-muted-foreground/90",
                 !expanded && needsMore && "line-clamp-3",
               )}
             >
@@ -248,31 +248,32 @@ function TimelineEntryCard({ entry, locale }: { entry: TimelineEntry; locale: Lo
       {/* Threaded replies (Monday nests these under the main update). Collapsed
           behind a "N replies" toggle, like Monday's "Previous N replies". */}
       {replies.length > 0 && (
-        <div className="mt-2 border-t border-border/50 pt-2">
+        <div className="mt-2.5 border-t border-border/50 pt-2.5">
           <button
             type="button"
             onClick={() => setRepliesOpen((v) => !v)}
-            className="text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", repliesOpen && "rotate-180")} />
             {repliesOpen
               ? "Hide replies"
               : `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
           </button>
           {repliesOpen && (
-            <div className="mt-2 space-y-3 border-l-2 border-border/60 pl-3">
+            <div className="mt-2.5 space-y-4 border-l-2 border-border/60 pl-4">
               {replies.map((r, i) => (
-                <div key={i} className="flex items-start gap-2.5">
+                <div key={i} className="flex items-start gap-3">
                   <UserAvatar name={r.author} avatarUrl={r.author_avatar} autoColor className="size-7 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate text-[13px] font-semibold text-foreground">
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="text-[13px] font-semibold text-foreground">
                         {r.author ?? "Onbekend"}
                       </span>
-                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground/60">
+                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground/55">
                         {formatDateTime(r.occurred_at, locale)}
                       </span>
                     </div>
-                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground/90">
+                    <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-muted-foreground/90">
                       {r.body}
                     </p>
                   </div>
