@@ -5,7 +5,8 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useIsFetching, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
-import { RefreshCw, Settings2 } from "lucide-react"
+import { Settings2 } from "lucide-react"
+import { RefreshMeta } from "@/components/ui/refresh-meta"
 import { getCachedDateRangeSnapshot } from "../_hooks/use-date-range"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -86,15 +87,11 @@ export function TargetsToolbar({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleRefresh}
-        disabled={isFetching}
-        title={t("targets.action.refresh", locale)}
-        className="icon-btn disabled:opacity-50"
-      >
-        <RefreshCw className={isFetching ? "animate-spin" : ""} />
-      </button>
+      <RefreshMeta
+        onRefresh={handleRefresh}
+        refreshing={isFetching}
+        refreshLabel={t("targets.action.refresh", locale)}
+      />
       {isAdmin && showSettingsGear && (
         <Link
           href="/targets/settings"

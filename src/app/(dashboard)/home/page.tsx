@@ -16,6 +16,7 @@ import type { WatchlistClientState } from "@/app/api/watchlist/state/route"
 import type { InboxItem } from "@/types/inbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
+import { RefreshMeta } from "@/components/ui/refresh-meta"
 import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
 import { ChannelsBlock } from "./_components/channels-block"
@@ -171,12 +172,10 @@ async function HomeData() {
         subtitle={formatDate(new Date().toISOString(), locale)}
         actions={
           lastKpiRefreshAt ? (
-            <span
-              className="text-xs text-muted-foreground tabular-nums"
+            <RefreshMeta
+              label={t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
               title={new Date(lastKpiRefreshAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB")}
-            >
-              {t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
-            </span>
+            />
           ) : null
         }
       />

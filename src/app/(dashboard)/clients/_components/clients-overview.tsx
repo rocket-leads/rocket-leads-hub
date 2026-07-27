@@ -3,7 +3,8 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { RefreshCw } from "lucide-react"
+import { RefreshMeta } from "@/components/ui/refresh-meta"
+import { formatTimeAgo } from "@/lib/i18n/format"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import { ClientSlideOver } from "./client-slide-over"
@@ -177,7 +178,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   const lastUpdated = Math.max(summariesQuery.dataUpdatedAt || 0, kpiQuery.dataUpdatedAt || 0)
   const lastUpdatedLabel = lastUpdated
-    ? new Date(lastUpdated).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? formatTimeAgo(new Date(lastUpdated).toISOString(), locale)
     : null
 
   // Onboarding tab dropped 2026-06-11 (Roy: "onboarding hebben we nu
@@ -186,18 +187,13 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   // the table instead of inside a tab strip.
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-3">
-        {lastUpdatedLabel && (
-          <span className="font-mono text-[11px] text-muted-foreground/50 leading-none">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
-        )}
-        <button
-          className="icon-btn disabled:opacity-50"
-          onClick={handleRefresh}
-          disabled={isFetching}
-          aria-label={t("clients.refresh", locale)}
-        >
-          <RefreshCw className={isFetching ? "animate-spin" : ""} />
-        </button>
+      <div className="flex items-center justify-end">
+        <RefreshMeta
+          label={lastUpdatedLabel ? t("clients.updated", locale, { time: lastUpdatedLabel }) : null}
+          onRefresh={handleRefresh}
+          refreshing={isFetching}
+          refreshLabel={t("clients.refresh", locale)}
+        />
       </div>
 
       <Panel className="p-5">

@@ -29,7 +29,8 @@ import { ManagerAvatar } from "@/components/ui/manager-avatar"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/shell/types"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
-import { formatCurrency } from "@/lib/i18n/format"
+import { formatCurrency, formatTimeAgo } from "@/lib/i18n/format"
+import { RefreshMeta } from "@/components/ui/refresh-meta"
 import type { Locale } from "@/lib/i18n/types"
 
 // --- Categorization ---
@@ -1712,7 +1713,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   })
 
   const lastUpdated = kpiQuery.dataUpdatedAt
-    ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? formatTimeAgo(new Date(kpiQuery.dataUpdatedAt).toISOString(), locale)
     : null
 
   // Watch List bucket state - written by the cron, read here to render Days indicator,
@@ -1882,19 +1883,11 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       <PageHeader
         title={t("watchlist.title", locale)}
         actions={
-          <>
-            {lastUpdated && (
-              <span className="font-mono text-[11px] text-muted-foreground/50">{t("watchlist.updated", locale, { time: lastUpdated })}</span>
-            )}
-            <button
-              type="button"
-              className="icon-btn disabled:opacity-50"
-              onClick={handleRefresh}
-              disabled={isFetching}
-            >
-              <RefreshCw className={isFetching ? "animate-spin" : ""} />
-            </button>
-          </>
+          <RefreshMeta
+            label={lastUpdated ? t("watchlist.updated", locale, { time: lastUpdated }) : null}
+            onRefresh={handleRefresh}
+            refreshing={isFetching}
+          />
         }
       />
 
