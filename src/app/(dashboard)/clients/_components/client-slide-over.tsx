@@ -342,10 +342,10 @@ function SlideOverNavHeader({
           onClick={onBack}
           className={cn(
             "group/back inline-flex items-center justify-center gap-2 h-11 rounded-md",
-            "border border-emerald-400/40 bg-emerald-500/95 backdrop-blur-md text-white",
-            "shadow-2xl ring-1 ring-emerald-900/30",
-            "transition-all hover:bg-emerald-500 hover:border-emerald-300/60 active:translate-y-px",
-            "outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60",
+            "border border-[var(--line-strong)] bg-popover text-foreground",
+            "shadow-[var(--shadow-md)]",
+            "transition-all hover:border-primary hover:text-primary active:translate-y-px",
+            "outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
           )}
           aria-label={backLabel}
         >
@@ -458,12 +458,12 @@ function ClientSwitcher({
     // `SlideOverNavHeader` so the Back button + this switcher share one
     // visual frame.
     <div
-      className="rounded-md border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
+      className="rounded-md border border-[var(--line-strong)] bg-popover shadow-[var(--shadow-lg)]"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
-        <Search className="h-4 w-4 text-zinc-400 shrink-0" />
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+        <Search className="h-4 w-4 text-muted-foreground shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -471,10 +471,10 @@ function ClientSwitcher({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={t("client.switch.placeholder", locale)}
-          className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           aria-label={t("client.switch.placeholder", locale)}
         />
-        <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+        <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           ⌘K
         </kbd>
       </div>
@@ -490,12 +490,12 @@ function ClientSwitcher({
                   onMouseEnter={() => setActiveIdx(idx)}
                   className={cn(
                     "w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors",
-                    isActive ? "bg-white/10 text-white" : "text-zinc-200 hover:bg-white/5",
+                    isActive ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-accent",
                   )}
                 >
                   <span className="truncate text-sm font-medium">{c.name}</span>
                   {c.accountManager && (
-                    <span className="shrink-0 text-[11px] text-zinc-500 truncate max-w-[40%]">
+                    <span className="shrink-0 text-[11px] text-muted-foreground truncate max-w-[40%]">
                       {c.accountManager}
                     </span>
                   )}
@@ -506,7 +506,7 @@ function ClientSwitcher({
         </ul>
       )}
       {query.trim() && filtered.length === 0 && (
-        <p className="px-3 py-3 text-xs text-zinc-500">{t("client.switch.empty", locale)}</p>
+        <p className="px-3 py-3 text-xs text-muted-foreground">{t("client.switch.empty", locale)}</p>
       )}
     </div>
   )
