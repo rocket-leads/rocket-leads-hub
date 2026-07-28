@@ -18,6 +18,7 @@ import {
   Users,
   Zap,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -970,17 +971,17 @@ function NotificationCard({
               ? t("settings.notifications.action.working", locale)
               : t("settings.notifications.action.preview_to_me", locale)}
           </button>
-          <button
+          <Button
             type="button"
+            size="xs"
             onClick={onSendNow}
             disabled={busy || !slackConnected}
-            className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             <Zap className="h-3.5 w-3.5" />
             {busy
               ? t("settings.notifications.action.sending", locale)
               : t("settings.notifications.action.send_now", locale)}
-          </button>
+          </Button>
         </div>
 
         {result?.message && (

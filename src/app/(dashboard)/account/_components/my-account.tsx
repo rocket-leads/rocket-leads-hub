@@ -548,11 +548,11 @@ function TokenInputCard({
                 if (e.key === "Enter" && token.trim() && !pending) connect()
               }}
             />
-            <button
+            <Button
               type="button"
+              size="xs"
               onClick={connect}
               disabled={!token.trim() || pending !== null}
-              className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {pending === "connecting" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -560,7 +560,7 @@ function TokenInputCard({
                 <Check className="h-3.5 w-3.5" />
               )}
               Connect
-            </button>
+            </Button>
           </div>
           <a
             href={helpUrl}
@@ -1089,15 +1089,15 @@ function BrowserNotificationsCard() {
                 </Button>
               </>
             ) : (
-              <button
+              <Button
                 type="button"
+                size="xs"
                 onClick={enable}
                 disabled={busy || permission === "denied"}
-                className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                 Inschakelen
-              </button>
+              </Button>
             )}
           </div>
         </div>
