@@ -1236,3 +1236,55 @@ export async function fetchUserTicketMessages(args: {
   )
   return data.data
 }
+
+/**
+ * Fetch the rich email HTML for a single message on a SHARED channel, using
+ * the workspace token.
+ *
+ * Why: Trengo's INBOUND webhook (form-urlencoded, its default) never carries
+ * `email_message.html`, so webhook-ingested emails landed with body_html=null
+ * and the Hub rendered Trengo's markdown-ish plaintext (`[text](url)` link
+ * artifacts, no layout) instead of the real mail. The `/tickets/{id}/messages`
+ * list DOES include `email_message.html` (see docs/trengo-api-audit.md), so we
+ * re-fetch it at ingest to restore the formatting. Returns null when the
+ * message isn't found or carries no HTML (WhatsApp, plain-text mail). Never
+ * throws - a backfill miss just leaves the plain-text fallback in place.
+ * Roy 2026-07-28.
+ */
+export async function fetchTicketMessageHtml(
+  ticketId: string | number,
+  messageId: string | number,
+): Promise<{ html: string | null; subject: string | null; from: string | null } | null> {
+  try {
+    // Fresh read (no-store): trengoFetch caches for 300s, which would return a
+    // stale message list that omits the just-arrived message when a second
+    // email lands on the same ticket inside the window. The backfill must see
+    // the message it was fired for.
+    const token = (await getTrengoToken()).trim()
+    const res = await fetch(
+      `https://app.trengo.com/api/v2/tickets/${ticketId}/messages?page=1`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store",
+      },
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as MessagePage
+    const wanted = String(messageId)
+    const msg = data.data.find((m) => String(m.id) === wanted)
+    const em = msg?.email_message
+    if (!em) return null
+    const html = em.html?.trim()
+    return {
+      html: html && html.includes("<") ? html : null,
+      subject: em.subject?.trim() || null,
+      from: em.from?.trim() || null,
+    }
+  } catch (e) {
+    console.error(
+      `[trengo] fetchTicketMessageHtml failed (ticket=${ticketId}, msg=${messageId}):`,
+      e instanceof Error ? e.message : e,
+    )
+    return null
+  }
+}

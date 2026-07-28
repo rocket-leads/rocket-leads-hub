@@ -11,6 +11,7 @@ import {
   resolveMentionedHubIds,
 } from "@/lib/inbox/trengo-mentions"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
+import { fetchTicketMessageHtml } from "@/lib/integrations/trengo"
 import { upsertTrengoContacts, getCanonicalThreadBases } from "@/lib/inbox/trengo-contacts"
 
 export const maxDuration = 60
@@ -509,6 +510,29 @@ export async function POST(req: NextRequest) {
     ? { draft_message: draftMessage, draft_channel: draftChannel }
     : null
 
+  // Email HTML backfill. Trengo's INBOUND webhook (esp. form-urlencoded, its
+  // default) doesn't carry `email_message.html`, so email rows landed with
+  // body_html=null and the Hub rendered Trengo's markdown-ish plaintext
+  // (`[text](url)` link artifacts, no layout) instead of the real mail. When
+  // the row is on an email channel and we have no HTML yet, re-fetch the
+  // message from Trengo (shared channel → workspace token) to restore the rich
+  // HTML + subject/from. Best-effort: a miss leaves the plain-text fallback.
+  // Roy 2026-07-28.
+  let bodyHtml = payload.bodyHtml
+  let emailSubject = payload.emailSubject
+  let emailFrom = payload.emailFrom
+  if (!bodyHtml && payload.channelId != null) {
+    const lookup = channelLookup ?? (await getTrengoChannelLookup())
+    if (lookup.get(payload.channelId)?.kind === "email") {
+      const env = await fetchTicketMessageHtml(payload.ticketId, payload.messageId)
+      if (env) {
+        bodyHtml = env.html ?? bodyHtml
+        emailSubject = emailSubject ?? env.subject
+        emailFrom = emailFrom ?? env.from
+      }
+    }
+  }
+
   const { data: inserted, error } = await supabase
     .from("inbox_events")
     .insert({
@@ -518,9 +542,9 @@ export async function POST(req: NextRequest) {
       assignee_id: assigneeId,
       title: titlePreview || `Message from ${payload.authorName}`,
       body: bodyFull,
-      body_html: payload.bodyHtml,
-      email_subject: payload.emailSubject,
-      email_from: payload.emailFrom,
+      body_html: bodyHtml,
+      email_subject: emailSubject,
+      email_from: emailFrom,
       status,
       priority,
       source: "trengo",
