@@ -31,6 +31,7 @@ import {
   Star,
   Archive,
   Link2,
+  Forward,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
@@ -1361,6 +1362,29 @@ function ThreadMessages({
   // `emailHtml` (which stays message-only so the send gate reads the typed
   // message) and appended to the outgoing mail in sendReply. Roy 2026-07-27.
   const [emailSignature, setEmailSignature] = useState<string | null>(null)
+  // Editable From (which email channel we send on) + To recipients + compose
+  // mode. Default From = the thread's channel; default To = the thread contact.
+  // Changing From/To, or forwarding, sends as a NEW email (Trengo can't move a
+  // reply to another channel/recipient). Roy 2026-07-28.
+  const [emailFromChannelId, setEmailFromChannelId] = useState<number | null>(null)
+  const [emailTo, setEmailTo] = useState<string[]>([])
+  const [emailMode, setEmailMode] = useState<"reply" | "forward">("reply")
+  // Bumped to force the (uncontrolled TipTap) EmailComposer to remount so a
+  // forward's pre-filled quoted body actually lands in the editor.
+  const [emailComposeNonce, setEmailComposeNonce] = useState(0)
+  // The AM's selectable outbound email channels for the From dropdown.
+  const emailChannelsQuery = useQuery<{ channels: Array<{ id: number; type: string; name: string }> }>({
+    queryKey: ["trengo-email-channels"],
+    queryFn: () => fetch("/api/integrations/trengo/channels").then((r) => r.json()),
+    staleTime: 10 * 60 * 1000,
+  })
+  const emailChannels = useMemo(
+    () =>
+      (emailChannelsQuery.data?.channels ?? [])
+        .filter((c) => c.type === "Email")
+        .map((c) => ({ id: c.id, name: c.name })),
+    [emailChannelsQuery.data],
+  )
   // @-mention picker state (only active in internal-note mode).
   const [mentionStart, setMentionStart] = useState<number | null>(null)
   const [mentionQuery, setMentionQuery] = useState("")
@@ -1392,6 +1416,36 @@ function ThreadMessages({
     () => messagesQuery.data?.messages ?? [],
     [messagesQuery.data?.messages],
   )
+
+  // Reset the editable From/To/mode whenever the thread switches: From back to
+  // the thread's own channel, To cleared (re-seeded below), mode back to reply.
+  useEffect(() => {
+    setEmailFromChannelId(thread.trengoChannelId ?? null)
+    setEmailTo([])
+    setEmailMode("reply")
+  }, [thread.threadKey, thread.trengoChannelId])
+
+  // The thread contact's email = the most recent inbound email's From address.
+  // Drives the default To + the "did the AM change the recipient?" check.
+  const defaultContactEmail = useMemo(
+    () =>
+      [...messages].reverse().find((m) => m.authorKind !== "rl_team" && m.emailFromAddress)
+        ?.emailFromAddress ?? null,
+    [messages],
+  )
+
+  // Seed the default To once messages load. Reply mode only, and only while To
+  // is still empty for this thread, so we never stomp a manual edit or a
+  // forward's deliberately-cleared recipient. Roy 2026-07-28.
+  const emailToSeededRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (emailMode !== "reply") return
+    if (emailToSeededRef.current === thread.threadKey) return
+    if (defaultContactEmail) {
+      setEmailTo([defaultContactEmail])
+      emailToSeededRef.current = thread.threadKey
+    }
+  }, [defaultContactEmail, emailMode, thread.threadKey])
 
   // Scroll the whole viewport (messages + inline composer) to the bottom on
   // load + on new message arrivals, so you land ready to reply with the latest
@@ -1812,40 +1866,76 @@ function ThreadMessages({
     setSendError(null)
     setNeedsConnect(null)
     try {
-      const payload: Record<string, unknown> = {
-        internalNote: isInternal,
-      }
+      // Append the channel signature (kept out of the editor) below the typed
+      // message so the sent mail carries it exactly as Trengo defined it. Two
+      // <br> for natural spacing; omitted when there's no signature.
+      const fullHtml = sendingEmail ? composeEmailHtml(emailHtml, emailSignature) : ""
+      // Route email to a NEW email (fresh thread) when forwarding, when the From
+      // channel differs from the thread's, or when the To was changed from the
+      // thread contact — a Trengo reply can't express any of those. Otherwise
+      // it threads via /reply. Roy 2026-07-28.
+      // "To changed" only counts when the AM actually typed a recipient that
+      // differs from the thread contact. An empty To (or one that matches the
+      // contact) threads via /reply, which doesn't need an address - Trengo
+      // knows the ticket's contact. This avoids routing a normal reply to the
+      // new-email path (which requires a recipient) on threads where we can't
+      // derive the contact's address.
+      const toMatchesContact =
+        emailTo.length === 1 &&
+        defaultContactEmail != null &&
+        emailTo[0].trim().toLowerCase() === defaultContactEmail.trim().toLowerCase()
+      const toChanged = emailTo.length > 0 && !toMatchesContact
+      const sendAsNewEmail =
+        sendingEmail &&
+        (emailMode === "forward" ||
+          emailFromChannelId !== thread.trengoChannelId ||
+          toChanged)
+
+      let url = `/api/inbox/${thread.latestEventId}/reply`
+      let payload: Record<string, unknown>
       if (sendingTemplate && selectedTemplate) {
-        payload.template = {
-          name: selectedTemplate.slug || selectedTemplate.title,
-          language: selectedTemplate.language,
-          params: templateParams,
-          body: selectedTemplate.message,
+        payload = {
+          internalNote: isInternal,
+          template: {
+            name: selectedTemplate.slug || selectedTemplate.title,
+            language: selectedTemplate.language,
+            params: templateParams,
+            body: selectedTemplate.message,
+          },
         }
         // Templates can't carry text or attachments - Trengo / Meta limit.
-      } else if (sendingEmail) {
-        // Append the channel signature (kept out of the editor) below the
-        // typed message so the sent mail carries it exactly as Trengo defined
-        // it. Two <br> for natural spacing; omitted when there's no signature.
-        const fullHtml = composeEmailHtml(emailHtml, emailSignature)
-        // Plain-text fallback derived from the HTML so email clients that
-        // strip HTML still see something readable. Trengo also generates
-        // its own plain text but having a hand-derived one in `message`
-        // costs nothing.
-        const plain = htmlToPlain(fullHtml)
-        payload.message = plain
-        payload.attachmentIds = attachments.map((a) => a.id)
-        payload.email = {
-          subject: emailSubject || undefined,
+      } else if (sendingEmail && sendAsNewEmail) {
+        url = `/api/inbox/${thread.latestEventId}/send-email`
+        payload = {
+          fromChannelId: emailFromChannelId,
+          to: emailTo,
           cc: emailCc,
           bcc: emailBcc,
+          subject: emailSubject || undefined,
           html: fullHtml,
         }
+      } else if (sendingEmail) {
+        // Plain-text fallback derived from the HTML so email clients that strip
+        // HTML still see something readable.
+        payload = {
+          internalNote: isInternal,
+          message: htmlToPlain(fullHtml),
+          attachmentIds: attachments.map((a) => a.id),
+          email: {
+            subject: emailSubject || undefined,
+            cc: emailCc,
+            bcc: emailBcc,
+            html: fullHtml,
+          },
+        }
       } else {
-        payload.message = trimmed
-        payload.attachmentIds = attachments.map((a) => a.id)
+        payload = {
+          internalNote: isInternal,
+          message: trimmed,
+          attachmentIds: attachments.map((a) => a.id),
+        }
       }
-      const res = await fetch(`/api/inbox/${thread.latestEventId}/reply`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1870,6 +1960,11 @@ function ThreadMessages({
       setEmailCc([])
       setEmailBcc([])
       setEmailHtml("")
+      // Reset the editable From/To/mode back to this thread's defaults.
+      setEmailMode("reply")
+      setEmailFromChannelId(thread.trengoChannelId ?? null)
+      setEmailTo(defaultContactEmail ? [defaultContactEmail] : [])
+      emailToSeededRef.current = thread.threadKey
       // Drop the saved draft for this thread - the message is sent, no
       // reason to restore it next time the user navigates back.
       draftsRef.current.delete(thread.threadKey)
@@ -1880,6 +1975,23 @@ function ThreadMessages({
     } finally {
       setSending(false)
     }
+  }
+
+  // Forward this email: switch to email-reply mode, clear the recipient, set a
+  // "Fwd: …" subject, and pre-fill the editor with the original quoted below.
+  // Bump the compose nonce so the (uncontrolled) TipTap editor remounts and
+  // actually picks up the quoted body. Roy 2026-07-28.
+  function startForward(msg: ChatMessage) {
+    setComposerMode("reply")
+    setEmailMode("forward")
+    setEmailTo([])
+    emailToSeededRef.current = thread.threadKey // don't auto-seed To back in
+    const base = (msg.emailSubject ?? thread.latestSubject ?? "")
+      .replace(/^\s*(re|fwd?)\s*:\s*/i, "")
+      .trim()
+    setEmailSubject(base ? `Fwd: ${base}` : "Fwd:")
+    setEmailHtml(buildForwardedHtml(msg))
+    setEmailComposeNonce((n) => n + 1)
   }
 
   return (
@@ -2016,6 +2128,7 @@ function ThreadMessages({
               mentionNames={mentionNames}
               noteMentions={noteMentions}
               onMakeTaskFromMessage={onMakeTaskFromMessage}
+              onForwardMessage={isEmail ? startForward : undefined}
             />
           )}
           <div ref={messagesEndRef} />
@@ -2198,14 +2311,18 @@ function ThreadMessages({
           {isEmailMode && (
             <>
               <EmailComposer
-                // Remount on thread switch so the TipTap editor picks up the
-                // newly-restored draft body. Without this, parent setting
-                // `emailHtml` from the draft cache wouldn't propagate into
-                // the editor's internal state (TipTap is uncontrolled).
-                key={thread.threadKey}
-                channelId={thread.trengoChannelId}
+                // Remount on thread switch AND on forward (nonce) so the TipTap
+                // editor picks up the newly-restored draft / forwarded body.
+                // Without this, parent setting `emailHtml` wouldn't propagate
+                // into the editor's internal state (TipTap is uncontrolled).
+                key={`${thread.threadKey}:${emailComposeNonce}`}
+                fromChannelId={emailFromChannelId}
+                onFromChannelChange={setEmailFromChannelId}
+                emailChannels={emailChannels}
                 threadKey={thread.threadKey}
-                toDisplay={thread.primaryName}
+                to={emailTo}
+                onToChange={setEmailTo}
+                mode={emailMode}
                 subject={emailSubject}
                 onSubjectChange={setEmailSubject}
                 cc={emailCc}
@@ -2721,6 +2838,42 @@ function composeEmailHtml(messageHtml: string, signature: string | null): string
   return `${messageHtml}<br><br>${signature}`
 }
 
+/** Escape the 5 HTML-significant chars for safe interpolation into markup. */
+function escapeHtmlText(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+/** Build the initial editor HTML for a Forward: two blank lines for the AM's
+ *  note, a `---------- Forwarded message ----------` header block, then the
+ *  original email quoted in a blockquote (its rich HTML when we have it, else
+ *  the plain body with line breaks preserved). Roy 2026-07-28. */
+function buildForwardedHtml(msg: ChatMessage): string {
+  const from = msg.emailFromAddress
+    ? `${msg.authorName} <${msg.emailFromAddress}>`
+    : msg.authorName
+  const original =
+    msg.bodyHtml && msg.bodyHtml.includes("<")
+      ? msg.bodyHtml
+      : escapeHtmlText(msg.body).replace(/\r\n|\r|\n/g, "<br>")
+  const headerLines = [
+    `From: ${escapeHtmlText(from)}`,
+    `Date: ${escapeHtmlText(fmtTime(msg.at))}`,
+    msg.emailSubject ? `Subject: ${escapeHtmlText(msg.emailSubject)}` : null,
+  ]
+    .filter(Boolean)
+    .join("<br>")
+  return (
+    `<p></p><p></p>` +
+    `<p>---------- Forwarded message ----------</p>` +
+    `<p>${headerLines}</p>` +
+    `<blockquote>${original}</blockquote>`
+  )
+}
+
 /** Empty-html check that ignores TipTap's "empty doc" representations
  *  (`<p></p>`, `<p><br></p>`) and pure-whitespace bodies. Used to gate the
  *  email Send button so an "empty" reply with just signature whitespace
@@ -3195,6 +3348,7 @@ function ThreadMessagesList({
   mentionNames = [],
   noteMentions,
   onMakeTaskFromMessage,
+  onForwardMessage,
 }: {
   messages: ChatMessage[]
   isEmailThread: boolean
@@ -3203,6 +3357,9 @@ function ThreadMessagesList({
   mentionNames?: string[]
   noteMentions?: NoteMentions
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  /** Forward this email message: opens the composer in forward mode with the
+   *  original quoted below. Email threads only. */
+  onForwardMessage?: (msg: ChatMessage) => void
 }) {
   // Which older email messages the user has folded open. The latest message +
   // any internal note are always open; everything else starts collapsed.
@@ -3255,6 +3412,7 @@ function ThreadMessagesList({
                 mentionNames={mentionNames}
                 noteMentions={noteMentions}
                 onMakeTask={makeTask(msg)}
+                onForward={onForwardMessage ? () => onForwardMessage(msg) : undefined}
               />
             </Fragment>
           )
@@ -3284,6 +3442,7 @@ function ThreadMessagesList({
             mentionNames={mentionNames}
             noteMentions={noteMentions}
             onMakeTask={makeTask(msg)}
+            onForward={onForwardMessage ? () => onForwardMessage(msg) : undefined}
             // Older expanded emails get a collapse chevron to fold them back;
             // the latest + internal notes stay open (no chevron).
             onCollapse={alwaysOpen ? undefined : () => toggleExpanded(msg.id)}
@@ -3373,11 +3532,14 @@ function MessageBubble({
   mentionNames = [],
   noteMentions,
   onMakeTask,
+  onForward,
   onCollapse,
 }: {
   msg: ChatMessage
   mentionNames?: string[]
   noteMentions?: NoteMentions
+  /** Forward this email (email card header button). */
+  onForward?: () => void
   /** When set, the email card shows a collapse chevron to fold it back into a
    *  one-line row (older messages in a Trengo-style email thread). */
   onCollapse?: () => void
@@ -3409,7 +3571,7 @@ function MessageBubble({
         {isUs && onMakeTask && (
           <MakeTaskInlineButton onClick={onMakeTask} />
         )}
-        <EmailMessageCard msg={msg} isUs={isUs} onCollapse={onCollapse} />
+        <EmailMessageCard msg={msg} isUs={isUs} onForward={onForward} onCollapse={onCollapse} />
         {!isUs && onMakeTask && (
           <MakeTaskInlineButton onClick={onMakeTask} />
         )}
@@ -3559,10 +3721,12 @@ function MessageBubble({
 function EmailMessageCard({
   msg,
   isUs,
+  onForward,
   onCollapse,
 }: {
   msg: ChatMessage
   isUs: boolean
+  onForward?: () => void
   onCollapse?: () => void
 }) {
   const locale = useLocale()
@@ -3705,6 +3869,19 @@ function EmailMessageCard({
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60 shrink-0 mt-0.5">
           {fmtTime(msg.at)}
         </span>
+        {/* Forward — opens the composer in forward mode with this email quoted
+            below. Roy 2026-07-28. */}
+        {onForward && (
+          <button
+            type="button"
+            onClick={onForward}
+            aria-label="Forward"
+            title="Forward"
+            className="mt-0.5 shrink-0 rounded-md p-0.5 text-muted-foreground/40 transition-colors hover:bg-muted hover:text-foreground/70"
+          >
+            <Forward className="h-4 w-4" />
+          </button>
+        )}
         {/* Collapse chevron — folds an older email back into its one-line row.
             Only on foldable (older) emails; the latest stays open. */}
         {onCollapse && (
@@ -3834,13 +4011,12 @@ export function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
     return null
   }
   const label = thread.channelKind === "whatsapp" ? "WhatsApp" : "Email"
-  // 187N mono status tag: dot + micro-caps, no filled pill. WhatsApp reads as
-  // "live" (green), email as "brand" (purple) - the calm 187N vocabulary
-  // instead of the old blue/emerald wash badges. Roy 2026-07-26.
+  // 187N mono micro-caps tag. Tone still colours the text (WhatsApp = green
+  // "live", email = purple "brand") but the leading status dot is dropped -
+  // it didn't align cleanly next to the channel icon + title. Roy 2026-07-28.
   const tone = thread.channelKind === "whatsapp" ? "live" : "brand"
   return (
     <span className={`st-label ${tone} shrink-0`}>
-      <span className="sd" />
       {label}
     </span>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
@@ -21,6 +21,7 @@ import {
   Redo,
   ChevronDown,
   ChevronUp,
+  Forward,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -35,16 +36,24 @@ type ChannelInfo = {
 }
 
 type Props = {
-  /** Trengo channel id for the email channel this thread belongs to. Drives
-   *  the signature lookup (cached server-side for 5 min). */
-  channelId: number | null
+  /** The selected From email channel id (drives both which channel the mail
+   *  is sent on AND the signature lookup, cached server-side for 5 min).
+   *  Owned by the parent so it can decide reply-vs-new-email on submit. */
+  fromChannelId: number | null
+  /** Change the From channel (pick another of the AM's email channels). */
+  onFromChannelChange: (id: number) => void
+  /** The AM's selectable email channels for the From dropdown. */
+  emailChannels: Array<{ id: number; name: string }>
   /** Thread key - used to fetch the latest ticket subject for prefill so
    *  the composer behaves like a normal mail client (Re: <original> with
    *  inline edit). */
   threadKey: string
-  /** Display "To" label - usually the contact's name + email from the
-   *  thread header. Read-only on reply (Trengo binds it to the ticket). */
-  toDisplay: string
+  /** Editable To recipients (email addresses). Defaults to the thread
+   *  contact; changing it sends as a new email. */
+  to: string[]
+  onToChange: (v: string[]) => void
+  /** "reply" (default) or "forward" - only changes the header label. */
+  mode?: "reply" | "forward"
   // Lifted state - owned by the parent so sendReply can read on submit.
   subject: string
   onSubjectChange: (s: string) => void
@@ -79,9 +88,13 @@ type Props = {
  * composer parity work - see docs/trengo-api-audit.md for endpoint details.
  */
 export function EmailComposer({
-  channelId,
+  fromChannelId,
+  onFromChannelChange,
+  emailChannels,
   threadKey,
-  toDisplay,
+  to,
+  onToChange,
+  mode = "reply",
   subject,
   onSubjectChange,
   cc,
@@ -100,13 +113,28 @@ export function EmailComposer({
   // and idle-time on the client - opening the composer on a hot path
   // shouldn't show a flash of "no signature".
   const channelQuery = useQuery<ChannelInfo>({
-    queryKey: ["email-channel", channelId],
-    queryFn: () => fetch(`/api/inbox/email-channel?channelId=${channelId}`).then((r) => r.json()),
-    enabled: !!channelId,
+    queryKey: ["email-channel", fromChannelId],
+    queryFn: () =>
+      fetch(`/api/inbox/email-channel?channelId=${fromChannelId}`).then((r) => r.json()),
+    enabled: !!fromChannelId,
     staleTime: 5 * 60 * 1000,
   })
 
   const channel = channelQuery.data ?? null
+
+  // From-channel options. Always include the currently-selected channel even
+  // if it isn't in the AM's outbound list (e.g. a private thread channel) so
+  // the dropdown never renders blank.
+  const channelOptions = useMemo(() => {
+    const opts = emailChannels.slice()
+    if (fromChannelId != null && !opts.some((c) => c.id === fromChannelId)) {
+      opts.unshift({
+        id: fromChannelId,
+        name: channel ? formatFrom(channel) : `Channel ${fromChannelId}`,
+      })
+    }
+    return opts
+  }, [emailChannels, fromChannelId, channel])
 
   // Fetch the latest ticket subject so we can prefill `Re: <original>` -
   // matches normal mail client UX. AM can edit inline before sending.
@@ -223,12 +251,37 @@ export function EmailComposer({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
+      {mode === "forward" && (
+        <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/20 px-3.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/60">
+          <Forward className="h-3 w-3" />
+          Forwarding
+        </div>
+      )}
       {/* Header: From / To / CC-BCC toggle / Subject */}
       <div className="divide-y divide-border/60 border-b border-border/60">
         <HeaderRow label="From">
-          <span className="truncate text-[13px] text-foreground/80">
-            {channel ? formatFrom(channel) : channelQuery.isLoading ? "Loading…" : "-"}
-          </span>
+          {channelOptions.length > 1 ? (
+            <select
+              value={fromChannelId ?? ""}
+              onChange={(e) => onFromChannelChange(Number(e.target.value))}
+              disabled={disabled}
+              className="min-w-0 flex-1 cursor-pointer border-0! bg-transparent! p-0! text-[13px]! text-foreground/80 shadow-none! outline-none! rounded-none! focus:border-0! focus:shadow-none! focus:ring-0!"
+            >
+              {channelOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="truncate text-[13px] text-foreground/80">
+              {channel
+                ? formatFrom(channel)
+                : channelQuery.isLoading
+                  ? "Loading…"
+                  : (channelOptions[0]?.name ?? "-")}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setCcBccExpanded((v) => !v)}
@@ -243,7 +296,12 @@ export function EmailComposer({
           </button>
         </HeaderRow>
         <HeaderRow label="To">
-          <span className="truncate text-[13px] text-foreground/80">{toDisplay}</span>
+          <EmailChipInput
+            value={to}
+            onChange={onToChange}
+            disabled={disabled}
+            placeholder="Add recipients…"
+          />
         </HeaderRow>
         {ccBccExpanded && (
           <>

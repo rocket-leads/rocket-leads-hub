@@ -366,13 +366,21 @@ export async function sendEmailToAddressAsUser(args: {
   email: string
   name?: string
   subject: string
-  /** Plain text - converted to email HTML (\n → <br>) before sending. */
+  /** Body. Plain text by default (converted to email HTML via \n → <br>). Pass
+   *  `bodyIsHtml: true` when the caller already supplies rich HTML (the inbox
+   *  composer) so it isn't escaped a second time. */
   body: string
+  bodyIsHtml?: boolean
+  /** Extra recipients, threaded into the Trengo message payload as
+   *  comma-joined strings (mirrors sendTrengoReplyAsUser). */
+  cc?: string[]
+  bcc?: string[]
 }): Promise<{ ticketId: string; messageId: string }> {
-  const { userToken, channelId, email, name, subject } = args
+  const { userToken, channelId, email, name, subject, cc, bcc } = args
   const displayName = name ?? email
-  // Trengo treats the email `message` as HTML - keep the composed line breaks.
-  const body = plainTextToEmailHtml(args.body)
+  // Trengo treats the email `message` as HTML. Convert plain text (keeps the
+  // composed line breaks); pass composer HTML straight through.
+  const body = args.bodyIsHtml ? args.body : plainTextToEmailHtml(args.body)
 
   // Each candidate is a different shape of body that `POST /v2/tickets`
   // might accept. We try them in order; first 2xx that returns a ticket
@@ -425,7 +433,7 @@ export async function sendEmailToAddressAsUser(args: {
       const ticketId =
         json.id ?? json.ticket_id ?? json.data?.id ?? json.data?.ticket_id
       if (ticketId) {
-        return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body })
+        return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body, cc, bcc })
       }
     } else {
       lastStatus = res.status
@@ -451,6 +459,8 @@ export async function sendEmailToAddressAsUser(args: {
       channelId,
       subject,
       body,
+      cc,
+      bcc,
     })
   } catch (e) {
     const fallbackMsg = e instanceof Error ? e.message : String(e)
@@ -464,11 +474,26 @@ export async function sendEmailToAddressAsUser(args: {
  *  by both `sendEmailToAddressAsUser` (after the direct ticket-create
  *  worked) and `createEmailMessageForContact` (after the legacy 2-step
  *  contact + ticket flow). */
+/** Trengo's v2 message endpoint accepts cc/bcc as comma-separated STRINGS (an
+ *  array 500'd during the Phase 3 probe). Returns the partial payload to spread
+ *  into a /messages POST; omits empty fields entirely. Shared by every outbound
+ *  email path so the wire format stays consistent. */
+function emailCcBccPayload(cc?: string[], bcc?: string[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  const ccStr = (cc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
+  const bccStr = (bcc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
+  if (ccStr) out.cc = ccStr
+  if (bccStr) out.bcc = bccStr
+  return out
+}
+
 async function sendBodyIntoTicket(args: {
   userToken: string
   ticketId: string
   subject: string
   body: string
+  cc?: string[]
+  bcc?: string[]
 }): Promise<{ ticketId: string; messageId: string }> {
   const sendRes = await trengoPostWithRetry(
     `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`,
@@ -477,6 +502,7 @@ async function sendBodyIntoTicket(args: {
       message: args.body,
       subject: args.subject,
       internal_note: false,
+      ...emailCcBccPayload(args.cc, args.bcc),
     },
   )
   if (!sendRes.ok) {
@@ -505,6 +531,8 @@ export async function createEmailMessageForContact(args: {
   channelId: number
   subject: string
   body: string
+  cc?: string[]
+  bcc?: string[]
 }): Promise<{ ticketId: string; messageId: string }> {
   // Step 1 - create the ticket.
   const createRes = await fetch(`https://app.trengo.com/api/v2/tickets`, {
@@ -568,6 +596,7 @@ export async function createEmailMessageForContact(args: {
       message: args.body,
       subject: args.subject,
       internal_note: false,
+      ...emailCcBccPayload(args.cc, args.bcc),
     },
   )
   if (!sendRes.ok) {
