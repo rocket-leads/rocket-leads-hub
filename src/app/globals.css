@@ -111,6 +111,32 @@
   --color-rose-700: color-mix(in srgb, var(--st-error) 74%, black);
   --color-rose-800: color-mix(in srgb, var(--st-error) 62%, black);
   --color-rose-900: color-mix(in srgb, var(--st-error) 52%, black);
+
+  /* Amber → the design-system warning colour (--st-warn), and violet → the
+     brand purple (--teal). Same remap trick as green/red above: amber is used
+     almost exclusively for "warning/caution" and violet as a purple accent, so
+     pointing both at the tokens makes every text-/bg-/border-{amber,violet}-*
+     class on-brand instead of raw Tailwind. Roy 2026-07. */
+  --color-amber-50:  color-mix(in srgb, var(--st-warn) 10%, white);
+  --color-amber-100: color-mix(in srgb, var(--st-warn) 18%, white);
+  --color-amber-200: color-mix(in srgb, var(--st-warn) 32%, white);
+  --color-amber-300: color-mix(in srgb, var(--st-warn) 55%, white);
+  --color-amber-400: color-mix(in srgb, var(--st-warn) 78%, white);
+  --color-amber-500: var(--st-warn);
+  --color-amber-600: color-mix(in srgb, var(--st-warn) 88%, black);
+  --color-amber-700: color-mix(in srgb, var(--st-warn) 74%, black);
+  --color-amber-800: color-mix(in srgb, var(--st-warn) 62%, black);
+  --color-amber-900: color-mix(in srgb, var(--st-warn) 52%, black);
+  --color-violet-50:  color-mix(in srgb, var(--teal) 10%, white);
+  --color-violet-100: color-mix(in srgb, var(--teal) 18%, white);
+  --color-violet-200: color-mix(in srgb, var(--teal) 32%, white);
+  --color-violet-300: color-mix(in srgb, var(--teal) 55%, white);
+  --color-violet-400: color-mix(in srgb, var(--teal) 78%, white);
+  --color-violet-500: var(--teal);
+  --color-violet-600: color-mix(in srgb, var(--teal) 88%, black);
+  --color-violet-700: color-mix(in srgb, var(--teal) 74%, black);
+  --color-violet-800: color-mix(in srgb, var(--teal) 62%, black);
+  --color-violet-900: color-mix(in srgb, var(--teal) 52%, black);
 }
 
 /* 187N sidebar count pill (Inbox unread, Billing due-today). Mono tabular
