@@ -1892,36 +1892,52 @@ function ThreadMessages({
       {/* Header — 187N Chats style: avatar badge + name + channel badge, with a
           mono "client · via channel · N messages" meta line under it. */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/20 shrink-0">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-muted-foreground/80">
+        <div className="min-w-0 flex-1">
+          {/* Title row: source icon inline next to the name, the channel
+              badge, and (for unlinked Trengo threads) the Link-to-client
+              chip — all on one line so the header stays compact. The
+              "via channel · N messages" meta sits underneath. Roy 2026-07-28. */}
+          <div className="flex items-center gap-1.5 min-w-0">
             <SourceIcon thread={thread} />
-          </span>
-          <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <EditableContactName
-              key={thread.threadKey}
-              displayName={thread.primaryName}
-              editable={thread.source === "trengo"}
-              onSave={async (next) => {
-                const res = await fetch(
-                  `/api/inbox/threads/${encodeURIComponent(thread.threadKey)}/contact`,
-                  {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name: next }),
-                  },
-                )
-                if (!res.ok) {
-                  const data = (await res.json().catch(() => ({}))) as { error?: string }
-                  throw new Error(data.error ?? `Update failed (${res.status})`)
-                }
-                // Refetch threads + thread messages so the new name surfaces
-                // in the list and the bubble author labels.
-                queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
-                queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
-              }}
-            />
+            <div className="min-w-0">
+              <EditableContactName
+                key={thread.threadKey}
+                displayName={thread.primaryName}
+                editable={thread.source === "trengo"}
+                onSave={async (next) => {
+                  const res = await fetch(
+                    `/api/inbox/threads/${encodeURIComponent(thread.threadKey)}/contact`,
+                    {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: next }),
+                    },
+                  )
+                  if (!res.ok) {
+                    const data = (await res.json().catch(() => ({}))) as { error?: string }
+                    throw new Error(data.error ?? `Update failed (${res.status})`)
+                  }
+                  // Refetch threads + thread messages so the new name surfaces
+                  // in the list and the bubble author labels.
+                  queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                  queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+                }}
+              />
+            </div>
             <ChannelBadge thread={thread} />
+            {/* Unlinked threads (Trengo contact has no matching Hub client)
+                get an inline "Link to client" picker so the AM can attach
+                the conversation without leaving the inbox. Hidden once a
+                link exists or for non-Trengo sources. */}
+            {!thread.clientName && thread.source === "trengo" && (
+              <LinkToClientPicker
+                threadKey={thread.threadKey}
+                onLinked={() => {
+                  queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                  queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+                }}
+              />
+            )}
           </div>
           {(thread.clientName || thread.channelName) && (
             <p className="text-[11px] text-muted-foreground/70 truncate">
@@ -1938,20 +1954,6 @@ function ThreadMessages({
               )}
             </p>
           )}
-          {/* Unlinked threads (Trengo contact has no matching Hub client)
-              get an inline "Link to client" picker so the AM can attach
-              the conversation without leaving the inbox. Hidden once a
-              link exists or for non-Trengo sources. */}
-          {!thread.clientName && thread.source === "trengo" && (
-            <LinkToClientPicker
-              threadKey={thread.threadKey}
-              onLinked={() => {
-                queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
-                queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
-              }}
-            />
-          )}
-          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {/* Quick "Generate update" - only when the thread is linked to a
@@ -2949,14 +2951,16 @@ function LinkToClientPicker({
   }
 
   return (
-    <div ref={containerRef} className="relative mt-1.5">
+    <div ref={containerRef} className="relative shrink-0">
       {!open ? (
         <button type="button" onClick={() => setOpen(true)} className="chip">
           <Link2 className="h-3.5 w-3.5" />
           Link to client…
         </button>
       ) : (
-        <div className="rounded-md border border-border bg-popover shadow-md p-2 w-[280px] max-w-full">
+        // Absolute overlay so opening the picker doesn't stretch the compact
+        // header title row it now lives in. Roy 2026-07-28.
+        <div className="absolute left-0 top-full z-20 mt-1 rounded-md border border-border bg-popover shadow-md p-2 w-[280px] max-w-[80vw]">
           <input
             type="text"
             value={query}
