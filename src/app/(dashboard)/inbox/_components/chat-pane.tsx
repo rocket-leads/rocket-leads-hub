@@ -1447,21 +1447,48 @@ function ThreadMessages({
     }
   }, [defaultContactEmail, emailMode, thread.threadKey])
 
-  // Scroll the whole viewport (messages + inline composer) to the bottom on
-  // load + on new message arrivals, so you land ready to reply with the latest
-  // messages just above the composer.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [thread.threadKey, messages.length])
+  // Stick-to-bottom: keep the stream pinned to the latest message (+ inline
+  // composer) so opening a thread lands you on the last email, not halfway up.
+  // Email cards render in iframes whose height is measured ASYNC (on load +
+  // image loads + a 4s poll), so a single scroll-on-open fires before the
+  // iframe grows and ends up short. We instead re-pin whenever the content
+  // height changes via a ResizeObserver — until the user deliberately scrolls
+  // up. Roy 2026-07-28.
+  const stickBottomRef = useRef(true)
 
-  // Expanding the email composer grows the stream below the fold - bring it into
-  // view so the reply box is visible the moment you click "Reply".
+  // Reset to "stick" on every thread switch.
   useEffect(() => {
-    if (!emailComposerOpen) return
+    stickBottomRef.current = true
+  }, [thread.threadKey])
+
+  // Pin now, and keep pinning as the content grows (observe the scroll
+  // container's children — observing the fixed-height viewport itself would
+  // never fire on inner growth). Re-observes when the message set / composer
+  // state changes.
+  useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [emailComposerOpen])
+    if (!el) return
+    const pin = () => {
+      if (stickBottomRef.current) el.scrollTop = el.scrollHeight
+    }
+    pin()
+    if (typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(pin)
+    for (const child of Array.from(el.children)) ro.observe(child)
+    return () => ro.disconnect()
+  }, [thread.threadKey, messages.length, emailComposerOpen])
+
+  // Track whether the user is at the bottom: scrolling up releases the pin,
+  // returning to the bottom re-arms it.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [])
 
   // In-memory per-thread draft cache. Keyed by threadKey, holds the slice
   // of composer state that should survive switching back and forth between
@@ -2036,20 +2063,10 @@ function ThreadMessages({
                 }}
               />
             </div>
-            <ChannelBadge thread={thread} />
-            {/* Unlinked threads (Trengo contact has no matching Hub client)
-                get an inline "Link to client" picker so the AM can attach
-                the conversation without leaving the inbox. Hidden once a
-                link exists or for non-Trengo sources. */}
-            {!thread.clientName && thread.source === "trengo" && (
-              <LinkToClientPicker
-                threadKey={thread.threadKey}
-                onLinked={() => {
-                  queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
-                  queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
-                }}
-              />
-            )}
+            {/* Channel medium (EMAIL / WhatsApp) is already conveyed by the
+                source icon to the left of the name, so the text badge was
+                redundant - dropped. Link-to-client moved to the bottom action
+                bar to keep the header clean. Roy 2026-07-28. */}
           </div>
           {(thread.clientName || thread.channelName) && (
             <p className="text-[11px] text-muted-foreground/70 truncate">
@@ -2214,13 +2231,28 @@ function ThreadMessages({
               ) : (
                 <span />
               )}
-              {isEmail && (
-                <DismissButton
-                  size="xs"
-                  label={t("inbox.chat.composer_close", locale)}
-                  onClick={() => setEmailComposerOpen(false)}
-                />
-              )}
+              <div className="flex items-center gap-2">
+                {/* Link-to-client lives here (not the header) so the header
+                    stays clean; only shown for unlinked Trengo threads. Opens
+                    upward since it sits at the bottom of the pane. Roy 2026-07-28. */}
+                {!thread.clientName && thread.source === "trengo" && (
+                  <LinkToClientPicker
+                    openUp
+                    threadKey={thread.threadKey}
+                    onLinked={() => {
+                      queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                      queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+                    }}
+                  />
+                )}
+                {isEmail && (
+                  <DismissButton
+                    size="xs"
+                    label={t("inbox.chat.composer_close", locale)}
+                    onClick={() => setEmailComposerOpen(false)}
+                  />
+                )}
+              </div>
             </div>
           )}
           {needsConnect && (
@@ -2574,21 +2606,35 @@ function ThreadMessages({
           INSIDE the scroll (above), and the bar disappears. Roy 2026-07-26. */}
       {replyable && isEmail && !emailComposerOpen && (
         <div className="shrink-0 border-t border-border bg-card px-3 py-3">
-          <button
-            type="button"
-            onClick={() => {
-              // Opening the reply = taking the ticket: New -> Opgepakt now.
-              onPickup?.()
-              setEmailComposerOpen(true)
-            }}
-            className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
-          >
-            <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
-            <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Send className="h-3.5 w-3.5" />
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Link-to-client reachable even before opening the composer, for
+                unlinked Trengo threads. Roy 2026-07-28. */}
+            {!thread.clientName && thread.source === "trengo" && (
+              <LinkToClientPicker
+                openUp
+                threadKey={thread.threadKey}
+                onLinked={() => {
+                  queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                  queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+                }}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                // Opening the reply = taking the ticket: New -> Opgepakt now.
+                onPickup?.()
+                setEmailComposerOpen(true)
+              }}
+              className="flex flex-1 items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
+            >
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
+              <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Send className="h-3.5 w-3.5" />
+              </span>
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -3041,9 +3087,13 @@ function resolveMentionsAgainstUsers(body: string, users: InboxUser[]): InboxUse
 function LinkToClientPicker({
   threadKey,
   onLinked,
+  openUp = false,
 }: {
   threadKey: string
   onLinked: () => void
+  /** Open the dropdown upward (used in the bottom composer bar where there's
+   *  no room below). */
+  openUp?: boolean
 }) {
   const locale = useLocale()
   const [open, setOpen] = useState(false)
@@ -3111,9 +3161,14 @@ function LinkToClientPicker({
           Link to client…
         </button>
       ) : (
-        // Absolute overlay so opening the picker doesn't stretch the compact
-        // header title row it now lives in. Roy 2026-07-28.
-        <div className="absolute left-0 top-full z-20 mt-1 rounded-md border border-border bg-popover shadow-md p-2 w-[280px] max-w-[80vw]">
+        // Absolute overlay so opening the picker doesn't stretch its row.
+        // Opens upward in the bottom composer bar (no room below). Roy 2026-07-28.
+        <div
+          className={cn(
+            "absolute left-0 z-20 rounded-md border border-border bg-popover shadow-md p-2 w-[280px] max-w-[80vw]",
+            openUp ? "bottom-full mb-1" : "top-full mt-1",
+          )}
+        >
           <input
             type="text"
             value={query}
