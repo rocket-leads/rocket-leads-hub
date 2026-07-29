@@ -7,7 +7,8 @@ import Stripe from "stripe"
 import { google } from "googleapis"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
-import { getToken as getMondayToken, fetchAllItems, fetchBothBoards, parseStripeCustomerIds } from "@/lib/integrations/monday"
+import { getToken as getMondayToken, fetchAllItems, fetchBothBoards, parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
 import { getToken as getMetaToken } from "@/lib/integrations/meta"
 import { TEAMS, teamForMember } from "@/lib/teams"
 import type {
@@ -817,6 +818,37 @@ export async function loadExcludedCustomers(): Promise<Map<string, string>> {
   }
 }
 
+/**
+ * Stripe customer id → the Monday board its client sits on. This is the primary
+ * New-Business vs MRR signal: a client still on the ONBOARDING board hasn't gone
+ * live, so their invoices are New Business; once on the CURRENT-clients board
+ * they're recurring MRR. Sourced from the `monday_boards` cache (cron-warmed +
+ * webhook-patched) so both Finance and Delivery classify identically without a
+ * live Monday fetch. A customer that appears on both boards (a live client with
+ * a lingering onboarding sub-row) resolves to "current" - being live wins.
+ */
+async function loadBoardByCustomer(): Promise<Map<string, "onboarding" | "current">> {
+  try {
+    const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+    if (!boards) return new Map()
+    const map = new Map<string, "onboarding" | "current">()
+    for (const c of boards.onboarding ?? []) {
+      for (const id of parseStripeCustomerIds(c.stripeCustomerId)) {
+        if (!map.has(id)) map.set(id, "onboarding")
+      }
+    }
+    // Current second so it always wins over an onboarding entry for the same id.
+    for (const c of boards.current ?? []) {
+      for (const id of parseStripeCustomerIds(c.stripeCustomerId)) {
+        map.set(id, "current")
+      }
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
 interface InvoiceBreakdown {
   total: CategoryBreakdown
   serviceFee: CategoryBreakdown
@@ -849,6 +881,11 @@ async function buildInvoiceBreakdown(
   // note sets below, so they fall out of every downstream total (service fee, ad
   // budget, per-customer rollup, new-business detection, churn base) in one place.
   const excludedCustomerIds = new Set((await loadExcludedCustomers()).keys())
+
+  // Primary New-Business vs MRR signal: which Monday board the customer's client
+  // sits on (onboarding = not live yet = NB, current = live = MRR). See
+  // resolveSubCategory for how this composes with overrides + the fallback.
+  const boardByCustomer = await loadBoardByCustomer()
 
   // Invoices in period
   const allInvoices: Stripe.Invoice[] = []
@@ -965,10 +1002,14 @@ async function buildInvoiceBreakdown(
   }
 
   /**
-   * Resolve invoice → "mrr" | "new_business". Override wins; otherwise:
-   * - Customer not new this period → MRR
-   * - Customer new this period AND this is their first invoice in the period → New Business
-   * - Customer new this period BUT this is a later invoice → MRR
+   * Resolve invoice → "mrr" | "new_business", in precedence order:
+   * 1. Manual override (finance_invoice_overrides) - human correction, wins.
+   * 2. Board membership - the lifecycle signal: onboarding-board client = New
+   *    Business (not live yet), current-board client = MRR (live/recurring).
+   *    This is why a client's onboarding invoices (startup fee + first service
+   *    invoice(s)) all count as New Business regardless of how many there are.
+   * 3. Fallback for Stripe customers with no Monday link at all: the old
+   *    first-invoice-ever heuristic (no earlier invoice → first-in-period = NB).
    */
   function resolveSubCategory(
     invoiceId: string | undefined,
@@ -977,6 +1018,12 @@ async function buildInvoiceBreakdown(
   ): "mrr" | "new_business" {
     const override = invoiceId ? subCategoryOverrides.get(invoiceId) : undefined
     if (override) return override
+
+    const board = customerId ? boardByCustomer.get(customerId) : undefined
+    if (board === "onboarding") return "new_business"
+    if (board === "current") return "mrr"
+
+    // No Monday link - fall back to the first-invoice heuristic.
     if (!customerIsNewDefault) return "mrr"
     if (customerId && invoiceId && firstInvoiceInPeriodByCustomer.get(customerId) === invoiceId) {
       return "new_business"
