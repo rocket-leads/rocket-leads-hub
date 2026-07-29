@@ -77,6 +77,7 @@ export function ChannelPicker({
           count={allCount}
           active={allActive && !mentionedOnly}
           onClick={onSelectAll}
+          dot={false}
         />
         <Tab
           icon={AtSign}
@@ -182,12 +183,16 @@ function Tab({
   count,
   active,
   onClick,
+  dot = true,
 }: {
   icon: typeof Mail
   label: string
   count: number
   active: boolean
   onClick: () => void
+  /** Show the traffic-light status dot. Off for "All" — it aggregates
+   *  everything so it'd always read red and carries no signal. */
+  dot?: boolean
 }) {
   const dotTone =
     count === 0 ? "bg-emerald-500" : count < 10 ? "bg-amber-500" : "bg-red-500"
@@ -197,9 +202,9 @@ function Tab({
       onClick={onClick}
       aria-pressed={active}
       className={cn("chip h-8 max-w-[170px]", active && "active")}
-      title={`${label} — ${count} open`}
+      title={dot ? `${label} — ${count} open` : label}
     >
-      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} aria-hidden />
+      {dot && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} aria-hidden />}
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
       {count > 0 && (
