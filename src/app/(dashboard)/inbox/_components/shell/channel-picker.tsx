@@ -172,7 +172,10 @@ export function ChannelPicker({
   )
 }
 
-/** A quick-switch chip tab (187N `.chip` chrome, matching the state tabs). */
+/** A quick-switch chip tab (187N `.chip` chrome, matching the state tabs). A
+ *  traffic-light status dot encodes the open-ticket load so channels aren't all
+ *  visually identical: green = clear, orange = 1-9 open, red = 10+ open.
+ *  Roy 2026-07-29. */
 function Tab({
   icon: Icon,
   label,
@@ -186,14 +189,17 @@ function Tab({
   active: boolean
   onClick: () => void
 }) {
+  const dotTone =
+    count === 0 ? "bg-emerald-500" : count < 10 ? "bg-amber-500" : "bg-red-500"
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={cn("chip h-8 max-w-[160px]", active && "active")}
-      title={label}
+      className={cn("chip h-8 max-w-[170px]", active && "active")}
+      title={`${label} — ${count} open`}
     >
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} aria-hidden />
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
       {count > 0 && (
