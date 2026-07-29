@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Users, Eye, Target, Settings, Inbox, CreditCard, Home, ClipboardCheck, Calendar, TrendingUp, BarChart3, Truck, Banknote } from "lucide-react"
 
@@ -30,9 +31,38 @@ export type NavSection = {
   items: NavItem[]
 }
 
-type BadgeCounts = { unreadUpdates: number; openTasks: number; unreadChats: number }
+type BadgeCounts = {
+  unreadUpdates: number
+  openTasks: number
+  unreadChats: number
+  unreadByChannel?: Record<string, number>
+  mentions?: number
+}
 
-function InboxBadge() {
+const fmtBadge = (n: number) => (n > 99 ? "99+" : String(n))
+
+/** Read the user's favourited inbox channel ids (same localStorage key the
+ *  inbox tab writes). Returns [] when unavailable. */
+function readFavoriteChannelIds(userId: string | undefined): number[] {
+  if (!userId) return []
+  try {
+    const raw = localStorage.getItem(`inbox:fav-channels:${userId}`)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : []
+    return Array.isArray(parsed) ? parsed.filter((x): x is number => typeof x === "number") : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Split inbox badge: `internal / external`.
+ *   - internal = unread Updates + open Tasks (the Internal inbox)
+ *   - external = unread @-mentions + unread on your FAVOURITE channels only
+ *     (not all channels — those are noise). Roy 2026-07-29.
+ * Favourites live in localStorage (per user), so we sum them client-side from
+ * the per-channel breakdown the badge API returns.
+ */
+function InboxBadge({ userId }: { userId?: string }) {
   const { data } = useQuery<BadgeCounts>({
     queryKey: ["inbox-badge"],
     queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
@@ -40,11 +70,34 @@ function InboxBadge() {
     staleTime: 30 * 1000,
   })
 
-  const total =
-    (data?.unreadUpdates ?? 0) + (data?.openTasks ?? 0) + (data?.unreadChats ?? 0)
-  if (!total) return null
+  const [favIds, setFavIds] = useState<number[]>([])
+  useEffect(() => {
+    setFavIds(readFavoriteChannelIds(userId))
+    // Re-read when favourites change: cross-tab via `storage`, same-tab via the
+    // custom event the inbox dispatches on toggle.
+    const reread = () => setFavIds(readFavoriteChannelIds(userId))
+    window.addEventListener("storage", reread)
+    window.addEventListener("inbox-favorites-changed", reread)
+    return () => {
+      window.removeEventListener("storage", reread)
+      window.removeEventListener("inbox-favorites-changed", reread)
+    }
+  }, [userId])
 
-  return <span className="nav-badge">{total > 99 ? "99+" : total}</span>
+  const internal = (data?.unreadUpdates ?? 0) + (data?.openTasks ?? 0)
+  const byChannel = data?.unreadByChannel ?? {}
+  const favUnread = favIds.reduce((sum, id) => sum + (byChannel[String(id)] ?? 0), 0)
+  const external = (data?.mentions ?? 0) + favUnread
+
+  if (internal === 0 && external === 0) return null
+
+  return (
+    <span className="nav-badge" title={`Internal ${internal} · External ${external}`}>
+      {fmtBadge(internal)}
+      <span className="px-0.5 opacity-40">/</span>
+      {fmtBadge(external)}
+    </span>
+  )
 }
 
 type HealthDotSummary = {
@@ -59,6 +112,9 @@ type Props = {
   /** Admin-only health probe. Lights the Settings dot when crons errored or
    *  integration tokens went invalid. Null = non-admin (no dot). */
   healthSummary?: HealthDotSummary | null
+  /** Current user id — used to read that user's favourited channels for the
+   *  split inbox badge. */
+  userId?: string
 }
 
 function buildHealthDotTitle(summary: HealthDotSummary | null): string {
@@ -80,10 +136,12 @@ function NavRow({
   item,
   pathname,
   healthSummary,
+  userId,
 }: {
   item: NavItem
   pathname: string
   healthSummary: HealthDotSummary | null
+  userId?: string
 }) {
   const Icon = ICONS[item.icon]
   const isInbox = item.href === "/inbox"
@@ -99,7 +157,7 @@ function NavRow({
       <Icon />
       <span className="truncate">{item.label}</span>
       <span className="ml-auto inline-flex items-center gap-1.5">
-        {isInbox && <InboxBadge />}
+        {isInbox && <InboxBadge userId={userId} />}
         {badgeCount > 0 && (
           <span className="nav-badge" title={item.badgeTitle} aria-label={item.badgeTitle ?? `${badgeCount}`}>
             {badgeCount > 99 ? "99+" : badgeCount}
@@ -117,7 +175,7 @@ function NavRow({
   )
 }
 
-export function SidebarNavLinks({ sections, healthSummary = null }: Props) {
+export function SidebarNavLinks({ sections, healthSummary = null, userId }: Props) {
   const pathname = usePathname()
 
   return (
@@ -126,7 +184,13 @@ export function SidebarNavLinks({ sections, healthSummary = null }: Props) {
         <div key={section.label} className="nav-section">
           <div className="nav-label">{section.label}</div>
           {section.items.map((item) => (
-            <NavRow key={item.href} item={item} pathname={pathname} healthSummary={healthSummary} />
+            <NavRow
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              healthSummary={healthSummary}
+              userId={userId}
+            />
           ))}
         </div>
       ))}

@@ -199,7 +199,7 @@ export async function Sidebar() {
       </div>
 
       {/* Navigation - grouped sections with active left-bar + tint. */}
-      <SidebarNavLinks sections={sections} healthSummary={combinedDot} />
+      <SidebarNavLinks sections={sections} healthSummary={combinedDot} userId={session?.user?.id} />
 
       {/* Footer: user block. Locale, Settings + Sign out live behind the
           popover the UserMenu opens on click. */}

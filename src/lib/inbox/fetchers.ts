@@ -495,6 +495,13 @@ export async function getInboxBadgeCounts(
   unreadUpdates: number
   openTasks: number
   unreadChats: number
+  /** Unread external chat count broken down per Trengo channel id. Lets the
+   *  sidebar badge sum only the user's FAVOURITE channels for the external
+   *  half of the split count. Roy 2026-07-29. */
+  unreadByChannel: Record<string, number>
+  /** Unread Trengo @-mentions (the External "Mentioned" view). Counted into the
+   *  external half of the split badge alongside favourite channels. */
+  mentions: number
   /** True when the Client Inbox tab should be visible for this user.
    *  Hidden for cm_only users with no unread chat assigned to them.
    *  AMs / admins always see it. Roy 2026-06-09. */
@@ -518,12 +525,17 @@ export async function getInboxBadgeCounts(
   // this filter, internal events accumulate forever and inflate the badge
   // (Roy 2026-05-23: Danny's tab showed "274" while all 24 client conversations
   // were read - the 274 were ghost Slack rows).
+  // Select the channel id per unread row (not just a count) so we can both
+  // total the external unread AND break it down per channel for the favourite-
+  // only sidebar sum. Unread is bounded, so the row set stays small; cap it
+  // defensively anyway.
   let chatQuery = supabase
     .from("inbox_events")
-    .select("id", { count: "exact", head: true })
+    .select("trengo_channel_id")
     .not("thread_key", "is", null)
     .eq("scope", "external")
     .eq("status", "unread")
+    .limit(5000)
 
   // Channel subscriptions broaden visibility for every role - CMs included
   // (Roy 2026-06-12: CMs need their private email channels in the Kanalen
@@ -571,7 +583,7 @@ export async function getInboxBadgeCounts(
     `trengo_assignee_user_id.is.null,source.neq.trengo`,
   )
 
-  const [updatesRes, tasksRes, chatsRes] = await Promise.all([
+  const [updatesRes, tasksRes, chatsRes, mentionsRes] = await Promise.all([
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })
@@ -594,9 +606,26 @@ export async function getInboxBadgeCounts(
       .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
       .is("thread_key", null),
     chatQuery,
+    // Unread Trengo @-mentions assigned to this user = the External "Mentioned"
+    // view's unread count → counted into the external half of the split badge.
+    supabase
+      .from("inbox_events")
+      .select("id", { count: "exact", head: true })
+      .eq("assignee_id", userId)
+      .eq("kind", "update")
+      .eq("status", "unread")
+      .not("source_ref->>trengo_mention_in_thread_key", "is", null),
   ])
 
-  const unreadChats = chatsRes.count ?? 0
+  const chatRows = (chatsRes.data ?? []) as Array<{ trengo_channel_id: number | null }>
+  const unreadChats = chatRows.length
+  const unreadByChannel: Record<string, number> = {}
+  for (const r of chatRows) {
+    if (r.trengo_channel_id == null) continue
+    const key = String(r.trengo_channel_id)
+    unreadByChannel[key] = (unreadByChannel[key] ?? 0) + 1
+  }
+  const mentions = mentionsRes.count ?? 0
   // CM gets the Kanalen tab when (a) they have an assigned chat row,
   // OR (b) they've subscribed to any Trengo channels in /account. Roy
   // 2026-06-12: CMs need their private email channels available even
@@ -609,6 +638,8 @@ export async function getInboxBadgeCounts(
     unreadUpdates: updatesRes.count ?? 0,
     openTasks: tasksRes.count ?? 0,
     unreadChats,
+    unreadByChannel,
+    mentions,
     showClientInbox,
   }
 }

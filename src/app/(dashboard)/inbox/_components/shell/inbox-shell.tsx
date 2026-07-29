@@ -403,6 +403,9 @@ export function InboxShell({
         const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
         try {
           localStorage.setItem(favKey, JSON.stringify(next))
+          // Nudge the sidebar split badge to re-read favourites in this tab
+          // (the `storage` event only fires in OTHER tabs). Roy 2026-07-29.
+          window.dispatchEvent(new Event("inbox-favorites-changed"))
         } catch {
           // ignore
         }
