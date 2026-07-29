@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { ComposerDialog } from "../composer-dialog"
+import { LinkToClientPicker } from "../chat-pane"
 import { type ChannelEntry, type ExternalGroup } from "./external-rail"
 import { type InternalType, type DeadlineFilter } from "./internal-rail"
 import { UnifiedFeed } from "./unified-feed"
@@ -831,6 +832,30 @@ export function InboxShell({
     clearTicketSelection()
   }, [selectedTickets, threads, markThread, clearTicketSelection])
 
+  // Link every selected ticket (selection ids ARE thread keys) to the chosen
+  // Hub client, then clear the selection + refresh the thread list. Surfaced as
+  // "Link" in the bulk action bar. Roy 2026-07-29.
+  const linkSelectedTicketsToClient = useCallback(
+    async (clientId: string) => {
+      const ids = Array.from(selectedTickets)
+      const results = await Promise.all(
+        ids.map((key) =>
+          fetch(`/api/inbox/threads/${encodeURIComponent(key)}/link`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId }),
+          }).then((r) => r.ok),
+        ),
+      )
+      clearTicketSelection()
+      queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+      if (results.some((ok) => !ok)) {
+        throw new Error("Some tickets could not be linked")
+      }
+    },
+    [selectedTickets, clearTicketSelection, queryClient],
+  )
+
   // Select-all header (Trengo-style): tri-state over the currently-visible tab.
   const visibleTicketIds = useMemo(() => visibleExternalRows.map((r) => r.id), [visibleExternalRows])
   const selectAllState: "none" | "some" | "all" = useMemo(() => {
@@ -1216,6 +1241,15 @@ export function InboxShell({
           <span className="px-2 text-xs font-medium tabular-nums">
             {t("inbox.shell.bulk.selected", locale, { n: selectedTickets.size })}
           </span>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          {/* Link the selected ticket(s) to a Hub client — the client picker
+              opens upward so it clears the fixed bottom pill. Roy 2026-07-29. */}
+          <LinkToClientPicker
+            openUp
+            label="Link"
+            triggerClassName="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+            onSelect={linkSelectedTicketsToClient}
+          />
           <span className="h-5 w-px bg-border/60" aria-hidden />
           <button
             type="button"

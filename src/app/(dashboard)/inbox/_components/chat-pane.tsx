@@ -2038,7 +2038,7 @@ function ThreadMessages({
               "via channel · N messages" meta sits underneath. Roy 2026-07-28. */}
           <div className="flex items-center gap-1.5 min-w-0">
             <SourceIcon thread={thread} />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <EditableContactName
                 key={thread.threadKey}
                 displayName={thread.primaryName}
@@ -2231,28 +2231,13 @@ function ThreadMessages({
               ) : (
                 <span />
               )}
-              <div className="flex items-center gap-2">
-                {/* Link-to-client lives here (not the header) so the header
-                    stays clean; only shown for unlinked Trengo threads. Opens
-                    upward since it sits at the bottom of the pane. Roy 2026-07-28. */}
-                {!thread.clientName && thread.source === "trengo" && (
-                  <LinkToClientPicker
-                    openUp
-                    threadKey={thread.threadKey}
-                    onLinked={() => {
-                      queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
-                      queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
-                    }}
-                  />
-                )}
-                {isEmail && (
-                  <DismissButton
-                    size="xs"
-                    label={t("inbox.chat.composer_close", locale)}
-                    onClick={() => setEmailComposerOpen(false)}
-                  />
-                )}
-              </div>
+              {isEmail && (
+                <DismissButton
+                  size="xs"
+                  label={t("inbox.chat.composer_close", locale)}
+                  onClick={() => setEmailComposerOpen(false)}
+                />
+              )}
             </div>
           )}
           {needsConnect && (
@@ -2606,35 +2591,21 @@ function ThreadMessages({
           INSIDE the scroll (above), and the bar disappears. Roy 2026-07-26. */}
       {replyable && isEmail && !emailComposerOpen && (
         <div className="shrink-0 border-t border-border bg-card px-3 py-3">
-          <div className="flex items-center gap-2">
-            {/* Link-to-client reachable even before opening the composer, for
-                unlinked Trengo threads. Roy 2026-07-28. */}
-            {!thread.clientName && thread.source === "trengo" && (
-              <LinkToClientPicker
-                openUp
-                threadKey={thread.threadKey}
-                onLinked={() => {
-                  queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
-                  queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
-                }}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                // Opening the reply = taking the ticket: New -> Opgepakt now.
-                onPickup?.()
-                setEmailComposerOpen(true)
-              }}
-              className="flex flex-1 items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
-            >
-              <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
-              <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Send className="h-3.5 w-3.5" />
-              </span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              // Opening the reply = taking the ticket: New -> Opgepakt now.
+              onPickup?.()
+              setEmailComposerOpen(true)
+            }}
+            className="flex w-full items-center gap-2.5 rounded-full border border-border bg-muted/30 py-1.5 pl-4 pr-1.5 text-left text-sm text-muted-foreground/70 transition-colors hover:border-foreground/20 hover:bg-muted/50"
+          >
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground/45" />
+            <span className="flex-1 truncate">{t("inbox.chat.reply", locale)}…</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Send className="h-3.5 w-3.5" />
+            </span>
+          </button>
         </div>
       )}
     </div>
@@ -3084,16 +3055,22 @@ function resolveMentionsAgainstUsers(body: string, users: InboxUser[]): InboxUse
  *  Conflict handling: if the contact is already linked to a different
  *  client, the API returns 409 with the existing client's name; the picker
  *  surfaces that as an inline error. */
-function LinkToClientPicker({
-  threadKey,
-  onLinked,
+/** Client-search popover for attaching a Trengo thread to a Hub client.
+ *  Generic: the caller supplies `onSelect(clientId)` to do the actual link
+ *  (single thread in the chat pane, or all selected threads from the bulk
+ *  action bar). Trigger label + styling are overridable so it fits both the
+ *  `chip` chrome and the bulk-bar chip. Roy 2026-07-29. */
+export function LinkToClientPicker({
+  onSelect,
+  label = "Link to client…",
   openUp = false,
+  triggerClassName,
 }: {
-  threadKey: string
-  onLinked: () => void
-  /** Open the dropdown upward (used in the bottom composer bar where there's
-   *  no room below). */
+  onSelect: (clientId: string) => Promise<void>
+  label?: string
+  /** Open the dropdown upward (used at the bottom of the pane / bulk bar). */
   openUp?: boolean
+  triggerClassName?: string
 }) {
   const locale = useLocale()
   const [open, setOpen] = useState(false)
@@ -3125,27 +3102,13 @@ function LinkToClientPicker({
     c.name.toLowerCase().includes(query.trim().toLowerCase()),
   )
 
-  async function link(clientId: string) {
+  async function pick(clientId: string) {
     setSubmitting(true)
     setError(null)
     try {
-      const res = await fetch(`/api/inbox/threads/${encodeURIComponent(threadKey)}/link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId }),
-      })
-      const data = (await res.json().catch(() => ({}))) as {
-        ok?: boolean
-        error?: string
-        existingClientName?: string
-      }
-      if (!res.ok) {
-        setError(data.error ?? `Link failed (${res.status})`)
-        return
-      }
+      await onSelect(clientId)
       setOpen(false)
       setQuery("")
-      onLinked()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Link failed")
     } finally {
@@ -3156,9 +3119,9 @@ function LinkToClientPicker({
   return (
     <div ref={containerRef} className="relative shrink-0">
       {!open ? (
-        <button type="button" onClick={() => setOpen(true)} className="chip">
+        <button type="button" onClick={() => setOpen(true)} className={triggerClassName ?? "chip"}>
           <Link2 className="h-3.5 w-3.5" />
-          Link to client…
+          {label}
         </button>
       ) : (
         // Absolute overlay so opening the picker doesn't stretch its row.
@@ -3190,7 +3153,7 @@ function LinkToClientPicker({
                 <button
                   key={c.monday_item_id}
                   type="button"
-                  onClick={() => link(c.monday_item_id)}
+                  onClick={() => pick(c.monday_item_id)}
                   disabled={submitting}
                   className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-muted disabled:opacity-50 truncate"
                 >
