@@ -61,3 +61,16 @@ export async function broadcastInvalidate(
     console.error("[broadcastInvalidate] failed:", e instanceof Error ? e.message : e)
   }
 }
+
+/**
+ * Broadcast an inbound-inbox change so every open Hub tab refetches the thread
+ * list, the open thread, and the sidebar badge immediately — instead of waiting
+ * for the 5s client poll. Fired by the Trengo webhook + poll cron the moment a
+ * message lands, so verification codes / client replies surface near-instantly.
+ * Best-effort. Roy 2026-07-29.
+ */
+export async function broadcastInboxInbound(): Promise<void> {
+  await Promise.all(
+    [["inbox-threads"], ["inbox-thread"], ["inbox-badge"]].map((k) => broadcastInvalidate(k)),
+  )
+}

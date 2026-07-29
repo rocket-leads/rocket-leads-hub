@@ -13,6 +13,7 @@ import {
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
 import { fetchTicketMessageHtml } from "@/lib/integrations/trengo"
 import { upsertTrengoContacts, getCanonicalThreadBases } from "@/lib/inbox/trengo-contacts"
+import { broadcastInboxInbound } from "@/lib/realtime/broadcast"
 
 export const maxDuration = 60
 
@@ -572,6 +573,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
   if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
+
+  // Realtime: nudge every open Hub tab to refetch the inbox NOW instead of on
+  // its 5s poll — inbound mail/WhatsApp (verification codes, client replies)
+  // should surface the instant they land. Best-effort. Roy 2026-07-29.
+  if (inserted?.id) void broadcastInboxInbound()
 
   // Fan out @-mentions in internal notes to the mentioned users' Updates
   // tab. One `kind: "update"` row per mentioned Hub user with a body

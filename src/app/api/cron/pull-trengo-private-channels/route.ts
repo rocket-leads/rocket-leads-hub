@@ -23,6 +23,7 @@ import {
   resolveMentionedHubIds,
   type TrengoMentionContext,
 } from "@/lib/inbox/trengo-mentions"
+import { broadcastInboxInbound } from "@/lib/realtime/broadcast"
 
 /**
  * Per-user polling backfill for Trengo private/personal inboxes.
@@ -809,6 +810,11 @@ export async function GET(req: NextRequest) {
         }
       }
     }
+
+    // Realtime: if this cycle ingested anything, nudge open Hub tabs to refetch
+    // the inbox immediately instead of on their 5s poll — private-channel mail
+    // (verification codes) surfaces the instant the poll lands it. Roy 2026-07-29.
+    if (totalEventsInserted > 0) void broadcastInboxInbound()
 
     const metrics = {
       users: users.length,
