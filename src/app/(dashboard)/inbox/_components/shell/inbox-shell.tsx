@@ -376,6 +376,42 @@ export function InboxShell({
   const mentionedOnly = viewMode === "mentioned"
   const [expanded, setExpanded] = useState<Record<ExternalGroup, boolean>>({ whatsapp: true, email: true })
 
+  // Favourite channels → quick-switch tabs. Persisted per-user in localStorage
+  // (a UI preference; no cross-device sync needed). Hydrated after mount to
+  // avoid an SSR mismatch. Roy 2026-07-29.
+  const favKey = `inbox:fav-channels:${currentUser.id}`
+  const [favoriteChannelIds, setFavoriteChannelIds] = useState<number[]>([])
+  const [favoritesHydrated, setFavoritesHydrated] = useState(false)
+  // Set once the user manually switches view, so the default-to-favourite
+  // effect never overrides an in-session choice.
+  const didInitDefaultRef = useRef(false)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(favKey)
+      const parsed = raw ? (JSON.parse(raw) as unknown) : []
+      if (Array.isArray(parsed)) {
+        setFavoriteChannelIds(parsed.filter((x): x is number => typeof x === "number"))
+      }
+    } catch {
+      // ignore malformed / blocked storage
+    }
+    setFavoritesHydrated(true)
+  }, [favKey])
+  const toggleFavorite = useCallback(
+    (id: number) => {
+      setFavoriteChannelIds((prev) => {
+        const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+        try {
+          localStorage.setItem(favKey, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+    },
+    [favKey],
+  )
+
   // Per-channel, per-kind pending counts. Split by kind because a single Trengo
   // "multi-channel" inbox can carry BOTH WhatsApp and email (content-classified
   // via channelKind). A WhatsApp channel's badge must count only WhatsApp
@@ -426,6 +462,26 @@ export function InboxShell({
         : emailEntries.some((e) => e.id === activeChannelId)
           ? "email"
           : null
+
+  // Favourite channels that still exist, in WA-then-email source order → the
+  // quick-switch tabs.
+  const favoriteChannels = useMemo(
+    () => [...waEntries, ...emailEntries].filter((c) => favoriteChannelIds.includes(c.id)),
+    [waEntries, emailEntries, favoriteChannelIds],
+  )
+
+  // Default landing view = the first favourite channel (so the AM doesn't land
+  // on the dangerous "All channels" view). Runs once, after channels + favourites
+  // are ready, and never overrides a manual switch. Roy 2026-07-29.
+  useEffect(() => {
+    if (didInitDefaultRef.current) return
+    if (!favoritesHydrated || identityChannels.length === 0) return
+    didInitDefaultRef.current = true
+    if (favoriteChannels.length > 0) {
+      setViewMode("channel")
+      setSelectedChannelId(favoriteChannels[0].id)
+    }
+  }, [favoritesHydrated, identityChannels.length, favoriteChannels])
 
   // The Mentioned feed is driven by the mention UPDATE rows (one per teammate
   // per note), NOT by intersecting with the loaded thread list - otherwise a
@@ -527,10 +583,14 @@ export function InboxShell({
   }, [mentionByNoteMsgId, toggleNoteMention])
 
   const onSelectChannel = useCallback((id: number) => {
+    didInitDefaultRef.current = true
     setViewMode("channel")
     setSelectedChannelId(id)
   }, [])
-  const onSelectAll = useCallback(() => setViewMode("all"), [])
+  const onSelectAll = useCallback(() => {
+    didInitDefaultRef.current = true
+    setViewMode("all")
+  }, [])
   const toggleExpand = useCallback(
     (group: ExternalGroup) => setExpanded((prev) => ({ ...prev, [group]: !prev[group] })),
     [],
@@ -773,6 +833,7 @@ export function InboxShell({
   )
 
   const selectMentioned = useCallback(() => {
+    didInitDefaultRef.current = true
     setViewMode("mentioned")
     setExtState((s) => (s === "assigned" ? "open" : s))
   }, [])
@@ -833,6 +894,23 @@ export function InboxShell({
     clearTicketSelection()
   }, [selectedTickets, threads, markThread, clearTicketSelection])
 
+  // Two-step confirm before closing a LOT of tickets at once — a safety net so
+  // a stray bulk-close can't silently archive the whole inbox. Under the
+  // threshold it stays one-click. Resets whenever the selection changes.
+  // Roy 2026-07-29.
+  const CLOSE_CONFIRM_THRESHOLD = 10
+  const [confirmClose, setConfirmClose] = useState(false)
+  useEffect(() => {
+    setConfirmClose(false)
+  }, [selectedTickets])
+  const handleBulkClose = useCallback(() => {
+    if (selectedTickets.size >= CLOSE_CONFIRM_THRESHOLD && !confirmClose) {
+      setConfirmClose(true)
+      return
+    }
+    closeSelectedTickets()
+  }, [selectedTickets.size, confirmClose, closeSelectedTickets])
+
   // Link every selected ticket (selection ids ARE thread keys) to the chosen
   // Hub client, then clear the selection + refresh the thread list. Surfaced as
   // "Link" in the bulk action bar. Roy 2026-07-29.
@@ -873,6 +951,9 @@ export function InboxShell({
     })
     lastSelectedRef.current = null
   }, [visibleTicketIds])
+  // No one-click "select all" on the All-channels view — that's how the whole
+  // inbox got closed by accident. Per-channel select-all stays. Roy 2026-07-29.
+  const selectAllOnToggle = viewMode === "all" ? undefined : toggleSelectAll
 
   // --- Composer --------------------------------------------------------------
   const [composerOpen, setComposerOpen] = useState(false)
@@ -958,6 +1039,8 @@ export function InboxShell({
       mentionedOnly={mentionedOnly}
       allCount={allCount}
       mentionedCount={mentionedCount}
+      favoriteIds={favoriteChannelIds}
+      onToggleFavorite={toggleFavorite}
       onSelectAll={onSelectAll}
       onSelectChannel={onSelectChannel}
       onSelectMentioned={selectMentioned}
@@ -1104,7 +1187,7 @@ export function InboxShell({
                 selectedOf={selectable ? (row) => selectedTickets.has(row.id) : undefined}
                 onToggleSelect={selectable ? toggleTicketSelect : undefined}
                 selectAllState={selectAllState}
-                onToggleSelectAll={toggleSelectAll}
+                onToggleSelectAll={selectAllOnToggle}
                 users={users}
                 emptyHint={emptyHint}
               />
@@ -1254,11 +1337,18 @@ export function InboxShell({
           <span className="h-5 w-px bg-border/60" aria-hidden />
           <button
             type="button"
-            onClick={closeSelectedTickets}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+            onClick={handleBulkClose}
+            className={cn(
+              "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+              confirmClose
+                ? "bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400"
+                : "text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400",
+            )}
           >
             <CircleCheck className="h-3.5 w-3.5" />
-            {t("inbox.shell.bulk.close", locale)}
+            {confirmClose
+              ? `Bevestig — sluit ${selectedTickets.size}`
+              : t("inbox.shell.bulk.close", locale)}
           </button>
           <span className="h-5 w-px bg-border/60" aria-hidden />
           <button

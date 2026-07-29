@@ -1,15 +1,16 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { AtSign, ChevronDown, Inbox, Mail, MessageCircle } from "lucide-react"
+import { AtSign, ChevronDown, Inbox, Mail, MessageCircle, Star } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ChannelEntry } from "./external-rail"
 
 /**
- * Compact channel selector that folds the old external rail into the thread-list
- * header — the 2-column 187N Chats layout (list + thread), no separate rail
- * column. A single dropdown switches between Mentioned / All channels / a
- * specific WhatsApp or Email line. Roy 2026-07-24.
+ * Channel switcher for the external inbox. A quick-switch TAB STRIP of the AM's
+ * favourite channels (+ always-present All / Mentioned) with the active tab
+ * clearly highlighted, plus a "More" dropdown that lists every channel and lets
+ * the AM star/unstar them. Replaces the old single dropdown so switching is one
+ * click and it's obvious which channel you're on. Roy 2026-07-29.
  */
 type Props = {
   whatsapp: ChannelEntry[]
@@ -19,9 +20,19 @@ type Props = {
   mentionedOnly: boolean
   allCount: number
   mentionedCount: number
+  /** Channel ids the AM has favourited → rendered as tabs. */
+  favoriteIds: number[]
+  onToggleFavorite: (id: number) => void
   onSelectAll: () => void
   onSelectChannel: (id: number) => void
   onSelectMentioned: () => void
+}
+
+function iconForChannel(
+  id: number,
+  whatsapp: ChannelEntry[],
+): typeof Mail {
+  return whatsapp.some((c) => c.id === id) ? MessageCircle : Mail
 }
 
 export function ChannelPicker({
@@ -32,6 +43,8 @@ export function ChannelPicker({
   mentionedOnly,
   allCount,
   mentionedCount,
+  favoriteIds,
+  onToggleFavorite,
   onSelectAll,
   onSelectChannel,
   onSelectMentioned,
@@ -48,37 +61,53 @@ export function ChannelPicker({
     return () => document.removeEventListener("mousedown", onDoc)
   }, [open])
 
-  const activeChannel = [...whatsapp, ...email].find((c) => c.id === activeChannelId)
-  const CurrentIcon = mentionedOnly
-    ? AtSign
-    : allActive
-      ? Inbox
-      : whatsapp.some((c) => c.id === activeChannelId)
-        ? MessageCircle
-        : email.some((c) => c.id === activeChannelId)
-          ? Mail
-          : Inbox
-  const currentLabel = mentionedOnly
-    ? "Mentioned"
-    : allActive
-      ? "All channels"
-      : activeChannel?.name ?? "All channels"
-  const currentCount = mentionedOnly ? mentionedCount : allActive ? allCount : activeChannel?.unread ?? 0
+  const allChannels = [...whatsapp, ...email]
+  // Favourite channels that still exist, in the WA-then-email order they appear
+  // in the source lists (stable, not the click order).
+  const favoriteChannels = allChannels.filter((c) => favoriteIds.includes(c.id))
+  const favoriteSet = new Set(favoriteIds)
 
   return (
     <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-foreground transition-colors hover:border-foreground/20"
-      >
-        <CurrentIcon className="h-4 w-4 shrink-0 text-muted-foreground/70" />
-        <span className="min-w-0 flex-1 truncate text-left font-medium">{currentLabel}</span>
-        {currentCount > 0 && <span className="nav-badge">{currentCount > 99 ? "99+" : currentCount}</span>}
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform", open && "rotate-180")} />
-      </button>
+      {/* Quick-switch tab strip: All / Mentioned / favourites / More. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="group">
+        <Tab
+          icon={Inbox}
+          label="All"
+          count={allCount}
+          active={allActive && !mentionedOnly}
+          onClick={onSelectAll}
+        />
+        <Tab
+          icon={AtSign}
+          label="Mentioned"
+          count={mentionedCount}
+          active={mentionedOnly}
+          onClick={onSelectMentioned}
+        />
+        {favoriteChannels.map((c) => (
+          <Tab
+            key={c.id}
+            icon={iconForChannel(c.id, whatsapp)}
+            label={c.name}
+            count={c.unread}
+            active={!mentionedOnly && !allActive && activeChannelId === c.id}
+            onClick={() => onSelectChannel(c.id)}
+          />
+        ))}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className={cn("chip h-8", open && "active")}
+          title="More channels"
+        >
+          <Star className="h-3.5 w-3.5" />
+          More
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
 
       {open && (
         <div
@@ -86,22 +115,22 @@ export function ChannelPicker({
           className="absolute left-0 right-0 z-30 mt-1 max-h-[60vh] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
         >
           <Item
-            icon={AtSign}
-            label="Mentioned"
-            count={mentionedCount}
-            active={mentionedOnly}
-            onClick={() => {
-              onSelectMentioned()
-              setOpen(false)
-            }}
-          />
-          <Item
             icon={Inbox}
             label="All channels"
             count={allCount}
             active={allActive && !mentionedOnly}
             onClick={() => {
               onSelectAll()
+              setOpen(false)
+            }}
+          />
+          <Item
+            icon={AtSign}
+            label="Mentioned"
+            count={mentionedCount}
+            active={mentionedOnly}
+            onClick={() => {
+              onSelectMentioned()
               setOpen(false)
             }}
           />
@@ -113,6 +142,8 @@ export function ChannelPicker({
               count={c.unread}
               active={!mentionedOnly && !allActive && activeChannelId === c.id}
               indent
+              favorited={favoriteSet.has(c.id)}
+              onToggleFavorite={() => onToggleFavorite(c.id)}
               onClick={() => {
                 onSelectChannel(c.id)
                 setOpen(false)
@@ -127,6 +158,8 @@ export function ChannelPicker({
               count={c.unread}
               active={!mentionedOnly && !allActive && activeChannelId === c.id}
               indent
+              favorited={favoriteSet.has(c.id)}
+              onToggleFavorite={() => onToggleFavorite(c.id)}
               onClick={() => {
                 onSelectChannel(c.id)
                 setOpen(false)
@@ -136,6 +169,39 @@ export function ChannelPicker({
         </div>
       )}
     </div>
+  )
+}
+
+/** A quick-switch chip tab (187N `.chip` chrome, matching the state tabs). */
+function Tab({
+  icon: Icon,
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  icon: typeof Mail
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn("chip h-8 max-w-[160px]", active && "active")}
+      title={label}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+      {count > 0 && (
+        <span className="font-mono text-[10.5px] tabular-nums opacity-70">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -154,6 +220,8 @@ function Item({
   count,
   active,
   indent,
+  favorited,
+  onToggleFavorite,
   onClick,
 }: {
   icon?: typeof Mail
@@ -161,23 +229,51 @@ function Item({
   count: number
   active: boolean
   indent?: boolean
+  favorited?: boolean
+  onToggleFavorite?: () => void
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={active}
-      onClick={onClick}
+    <div
       className={cn(
-        "flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm transition-colors",
-        indent ? "pl-8" : "pl-2.5",
-        active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        "flex items-center gap-1 rounded-md pr-1 transition-colors",
+        active ? "bg-primary/10" : "hover:bg-muted/60",
       )}
     >
-      {Icon && <Icon className="h-4 w-4 shrink-0" />}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {count > 0 && <span className="nav-badge">{count > 99 ? "99+" : count}</span>}
-    </button>
+      <button
+        type="button"
+        role="option"
+        aria-selected={active}
+        onClick={onClick}
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left text-sm transition-colors",
+          indent ? "pl-8" : "pl-2.5",
+          active ? "font-medium text-primary" : "text-muted-foreground",
+        )}
+      >
+        {Icon && <Icon className="h-4 w-4 shrink-0" />}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {count > 0 && <span className="nav-badge">{count > 99 ? "99+" : count}</span>}
+      </button>
+      {onToggleFavorite && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFavorite()
+          }}
+          aria-pressed={favorited}
+          title={favorited ? "Remove from tabs" : "Add to tabs"}
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors",
+            favorited
+              ? "text-amber-500 hover:text-amber-600"
+              : "text-muted-foreground/30 hover:text-muted-foreground/70",
+          )}
+        >
+          <Star className={cn("h-3.5 w-3.5", favorited && "fill-current")} />
+        </button>
+      )}
+    </div>
   )
 }
