@@ -818,34 +818,87 @@ export async function loadExcludedCustomers(): Promise<Map<string, string>> {
   }
 }
 
+type CustomerLifecycle = {
+  /** Which board the client sits on now. */
+  board: "onboarding" | "current"
+  /** Unix seconds of the onboarding→current transition, when captured. */
+  wentLiveTs?: number
+}
+
 /**
- * Stripe customer id → the Monday board its client sits on. This is the primary
- * New-Business vs MRR signal: a client still on the ONBOARDING board hasn't gone
- * live, so their invoices are New Business; once on the CURRENT-clients board
- * they're recurring MRR. Sourced from the `monday_boards` cache (cron-warmed +
- * webhook-patched) so both Finance and Delivery classify identically without a
- * live Monday fetch. A customer that appears on both boards (a live client with
- * a lingering onboarding sub-row) resolves to "current" - being live wins.
+ * Stripe customer id → lifecycle stage, the signal that splits New Business from
+ * MRR. Two layers:
+ *  - board membership (always available): onboarding = New Business (not live
+ *    yet), current = MRR (live). Sourced from `monday_boards` (cron-warmed +
+ *    webhook-patched) so Finance and Delivery classify identically with no live
+ *    Monday fetch. A customer on both boards resolves to "current" (live wins).
+ *  - `wentLiveTs` (when known): the precise go-live date, stamped in Supabase
+ *    `clients.went_live_at` at the board transition. Lets us classify by
+ *    invoice-date-vs-go-live instead of board-now, so a past month reads
+ *    correctly even after the client has moved to the current board.
+ *
+ * The Stripe id → went_live_at join goes through the Monday item id, NOT
+ * Supabase's `stripe_customer_id` (that mirror is unreliably populated). We take
+ * the earliest went_live_at across a customer's current-board items so adding a
+ * later sub-campaign never resets an already-live client back to New Business.
  */
-async function loadBoardByCustomer(): Promise<Map<string, "onboarding" | "current">> {
+async function loadCustomerLifecycle(): Promise<Map<string, CustomerLifecycle>> {
+  const map = new Map<string, CustomerLifecycle>()
   try {
     const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
-    if (!boards) return new Map()
-    const map = new Map<string, "onboarding" | "current">()
+    if (!boards) return map
+
+    // stripe id → the current-board Monday item ids carrying it (for the go-live lookup)
+    const currentItemsByCustomer = new Map<string, string[]>()
     for (const c of boards.onboarding ?? []) {
       for (const id of parseStripeCustomerIds(c.stripeCustomerId)) {
-        if (!map.has(id)) map.set(id, "onboarding")
+        if (!map.has(id)) map.set(id, { board: "onboarding" })
       }
     }
-    // Current second so it always wins over an onboarding entry for the same id.
     for (const c of boards.current ?? []) {
       for (const id of parseStripeCustomerIds(c.stripeCustomerId)) {
-        map.set(id, "current")
+        map.set(id, { board: "current" }) // current always wins over onboarding
+        const list = currentItemsByCustomer.get(id) ?? []
+        list.push(c.mondayItemId)
+        currentItemsByCustomer.set(id, list)
+      }
+    }
+
+    // Pull went_live_at for every current-board item, then attach the earliest
+    // per customer. Only the item that actually transitioned carries a date;
+    // freshly-created sub-campaign items are null and simply don't contribute.
+    const itemIds = [...new Set([...currentItemsByCustomer.values()].flat())]
+    if (itemIds.length > 0) {
+      const supabase = await createAdminClient()
+      const liveByItem = new Map<string, number>()
+      // Chunk to stay well under any IN() limits on large client bases.
+      for (let i = 0; i < itemIds.length; i += 500) {
+        const chunk = itemIds.slice(i, i + 500)
+        const { data } = await supabase
+          .from("clients")
+          .select("monday_item_id, went_live_at")
+          .in("monday_item_id", chunk)
+        for (const row of data ?? []) {
+          if (row.went_live_at) {
+            liveByItem.set(String(row.monday_item_id), Math.floor(new Date(row.went_live_at).getTime() / 1000))
+          }
+        }
+      }
+      for (const [cus, items] of currentItemsByCustomer) {
+        let earliest: number | undefined
+        for (const itemId of items) {
+          const ts = liveByItem.get(itemId)
+          if (ts != null && (earliest == null || ts < earliest)) earliest = ts
+        }
+        if (earliest != null) {
+          const entry = map.get(cus)
+          if (entry) entry.wentLiveTs = earliest
+        }
       }
     }
     return map
   } catch {
-    return new Map()
+    return map
   }
 }
 
@@ -882,10 +935,9 @@ async function buildInvoiceBreakdown(
   // budget, per-customer rollup, new-business detection, churn base) in one place.
   const excludedCustomerIds = new Set((await loadExcludedCustomers()).keys())
 
-  // Primary New-Business vs MRR signal: which Monday board the customer's client
-  // sits on (onboarding = not live yet = NB, current = live = MRR). See
-  // resolveSubCategory for how this composes with overrides + the fallback.
-  const boardByCustomer = await loadBoardByCustomer()
+  // New-Business vs MRR lifecycle signal per customer (board membership + a
+  // precise go-live date when captured). See resolveSubCategory for precedence.
+  const lifecycleByCustomer = await loadCustomerLifecycle()
 
   // Invoices in period
   const allInvoices: Stripe.Invoice[] = []
@@ -1004,24 +1056,36 @@ async function buildInvoiceBreakdown(
   /**
    * Resolve invoice → "mrr" | "new_business", in precedence order:
    * 1. Manual override (finance_invoice_overrides) - human correction, wins.
-   * 2. Board membership - the lifecycle signal: onboarding-board client = New
-   *    Business (not live yet), current-board client = MRR (live/recurring).
-   *    This is why a client's onboarding invoices (startup fee + first service
-   *    invoice(s)) all count as New Business regardless of how many there are.
-   * 3. Fallback for Stripe customers with no Monday link at all: the old
+   * 2. Precise go-live date (Supabase clients.went_live_at, captured at the
+   *    board transition): invoice dated before go-live = New Business, on/after
+   *    = MRR. Time-accurate for any period, incl. past months.
+   * 3. Board membership (no captured date): onboarding-board client = New
+   *    Business (not live yet), current-board = MRR. This is why a client's
+   *    onboarding invoices (startup fee + first service invoice[s]) all count
+   *    as New Business regardless of how many there are.
+   * 4. Fallback for Stripe customers with no Monday link at all: the old
    *    first-invoice-ever heuristic (no earlier invoice → first-in-period = NB).
+   *
+   * `createdTs` is the unix-seconds date the classification is about: the
+   * invoice's own `created` for invoices, or the original invoice's `created`
+   * for a credit note (so a credit follows the stage of what it credits).
    */
   function resolveSubCategory(
     invoiceId: string | undefined,
     customerId: string | undefined,
     customerIsNewDefault: boolean,
+    createdTs: number,
   ): "mrr" | "new_business" {
     const override = invoiceId ? subCategoryOverrides.get(invoiceId) : undefined
     if (override) return override
 
-    const board = customerId ? boardByCustomer.get(customerId) : undefined
-    if (board === "onboarding") return "new_business"
-    if (board === "current") return "mrr"
+    const life = customerId ? lifecycleByCustomer.get(customerId) : undefined
+    if (life) {
+      if (life.wentLiveTs != null) {
+        return createdTs < life.wentLiveTs ? "new_business" : "mrr"
+      }
+      return life.board === "onboarding" ? "new_business" : "mrr"
+    }
 
     // No Monday link - fall back to the first-invoice heuristic.
     if (!customerIsNewDefault) return "mrr"
@@ -1038,7 +1102,7 @@ async function buildInvoiceBreakdown(
     const isPaid = inv.status === "paid"
     const custId = inv.customer as string
     const isNewByDefault = isNewBusinessCustomer.get(custId) ?? false
-    const subCategory = resolveSubCategory(inv.id, custId, isNewByDefault)
+    const subCategory = resolveSubCategory(inv.id, custId, isNewByDefault, inv.created)
     const invDate = new Date(inv.created * 1000).toISOString().slice(0, 10)
     const invStatus: InvoiceDetail["status"] = isPaid ? "paid" : isOverdue ? "overdue" : "open"
     const customerRow = custId ? ensureCustomer(custId, isNewByDefault) : null
@@ -1093,11 +1157,6 @@ async function buildInvoiceBreakdown(
     let originalInv: Stripe.Invoice | null = invoiceId
       ? allInvoices.find((inv) => inv.id === invoiceId) ?? null
       : null
-    // The credit's MRR/NB classification follows its original invoice - so an
-    // override on the original applies to the credit too. We pass the *original
-    // invoice's* id (not the credit note's id) because resolveSubCategory checks
-    // whether that id is the customer's first-in-period.
-    const cnSubCategory = resolveSubCategory(invoiceId, custId, isNewByDefault)
 
     let creditTier: "credit" | "credit_prev" | "credit_old"
     if (originalInv) {
@@ -1116,6 +1175,14 @@ async function buildInvoiceBreakdown(
     } else {
       creditTier = "credit_old"
     }
+
+    // The credit's MRR/NB classification follows its ORIGINAL invoice: pass the
+    // original invoice id (so an override / first-in-period check keys off it,
+    // not the credit note) and the original's created date (so the go-live
+    // boundary uses when the credited invoice was raised, not when the credit
+    // was issued). Falls back to the credit note's own date when the original
+    // isn't retrievable.
+    const cnSubCategory = resolveSubCategory(invoiceId, custId, isNewByDefault, originalInv?.created ?? cn.created)
 
     const countsAgainstTotal = creditTier === "credit" || creditTier === "credit_prev"
 

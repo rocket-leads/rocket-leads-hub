@@ -62,9 +62,17 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
   // Try update first - preserves columns like column_mapping_override and monday_active
   const { data: existing } = await supabase
     .from("clients")
-    .select("id, trengo_contact_ids")
+    .select("id, trengo_contact_ids, monday_board_type")
     .eq("monday_item_id", client.mondayItemId)
     .single()
+
+  // A client crossing onboarding → current-clients board IS go-live - the
+  // precise New-Business vs MRR boundary. We stamp it as a SEPARATE best-effort
+  // write after the main sync (below), never inline: the `went_live_at` column
+  // may not exist yet on a lagging migration, and a failed write there must not
+  // break the whole client sync.
+  const crossedToLive =
+    !!existing && client.boardType === "current" && existing.monday_board_type === "onboarding"
 
   // trengo_contact_ids is a UNION, never an overwrite: the Hub's "Link to
   // client" button appends extra contact ids (a client can have several Trengo
@@ -99,6 +107,23 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
       .single()
     if (error) throw new Error(`Supabase sync failed: ${error.message}`)
     clientId = data!.id
+  }
+
+  // Stamp go-live on the onboarding → current transition. Best-effort + isolated:
+  //  - `.is("went_live_at", null)` means we never overwrite an existing date, so
+  //    we don't need to read the column first.
+  //  - errors are swallowed - a missing column (migration not yet applied) or any
+  //    blip must not break the sync. Falls back to board-membership classification.
+  if (crossedToLive) {
+    try {
+      await supabase
+        .from("clients")
+        .update({ went_live_at: new Date().toISOString() })
+        .eq("monday_item_id", client.mondayItemId)
+        .is("went_live_at", null)
+    } catch (e) {
+      console.error("went_live_at stamp failed:", e)
+    }
   }
 
   // Seed a default agreement on first sync (or first sync after the feature

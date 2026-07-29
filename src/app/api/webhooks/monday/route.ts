@@ -243,6 +243,10 @@ export async function POST(req: NextRequest) {
     "update_name",
     "create_item",
     "create_pulse",
+    // A move onto the current-clients board is go-live - re-syncing here lets
+    // syncClientToSupabase stamp `went_live_at` the instant it happens (the
+    // daily cron is the backstop if this event isn't delivered).
+    "move_item_to_board",
   ])
   const DELETE_EVENT_TYPES = new Set(["item_deleted", "archive_pulse"])
 
