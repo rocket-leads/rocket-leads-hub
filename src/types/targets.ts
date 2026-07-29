@@ -290,6 +290,13 @@ export interface DeliveryOverview {
   unassignedCustomers: UnassignedCustomer[]
   /** Monday items without a stripe_customer_id - picker pool for manual assignment. */
   unlinkedMondayItems: UnlinkedMondayItem[]
+  /** Stripe customers flagged "not RL revenue" - stripped from all totals, shown for restore. */
+  excludedCustomers: ExcludedCustomer[]
+}
+
+export interface ExcludedCustomer {
+  customerId: string
+  customerName: string
 }
 
 export interface AccountManagerRevenue {

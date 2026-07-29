@@ -795,6 +795,28 @@ async function loadInvoiceOverrides(): Promise<Map<string, "mrr" | "new_business
   }
 }
 
+/**
+ * Stripe customers marked "not Rocket Leads revenue". Their invoices + credit
+ * notes are stripped from every breakdown (Finance, Delivery, churn) so the
+ * money never shows up anywhere. Returns id → snapshotted name; callers that
+ * only need membership build a Set from the keys.
+ */
+export async function loadExcludedCustomers(): Promise<Map<string, string>> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("finance_excluded_customers")
+      .select("stripe_customer_id, customer_name")
+    const map = new Map<string, string>()
+    for (const row of data ?? []) {
+      if (row.stripe_customer_id) map.set(row.stripe_customer_id, row.customer_name ?? row.stripe_customer_id)
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
 interface InvoiceBreakdown {
   total: CategoryBreakdown
   serviceFee: CategoryBreakdown
@@ -823,6 +845,11 @@ async function buildInvoiceBreakdown(
   const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
   const now = Math.floor(Date.now() / 1000)
 
+  // Customers flagged "not RL revenue" are stripped from the raw invoice + credit
+  // note sets below, so they fall out of every downstream total (service fee, ad
+  // budget, per-customer rollup, new-business detection, churn base) in one place.
+  const excludedCustomerIds = new Set((await loadExcludedCustomers()).keys())
+
   // Invoices in period
   const allInvoices: Stripe.Invoice[] = []
   let hasMore = true
@@ -834,7 +861,10 @@ async function buildInvoiceBreakdown(
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     })
     for (const inv of page.data) {
-      if (inv.status !== "draft" && inv.status !== "void") allInvoices.push(inv)
+      if (inv.status === "draft" || inv.status === "void") continue
+      // Skip excluded customers at the source - nothing downstream ever sees them.
+      if (inv.customer && excludedCustomerIds.has(inv.customer as string)) continue
+      allInvoices.push(inv)
     }
     hasMore = page.has_more
     startingAfter = page.data[page.data.length - 1]?.id
@@ -854,6 +884,7 @@ async function buildInvoiceBreakdown(
     })
     cnPagesScanned++
     for (const cn of page.data) {
+      if (cn.customer && excludedCustomerIds.has(cn.customer as string)) continue
       if (cn.created >= startTs && cn.created <= endTs) creditNotes.push(cn)
     }
     cnHasMore = page.has_more
@@ -1090,10 +1121,20 @@ async function buildInvoiceBreakdown(
         }
       }
 
-      // Mirror credit application onto the per-customer rollup so AM totals net out properly.
-      // The credit reduces the same MRR/NB bucket the original invoice belongs to.
-      if (custId && perCustomer.has(custId)) {
-        const row = perCustomer.get(custId)!
+      // Mirror the credit onto the per-customer rollup so the AM/team totals
+      // (and the Delivery leaderboard donut) reconstruct serviceFee.invoiced
+      // EXACTLY. Use ensureCustomer, NOT a `perCustomer.has` guard: a credit_prev
+      // whose customer has no invoice THIS period still reduces serviceFee.invoiced,
+      // so it must reduce a per-customer row too. The old guard skipped those
+      // "orphan" credits, leaving the donut total higher than the KPI by their sum.
+      if (custId) {
+        // Credit-only customers aren't in customerNameCache (that's built from
+        // invoices) - borrow the original invoice's name so the row isn't a bare
+        // cus_… id in the Unassigned fixer.
+        if (!customerNameCache.has(custId) && originalInv?.customer_name) {
+          customerNameCache.set(custId, originalInv.customer_name)
+        }
+        const row = ensureCustomer(custId, isNewByDefault)
         if (cnSubCategory === "new_business") row.feeNewBusiness -= serviceFeeCredit
         else row.feeMrr -= serviceFeeCredit
         row.adAmount -= adBudgetCredit
@@ -1373,11 +1414,20 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
   }
 
   const overrides = await loadInvoiceOverrides()
-  const [breakdown, prevCustomerIds, mondayData] = await Promise.all([
+  const [breakdown, prevCustomerIds, mondayData, excludedMap] = await Promise.all([
     buildInvoiceBreakdown(stripe, startDate, endDate, overrides),
     fetchPrevCustomerIds(),
     fetchBothBoards(),
+    loadExcludedCustomers(),
   ])
+  const excludedCustomers = [...excludedMap.entries()]
+    .map(([customerId, customerName]) => ({ customerId, customerName }))
+    .sort((a, b) => a.customerName.localeCompare(b.customerName))
+
+  // Keep churn honest: an excluded customer is stripped from the current period
+  // (via buildInvoiceBreakdown), so it must also drop from the previous-period
+  // base - otherwise it would read as a churned customer it never was.
+  for (const id of excludedMap.keys()) prevCustomerIds.delete(id)
 
   // Stripe customer ID → Monday entry (account manager + item id). One Monday item can
   // map to MULTIPLE Stripe customer IDs - entity changes, alt payment methods, the same
@@ -1388,7 +1438,15 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
   const allClients = [...mondayData.onboarding, ...mondayData.current]
   for (const client of allClients) {
     const ids = parseStripeCustomerIds(client.stripeCustomerId)
+    const am = client.accountManager?.trim() ?? ""
     for (const id of ids) {
+      const existing = amMap.get(id)
+      // One Stripe customer can span several Monday rows (sub-campaigns share a
+      // customer). Plain last-writer-wins let an empty-AM sub-campaign row clobber
+      // the row that actually carries the Account Manager, dumping the whole
+      // customer into "Unassigned". So: first writer wins, EXCEPT a populated AM
+      // always beats an empty one. Prefer the row that names the AM.
+      if (existing && (existing.accountManager.trim() !== "" || am === "")) continue
       amMap.set(id, {
         accountManager: client.accountManager,
         mondayItemId: client.mondayItemId,
@@ -1557,6 +1615,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     byTeam,
     unassignedCustomers,
     unlinkedMondayItems,
+    excludedCustomers,
   }
 }
 

@@ -143,6 +143,36 @@ async function getBoardConfig(supabase: Awaited<ReturnType<typeof createAdminCli
   return data.value as {
     onboarding_board_id?: string
     current_board_id?: string
+    onboarding_columns?: Record<string, string>
+    current_columns?: Record<string, string>
+  }
+}
+
+/**
+ * Column ids on a given board whose edits change Delivery-tab revenue
+ * attribution: the Account Manager, Campaign Manager, and the Stripe-customer
+ * link. When one of these changes we must drop the delivery cache so the
+ * per-AM rollup + Unassigned list recompute - patching `monday_boards` alone
+ * isn't enough because the delivery cache is a separate, pre-aggregated layer.
+ */
+function deliveryColumnIds(
+  cfg: { onboarding_columns?: Record<string, string>; current_columns?: Record<string, string> },
+  boardType: "onboarding" | "current",
+): Set<string> {
+  const cols = boardType === "onboarding" ? cfg.onboarding_columns : cfg.current_columns
+  const ids = new Set<string>()
+  for (const key of ["account_manager", "campaign_manager", "stripe_customer_id"] as const) {
+    const id = cols?.[key]
+    if (id) ids.add(id)
+  }
+  return ids
+}
+
+async function wipeDeliveryCaches(supabase: Awaited<ReturnType<typeof createAdminClient>>) {
+  try {
+    await supabase.from("cache_store").delete().like("key", "targets_delivery%")
+  } catch (e) {
+    console.warn("[monday-webhook] delivery cache wipe failed:", e instanceof Error ? e.message : e)
   }
 }
 
@@ -217,9 +247,20 @@ export async function POST(req: NextRequest) {
   const DELETE_EVENT_TYPES = new Set(["item_deleted", "archive_pulse"])
 
   if (event.type && SYNC_EVENT_TYPES.has(event.type)) {
+    const boardType = eventBoardId === onboardingBoard ? "onboarding" : "current"
+    // AM/CM/Stripe-link edits and item create/rename all shift Delivery
+    // attribution (who's credited, or whether a Stripe customer matches at
+    // all), so drop the pre-aggregated delivery cache. A column edit only
+    // matters when it hits one of the attribution columns; creates/renames
+    // always matter (new client, new fuzzy-match name).
+    const isColumnEdit = event.type === "change_column_value" || event.type === "change_status_column_value"
+    const affectsDelivery = !isColumnEdit ||
+      (!!event.columnId && deliveryColumnIds(boardConfig, boardType).has(event.columnId))
+    if (affectsDelivery) await wipeDeliveryCaches(supabase)
     return await handleClientSync(event)
   }
   if (event.type && DELETE_EVENT_TYPES.has(event.type)) {
+    await wipeDeliveryCaches(supabase)
     return await handleClientDelete(event)
   }
 
