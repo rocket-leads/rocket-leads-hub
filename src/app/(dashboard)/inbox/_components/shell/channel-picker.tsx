@@ -199,8 +199,16 @@ function Tab({
    *  lighter single-channel chips. Roy 2026-07-29. */
   strong?: boolean
 }) {
-  const dotTone =
-    count === 0 ? "bg-emerald-500" : count < 10 ? "bg-amber-500" : "bg-red-500"
+  // Whole-pill traffic-light tint (non-selected tabs only; the selected tab
+  // keeps the purple .active fill so you always know where you are).
+  const toneClass =
+    dot && !active
+      ? count === 0
+        ? "bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-400"
+        : count < 10
+          ? "bg-amber-500/12 border-amber-500/35 text-amber-700 dark:text-amber-500"
+          : "bg-red-500/12 border-red-500/35 text-red-700 dark:text-red-400"
+      : ""
   return (
     <button
       type="button"
@@ -209,11 +217,11 @@ function Tab({
       className={cn(
         "chip h-8 max-w-[170px]",
         active && "active",
+        toneClass,
         strong && !active && "bg-muted font-semibold text-foreground/80",
       )}
       title={dot ? `${label} — ${count} open` : label}
     >
-      {dot && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} aria-hidden />}
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
       {count > 0 && (
