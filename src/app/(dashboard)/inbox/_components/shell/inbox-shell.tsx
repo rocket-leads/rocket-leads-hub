@@ -194,6 +194,7 @@ function mentionUpdateToFeedRow(
     unreadCount: 0,
     title: contactName,
     preview: u.body,
+    subject: stub.latestSubject,
     clientName: stub.clientName,
     thread: stub,
   }

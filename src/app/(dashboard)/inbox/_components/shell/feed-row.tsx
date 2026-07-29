@@ -42,6 +42,20 @@ type Props = {
   users?: InboxUser[]
 }
 
+/** Drop leading forwarded/quote boilerplate so a no-subject email's fallback
+ *  preview shows real content, not "Begin forwarded message:" etc. Only used
+ *  for the rare subject-less email row. Roy 2026-07-29. */
+function cleanEmailPreview(text: string | null): string | null {
+  if (!text) return text
+  const cleaned = text
+    .replace(
+      /^\s*(begin forwarded message:|-{2,}\s*forwarded message\s*-{2,}|on\s.+?\swrote:)\s*/i,
+      "",
+    )
+    .trim()
+  return cleaned || text.trim()
+}
+
 export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", selectable, selected, onToggleSelect, users }: Props) {
   const locale = useLocale()
   if (row.kind !== "chat" && row.item) {
@@ -129,11 +143,30 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
             </span>
           </div>
           <div className="mt-0.5 flex items-center gap-2">
-            {row.preview ? (
-              <p className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground/70">{row.preview}</p>
-            ) : (
-              <span className="flex-1" />
-            )}
+            {(() => {
+              // Email rows headline the SUBJECT (the "what is this" signal),
+              // falling back to a boilerplate-cleaned body preview when a mail
+              // carries no subject. WhatsApp/other keep the body preview.
+              // Roy 2026-07-29.
+              const secondLine =
+                row.channel === "email"
+                  ? row.subject || cleanEmailPreview(row.preview)
+                  : row.preview
+              return secondLine ? (
+                <p
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[12.5px]",
+                    row.channel === "email"
+                      ? "text-foreground/70"
+                      : "text-muted-foreground/70",
+                  )}
+                >
+                  {secondLine}
+                </p>
+              ) : (
+                <span className="flex-1" />
+              )
+            })()}
             {row.unreadCount > 0 && (
               <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground">
                 {row.unreadCount > 99 ? "99+" : row.unreadCount}

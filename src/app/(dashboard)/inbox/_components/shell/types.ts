@@ -54,6 +54,9 @@ export type FeedRow = {
   unreadCount: number
   title: string
   preview: string | null
+  /** Email subject for chat/email rows (drives the subject-first second line).
+   *  Null for WhatsApp / task / update rows. */
+  subject: string | null
   clientName: string | null
   item?: InboxItem
   thread?: ChatThreadSummary
@@ -79,6 +82,7 @@ export function itemToFeedRow(item: InboxItem): FeedRow | null {
     unreadCount: itemIsUnread(item) ? 1 : 0,
     title: item.title,
     preview: item.body,
+    subject: null,
     clientName: item.clientName,
     item,
   }
@@ -104,10 +108,11 @@ export function threadToFeedRow(thread: ChatThreadSummary): FeedRow | null {
     sortAt: thread.latestAt,
     unread: unreadCount > 0,
     unreadCount,
-    // The row headlines the Trengo contact name (Roy's simplified row: icon +
-    // name + date + preview, nothing else).
+    // Row headlines the Trengo contact name; email rows show the SUBJECT on the
+    // second line (see FeedRow), WhatsApp rows the body preview.
     title: thread.primaryName,
     preview: thread.latestPreview,
+    subject: thread.latestSubject,
     clientName: thread.clientName,
     thread,
   }
