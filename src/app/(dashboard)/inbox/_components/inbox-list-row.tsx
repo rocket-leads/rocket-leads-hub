@@ -196,20 +196,18 @@ export function InboxListRow({
     struck && "line-through",
   )
 
-  // Delivery signal for delegated items ("things I sent to others"): the
-  // internal equivalent of the external "sent" mirror. Seen > Delivered > not.
+  // Opened / not-opened signal for delegated items. The task is ALWAYS in the
+  // assignee's inbox the moment it's created - this only reflects whether they
+  // have opened it yet (seen_at). "Not opened" is neutral (idle), not a warning:
+  // it's delivered to their inbox, just not read. Roy 2026-07-30.
   const deliveryNode = isDelegated ? (
     item.seenAt ? (
-      <span className="st-label live" title={`Seen ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
-        Seen {fmtDeliveryStamp(item.seenAt)}
-      </span>
-    ) : item.notifiedAt ? (
-      <span className="st-label idle" title={`Delivered ${new Date(item.notifiedAt).toLocaleString("en-GB")}`}>
-        Delivered {fmtDeliveryStamp(item.notifiedAt)}
+      <span className="st-label live" title={`Opened ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
+        Opened {fmtDeliveryStamp(item.seenAt)}
       </span>
     ) : (
-      <span className="st-label warn" title="Not delivered to the assignee yet">
-        Not delivered
+      <span className="st-label idle" title="In the assignee's inbox - not opened yet">
+        Not opened
       </span>
     )
   ) : null
