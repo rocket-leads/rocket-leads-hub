@@ -312,7 +312,17 @@ export async function listInboxItems(
     // union. Without an explicit owner the branch is identical to before.
     const owner = filters.owner ?? "assigned"
     if (owner === "created") {
-      query = query.eq("author_id", userId).neq("assignee_id", userId)
+      // Genuine delegations only: authored by me, for someone else, AND created
+      // in the Hub (author_name_cached IS NULL). Webhook-ingested rows (Monday /
+      // Trengo / Slack) force author_id to the shared HQ system account and stash
+      // the real author in author_name_cached - since the signed-in owner often
+      // *is* that HQ account, without this guard every Monday-ingested row looks
+      // "authored by me" and floods Delegated with things I never delegated.
+      // Roy 2026-07-30.
+      query = query
+        .eq("author_id", userId)
+        .neq("assignee_id", userId)
+        .is("author_name_cached", null)
     } else if (owner === "all") {
       query = query.or(`author_id.eq.${userId},assignee_id.eq.${userId}`)
     } else {
