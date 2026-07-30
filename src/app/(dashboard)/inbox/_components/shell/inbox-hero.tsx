@@ -31,14 +31,16 @@ export function InboxHero({
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--st-live)] shadow-[0_0_8px_var(--st-live-glow)]" />
         <span className="uppercase tracking-[0.14em] text-muted-foreground/55">{label} · Live</span>
       </span>
-      <Stat label="New" value={newCount} strong />
-      <Stat label="Opgepakt" value={assignedCount} />
+      {/* Zero counts render no number at all — a stat only shows when it has
+          something to act on. Roy 2026-07-30. */}
+      {newCount > 0 && <Stat label="New" value={newCount} strong />}
+      {assignedCount > 0 && <Stat label="Opgepakt" value={assignedCount} />}
       {/* "Gesloten" total dropped — the closed archive count isn't actionable
           and just added noise. Channel strip shows unread only (the number that
           actually needs a reply), not the full thread total. Roy 2026-07-30. */}
       <span className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1">
         {channels
-          .filter((c) => c.threads > 0)
+          .filter((c) => c.unread > 0)
           .map((c) => (
             <span key={c.label} className="tabular-nums text-muted-foreground/60">
               <span className="uppercase tracking-wide text-muted-foreground/40">{c.label}</span>{" "}

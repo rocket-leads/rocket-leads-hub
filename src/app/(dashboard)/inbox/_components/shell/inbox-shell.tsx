@@ -732,6 +732,25 @@ export function InboxShell({
     ]
   }, [threads, favoriteChannelIds])
 
+  // Open / Opgepakt totals for the COMMS hero, scoped to the AM's FAVOURITE
+  // channels only (falls back to all channels when nothing is favourited) — so
+  // the strip reflects the lines they actually watch, not every channel. The
+  // hero hides any stat that's 0. Roy 2026-07-30.
+  const favScopedCounts = useMemo(() => {
+    const favSet = new Set(favoriteChannelIds)
+    const useFav = favSet.size > 0
+    let open = 0,
+      assigned = 0
+    for (const th of threads) {
+      if (th.channelKind !== "whatsapp" && th.channelKind !== "email") continue
+      if (useFav && !th.channelIds?.some((id) => favSet.has(id))) continue
+      if (th.isArchived) continue
+      if (th.isAssigned) assigned += 1
+      else open += 1
+    }
+    return { open, assigned }
+  }, [threads, favoriteChannelIds])
+
   // Mentioned has no "assigned" state; fall back to Open if it's selected.
   const effectiveState: TicketState = mentionedOnly && extState === "assigned" ? "open" : extState
   const searching = extSearch.trim().length > 0
@@ -1208,8 +1227,8 @@ export function InboxShell({
           locked per-client tabs only; kept on the Mentioned view. Roy 2026-07-30. */}
       {isExternal && !locked && (
         <InboxHero
-          newCount={extCounts.open}
-          assignedCount={extCounts.assigned}
+          newCount={favScopedCounts.open}
+          assignedCount={favScopedCounts.assigned}
           closedCount={extCounts.closed}
           channels={channelStats}
         />
