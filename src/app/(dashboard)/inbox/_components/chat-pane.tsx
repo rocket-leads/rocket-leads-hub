@@ -3617,6 +3617,15 @@ function MessageAttachments({
   /** Match the surrounding bubble so the file chip stays legible. */
   tone: "light" | "dark"
 }) {
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  useEffect(() => {
+    if (!lightbox) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightbox(null)
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [lightbox])
   if (!attachments || attachments.length === 0) return null
   return (
     <div className="mt-1.5 flex flex-col gap-1.5">
@@ -3625,7 +3634,13 @@ function MessageAttachments({
         const label = a.name?.trim() || "Bestand"
         if (a.kind === "image") {
           return (
-            <a key={i} href={src} target="_blank" rel="noopener noreferrer" className="block">
+            <button
+              key={i}
+              type="button"
+              onClick={() => setLightbox(src)}
+              className="block cursor-zoom-in"
+              title={label}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
@@ -3633,7 +3648,7 @@ function MessageAttachments({
                 loading="lazy"
                 className="max-h-72 max-w-full rounded-lg border border-border/60 object-cover"
               />
-            </a>
+            </button>
           )
         }
         if (a.kind === "video") {
@@ -3669,6 +3684,30 @@ function MessageAttachments({
           </a>
         )
       })}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6 cursor-zoom-out backdrop-blur-sm"
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="Close"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-full max-w-full rounded-lg object-contain cursor-default"
+          />
+        </div>
+      )}
     </div>
   )
 }

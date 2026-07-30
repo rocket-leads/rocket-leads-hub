@@ -768,6 +768,23 @@ function isMediaPlaceholderBody(body: string): boolean {
   return MEDIA_PLACEHOLDER_RE.test(body.trim())
 }
 
+/** A short, icon-prefixed label for a thread-list preview when the latest
+ *  message is media-only (so the list shows "📷 Photo" not Trengo's bare
+ *  "Image"). Counts + a mixed fallback for multi-file messages. Roy 2026-07-30. */
+function mediaPreviewLabel(attachments: ChatAttachment[]): string {
+  if (attachments.length === 0) return ""
+  const kinds = new Set(attachments.map((a) => a.kind))
+  const n = attachments.length
+  if (kinds.size === 1) {
+    const k = attachments[0].kind
+    if (k === "image") return n > 1 ? `📷 ${n} photos` : "📷 Photo"
+    if (k === "video") return n > 1 ? `🎥 ${n} videos` : "🎥 Video"
+    if (k === "audio") return n > 1 ? `🎤 ${n} voice messages` : "🎤 Voice message"
+    return n > 1 ? `📎 ${n} files` : "📎 File"
+  }
+  return `📎 ${n} attachments`
+}
+
 /** Infer the coarse attachment kind from a mime type and/or filename/URL. */
 function inferAttachmentKind(mime: string | null, nameOrUrl: string | null): ChatAttachment["kind"] {
   const m = (mime ?? "").toLowerCase()
@@ -1211,7 +1228,18 @@ async function groupAndDecorateChatRows(
     if (isGenericThreadName(primaryName) && clientName) {
       primaryName = clientName
     }
-    const previewSrc = latest.body ?? latest.title ?? ""
+    let previewSrc = latest.body ?? latest.title ?? ""
+    // Media-only latest message → show "📷 Photo" etc. instead of Trengo's bare
+    // "Image" placeholder (or an empty preview). Roy 2026-07-30.
+    const latestAttachments = Array.isArray(latest.attachments)
+      ? latest.attachments.map(toChatAttachment).filter((a): a is ChatAttachment => a !== null)
+      : []
+    if (
+      latestAttachments.length > 0 &&
+      (previewSrc.trim() === "" || isMediaPlaceholderBody(previewSrc))
+    ) {
+      previewSrc = mediaPreviewLabel(latestAttachments)
+    }
     const latestPreview =
       previewSrc.length > 120 ? previewSrc.slice(0, 120) + "…" : previewSrc
     // Surface the freshest email subject across the thread so the list
