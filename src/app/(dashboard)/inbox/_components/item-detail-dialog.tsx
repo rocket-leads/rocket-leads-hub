@@ -7,6 +7,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles, Pencil, X } from "lucide-react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { DialogHeader } from "@/components/ui/dialog"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -1230,6 +1232,7 @@ function KindBanner({
   disabled: boolean
   onChange: (kind: "task" | "update" | "chat") => void
 }) {
+  const locale = useLocale()
   const tone =
     kind === "task"
       ? {
@@ -1237,7 +1240,7 @@ function KindBanner({
           bg: "bg-violet-500/10",
           text: "text-violet-700 dark:text-violet-300",
           icon: ListTodo,
-          label: "Task",
+          label: t("inbox.kind.task", locale),
         }
       : kind === "update"
         ? {
@@ -1245,14 +1248,14 @@ function KindBanner({
             bg: "bg-blue-500/10",
             text: "text-blue-700 dark:text-blue-300",
             icon: InboxIcon,
-            label: "Update",
+            label: t("inbox.kind.update", locale),
           }
         : {
             bar: "bg-muted-foreground/40",
             bg: "bg-muted/40",
             text: "text-foreground/80",
             icon: MessagesSquare,
-            label: "Chat",
+            label: t("inbox.kind.chat", locale),
           }
   const Icon = tone.icon
 

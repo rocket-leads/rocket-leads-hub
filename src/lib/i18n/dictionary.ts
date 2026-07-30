@@ -2859,6 +2859,9 @@ export const DICTIONARY = {
   "inbox.hero.new": { nl: "Nieuw", en: "New" },
   "inbox.hero.picked_up": { nl: "Opgepakt", en: "Picked up" },
   "inbox.hero.unread": { nl: "ongelezen", en: "unread" },
+  "inbox.kind.task": { nl: "Taak", en: "Task" },
+  "inbox.kind.update": { nl: "Update", en: "Update" },
+  "inbox.kind.chat": { nl: "Chat", en: "Chat" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
