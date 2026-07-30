@@ -3,6 +3,8 @@
 import type { ReactNode } from "react"
 import { Check, User, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 export type TicketState = "open" | "assigned" | "closed"
 
@@ -34,23 +36,24 @@ export function TicketStateButtons({
   reverse?: boolean
   className?: string
 }) {
+  const locale = useLocale()
   let primary: { label: string; target: TicketState; tone: "green" | "orange"; Icon: typeof Check }
   let secondary: { label: string; target: TicketState; Icon: typeof Check } | null
 
   if (current === "closed") {
     primary = supportsAssigned
-      ? { label: "Assign", target: "assigned", tone: "orange", Icon: User }
-      : { label: "Open", target: "open", tone: "orange", Icon: Circle }
-    secondary = supportsAssigned ? { label: "Open", target: "open", Icon: Circle } : null
+      ? { label: t("inbox.ticket.assign", locale), target: "assigned", tone: "orange", Icon: User }
+      : { label: t("inbox.ticket.open", locale), target: "open", tone: "orange", Icon: Circle }
+    secondary = supportsAssigned ? { label: t("inbox.ticket.open", locale), target: "open", Icon: Circle } : null
   } else {
     // open OR assigned → the primary is always "Close ticket" (green).
-    primary = { label: "Close ticket", target: "closed", tone: "green", Icon: Check }
+    primary = { label: t("inbox.ticket.close", locale), target: "closed", tone: "green", Icon: Check }
     secondary =
       current === "open"
         ? supportsAssigned
-          ? { label: "Assign", target: "assigned", Icon: User }
+          ? { label: t("inbox.ticket.assign", locale), target: "assigned", Icon: User }
           : null
-        : { label: "Open", target: "open", Icon: Circle } // assigned → reopen
+        : { label: t("inbox.ticket.open", locale), target: "open", Icon: Circle } // assigned → reopen
   }
 
   const PrimaryIcon = primary.Icon

@@ -3,6 +3,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Calendar, AlertCircle, Check, RotateCcw, Link2Off, Clock, UserCog, ListTodo, MessageSquare, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { fmtRelative } from "./chat-pane"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
@@ -11,11 +14,11 @@ export type RowUser = { id: string; name: string | null; email: string }
 
 // 187N status tone per task status → rendered as a bare `.st-label` (dot + mono
 // uppercase, no fill) instead of a filled pill.
-const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; tone: string }> = {
-  open: { label: "Open", tone: "idle" },
-  in_progress: { label: "In progress", tone: "warn" },
-  done: { label: "Done", tone: "live" },
-  cancelled: { label: "Cancelled", tone: "idle" },
+const TASK_STATUS_LABELS: Record<TaskStatus, { key: DictionaryKey; tone: string }> = {
+  open: { key: "inbox.task_status.open", tone: "idle" },
+  in_progress: { key: "inbox.task_status.in_progress", tone: "warn" },
+  done: { key: "inbox.task_status.done", tone: "live" },
+  cancelled: { key: "inbox.task_status.cancelled", tone: "idle" },
 }
 
 /**
@@ -144,6 +147,7 @@ export function InboxListRow({
     item.authorId === currentUserId &&
     item.assigneeId !== currentUserId
   const isUnread = isUpdate && item.status === "unread"
+  const locale = useLocale()
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
   const isCompleted = ["done", "cancelled", "read"].includes(item.status)
@@ -202,12 +206,12 @@ export function InboxListRow({
   // it's delivered to their inbox, just not read. Roy 2026-07-30.
   const deliveryNode = isDelegated ? (
     item.seenAt ? (
-      <span className="st-label live" title={`Opened ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
-        Opened {fmtDeliveryStamp(item.seenAt)}
+      <span className="st-label live" title={t("inbox.row.opened_title", locale, { date: new Date(item.seenAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB") })}>
+        {t("inbox.row.opened", locale, { stamp: fmtDeliveryStamp(item.seenAt) })}
       </span>
     ) : (
-      <span className="st-label idle" title="In the assignee's inbox - not opened yet">
-        Not opened
+      <span className="st-label idle" title={t("inbox.row.not_opened_title", locale)}>
+        {t("inbox.row.not_opened", locale)}
       </span>
     )
   ) : null
@@ -233,7 +237,7 @@ export function InboxListRow({
   const statusNode = isDelegated
     ? deliveryNode
     : taskStatus
-      ? <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span>
+      ? <span className={`st-label ${taskStatus.tone}`}>{t(taskStatus.key, locale)}</span>
       : null
   const metaNodes: ReactNode[] = [
     statusNode,

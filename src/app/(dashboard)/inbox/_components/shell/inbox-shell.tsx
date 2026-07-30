@@ -11,6 +11,7 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import { ComposerDialog } from "../composer-dialog"
 import { LinkToClientPicker } from "../chat-pane"
 import { NewMessageDialog, type NewMessageChannel } from "../new-message-dialog"
@@ -48,9 +49,9 @@ type InboxScope = "internal" | "external"
 type InternalView = "mine" | "delegated"
 const REFETCH_MS = 5000
 const ALL_TYPES: InternalType[] = ["task", "update"]
-const INTERNAL_VIEWS: Array<{ id: InternalView; label: string }> = [
-  { id: "mine", label: "My items" },
-  { id: "delegated", label: "Delegated" },
+const INTERNAL_VIEWS: Array<{ id: InternalView; key: DictionaryKey }> = [
+  { id: "mine", key: "inbox.scope.my_items" },
+  { id: "delegated", key: "inbox.scope.delegated" },
 ]
 
 function mentionThreadKey(item: InboxItem): string | null {
@@ -1334,7 +1335,7 @@ export function InboxShell({
           isExternal ? (
             <Button size="sm" className="ml-1" onClick={() => setNewMessageOpen(true)}>
               <Plus className="h-4 w-4" />
-              New message
+              {t("inbox.shell.new_message", locale)}
             </Button>
           ) : (
             <NewItemButton onPick={openComposer} />
@@ -1494,7 +1495,7 @@ export function InboxShell({
                         : "text-foreground/70",
                     )}
                   >
-                    {v.label}
+                    {t(v.key, locale)}
                   </button>
                 ))}
               </div>

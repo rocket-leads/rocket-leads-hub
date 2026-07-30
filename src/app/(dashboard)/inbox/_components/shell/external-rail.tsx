@@ -2,6 +2,8 @@
 
 import { AtSign, Inbox, MessageCircle, Mail, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 /** One selectable channel in the external rail (a single Trengo WhatsApp line
  *  or email account the user is subscribed to). `unread` = tickets awaiting a
@@ -56,13 +58,14 @@ export function ExternalRail({
   onSelectMentioned,
   loading,
 }: Props) {
+  const locale = useLocale()
   const groups: Array<{ key: ExternalGroup; channels: ChannelEntry[] }> = [
     { key: "whatsapp", channels: whatsapp },
     { key: "email", channels: email },
   ]
 
   return (
-    <div className="flex flex-col gap-1" role="navigation" aria-label="External channels">
+    <div className="flex flex-col gap-1" role="navigation" aria-label={t("inbox.external.nav_aria", locale)}>
       {/* Mentioned view - all tickets you're @-mentioned in, across channels. */}
       <button
         type="button"
@@ -76,7 +79,7 @@ export function ExternalRail({
         )}
       >
         <AtSign className="h-4 w-4 shrink-0" />
-        <span>Mentioned</span>
+        <span>{t("inbox.external.mentioned", locale)}</span>
         <CountPill n={mentionedCount} />
       </button>
 
@@ -94,17 +97,17 @@ export function ExternalRail({
         )}
       >
         <Inbox className="h-4 w-4 shrink-0" />
-        <span>All channels</span>
+        <span>{t("inbox.external.all_channels", locale)}</span>
         <CountPill n={allCount} />
       </button>
 
       {loading && whatsapp.length === 0 && email.length === 0 ? (
         <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground/60">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading channels…
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("inbox.external.loading", locale)}
         </div>
       ) : whatsapp.length === 0 && email.length === 0 ? (
         <p className="px-3 py-3 text-xs text-muted-foreground/60">
-          No channels connected. Add them in Account settings.
+          {t("inbox.external.none", locale)}
         </p>
       ) : (
         groups.map(({ key, channels }) => {

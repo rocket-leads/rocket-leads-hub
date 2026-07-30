@@ -2835,6 +2835,27 @@ export const DICTIONARY = {
   "calendar.task.priority.high": { nl: "Hoog", en: "High" },
   "calendar.task.priority.normal": { nl: "Normaal", en: "Normal" },
   "calendar.task.priority.low": { nl: "Laag", en: "Low" },
+
+  // ── Inbox chrome (i18n pass) ──────────────────────────────────────────────
+  "inbox.ticket.close": { nl: "Ticket sluiten", en: "Close ticket" },
+  "inbox.ticket.assign": { nl: "Toewijzen", en: "Assign" },
+  "inbox.ticket.open": { nl: "Openen", en: "Open" },
+  "inbox.external.nav_aria": { nl: "Externe kanalen", en: "External channels" },
+  "inbox.external.mentioned": { nl: "Genoemd", en: "Mentioned" },
+  "inbox.external.all_channels": { nl: "Alle kanalen", en: "All channels" },
+  "inbox.external.loading": { nl: "Kanalen laden…", en: "Loading channels…" },
+  "inbox.external.none": { nl: "Geen kanalen gekoppeld. Voeg ze toe in Account-instellingen.", en: "No channels connected. Add them in Account settings." },
+  "inbox.task_status.open": { nl: "Open", en: "Open" },
+  "inbox.task_status.in_progress": { nl: "Bezig", en: "In progress" },
+  "inbox.task_status.done": { nl: "Klaar", en: "Done" },
+  "inbox.task_status.cancelled": { nl: "Geannuleerd", en: "Cancelled" },
+  "inbox.row.not_opened": { nl: "Niet geopend", en: "Not opened" },
+  "inbox.row.opened": { nl: "Geopend {stamp}", en: "Opened {stamp}" },
+  "inbox.row.not_opened_title": { nl: "In de inbox van de toegewezen persoon – nog niet geopend", en: "In the assignee's inbox - not opened yet" },
+  "inbox.row.opened_title": { nl: "Geopend {date}", en: "Opened {date}" },
+  "inbox.scope.my_items": { nl: "Mijn items", en: "My items" },
+  "inbox.scope.delegated": { nl: "Gedelegeerd", en: "Delegated" },
+  "inbox.shell.new_message": { nl: "Nieuw bericht", en: "New message" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
