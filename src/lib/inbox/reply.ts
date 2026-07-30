@@ -451,14 +451,13 @@ export async function sendTrengoReplyAsUser(
 
   if (email) {
     if (email.subject?.trim()) payload.subject = email.subject.trim()
-    // Trengo's v2 message endpoint 500'd on cc/bcc-as-array during the
-    // Phase 3 probe but accepted cc-as-string. Receive-side `email_message.cc`
-    // is also a single value - treating it as a comma-separated string keeps
-    // both sides consistent. Empty arrays produce no header (correct).
-    const ccStr = (email.cc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
-    const bccStr = (email.bcc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
-    if (ccStr) payload.cc = ccStr
-    if (bccStr) payload.bcc = bccStr
+    // Trengo IGNORES a comma-joined `cc` STRING (verified 2026-07-30:
+    // email_message.cc came back "" — the extra recipient was dropped). Send
+    // cc/bcc as ARRAYS of addresses instead. Roy 2026-07-30.
+    const ccArr = (email.cc ?? []).map((s) => s.trim()).filter(Boolean)
+    const bccArr = (email.bcc ?? []).map((s) => s.trim()).filter(Boolean)
+    if (ccArr.length) payload.cc = ccArr
+    if (bccArr.length) payload.bcc = bccArr
   }
 
   // Retry on 429 with backoff: the AM's token is shared with the every-minute

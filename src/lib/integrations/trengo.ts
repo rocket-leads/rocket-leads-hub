@@ -537,12 +537,15 @@ export async function sendEmailToAddressAsUser(args: {
  *  array 500'd during the Phase 3 probe). Returns the partial payload to spread
  *  into a /messages POST; omits empty fields entirely. Shared by every outbound
  *  email path so the wire format stays consistent. */
-function emailCcBccPayload(cc?: string[], bcc?: string[]): Record<string, string> {
-  const out: Record<string, string> = {}
-  const ccStr = (cc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
-  const bccStr = (bcc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
-  if (ccStr) out.cc = ccStr
-  if (bccStr) out.bcc = bccStr
+function emailCcBccPayload(cc?: string[], bcc?: string[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  const ccArr = (cc ?? []).map((s) => s.trim()).filter(Boolean)
+  const bccArr = (bcc ?? []).map((s) => s.trim()).filter(Boolean)
+  // Trengo's v2 message endpoint IGNORES a comma-joined `cc` string (verified
+  // 2026-07-30: email_message.cc came back "" — the 2nd recipient was dropped).
+  // Send cc/bcc as ARRAYS of addresses, the standard REST shape. Roy 2026-07-30.
+  if (ccArr.length) out.cc = ccArr
+  if (bccArr.length) out.bcc = bccArr
   return out
 }
 
@@ -555,19 +558,23 @@ async function sendBodyIntoTicket(args: {
   bcc?: string[]
   attachmentIds?: number[]
 }): Promise<{ ticketId: string; messageId: string }> {
-  const sendRes = await trengoPostWithRetry(
-    `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`,
-    args.userToken,
-    {
-      message: args.body,
-      subject: args.subject,
-      internal_note: false,
-      ...(args.attachmentIds && args.attachmentIds.length > 0
-        ? { attachment_ids: args.attachmentIds }
-        : {}),
-      ...emailCcBccPayload(args.cc, args.bcc),
-    },
-  )
+  const base = {
+    message: args.body,
+    subject: args.subject,
+    internal_note: false,
+    ...(args.attachmentIds && args.attachmentIds.length > 0
+      ? { attachment_ids: args.attachmentIds }
+      : {}),
+  }
+  const ccBcc = emailCcBccPayload(args.cc, args.bcc)
+  const url = `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`
+  let sendRes = await trengoPostWithRetry(url, args.userToken, { ...base, ...ccBcc })
+  // Graceful fallback: if Trengo rejects the cc/bcc-carrying payload, retry
+  // without them so the PRIMARY recipient still gets the email rather than the
+  // whole send failing. Roy 2026-07-30.
+  if (!sendRes.ok && Object.keys(ccBcc).length > 0) {
+    sendRes = await trengoPostWithRetry(url, args.userToken, base)
+  }
   if (!sendRes.ok) {
     const errText = await sendRes.text().catch(() => "")
     throw new Error(
@@ -653,19 +660,20 @@ export async function createEmailMessageForContact(args: {
   // Step 2 - send the message into the new ticket. Mirrors the regular
   // outbound email reply payload (subject re-stated for clarity even
   // though the ticket already carries it).
-  const sendRes = await trengoPostWithRetry(
-    `https://app.trengo.com/api/v2/tickets/${ticketId}/messages`,
-    args.userToken,
-    {
-      message: args.body,
-      subject: args.subject,
-      internal_note: false,
-      ...(args.attachmentIds && args.attachmentIds.length > 0
-        ? { attachment_ids: args.attachmentIds }
-        : {}),
-      ...emailCcBccPayload(args.cc, args.bcc),
-    },
-  )
+  const base2 = {
+    message: args.body,
+    subject: args.subject,
+    internal_note: false,
+    ...(args.attachmentIds && args.attachmentIds.length > 0
+      ? { attachment_ids: args.attachmentIds }
+      : {}),
+  }
+  const ccBcc2 = emailCcBccPayload(args.cc, args.bcc)
+  const url2 = `https://app.trengo.com/api/v2/tickets/${ticketId}/messages`
+  let sendRes = await trengoPostWithRetry(url2, args.userToken, { ...base2, ...ccBcc2 })
+  if (!sendRes.ok && Object.keys(ccBcc2).length > 0) {
+    sendRes = await trengoPostWithRetry(url2, args.userToken, base2)
+  }
   if (!sendRes.ok) {
     const errText = await sendRes.text().catch(() => "")
     throw new Error(
