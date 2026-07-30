@@ -13,13 +13,14 @@ export type InboxHeroChannel = { label: string; threads: number; unread: number 
 export function InboxHero({
   newCount,
   assignedCount,
-  closedCount,
   channels,
   label = "Comms",
 }: {
   newCount: number
   assignedCount: number
-  closedCount: number
+  /** Closed/archived total — accepted for API compatibility but no longer
+   *  shown (not actionable). Roy 2026-07-30. */
+  closedCount?: number
   channels: InboxHeroChannel[]
   /** Leading strip label — "Comms" (external) / "Workspace" (internal). */
   label?: string
@@ -32,14 +33,16 @@ export function InboxHero({
       </span>
       <Stat label="New" value={newCount} strong />
       <Stat label="Opgepakt" value={assignedCount} />
-      <Stat label="Gesloten" value={closedCount} />
+      {/* "Gesloten" total dropped — the closed archive count isn't actionable
+          and just added noise. Channel strip shows unread only (the number that
+          actually needs a reply), not the full thread total. Roy 2026-07-30. */}
       <span className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1">
         {channels
           .filter((c) => c.threads > 0)
           .map((c) => (
             <span key={c.label} className="tabular-nums text-muted-foreground/60">
               <span className="uppercase tracking-wide text-muted-foreground/40">{c.label}</span>{" "}
-              {c.threads} · {c.unread} unread
+              {c.unread} unread
             </span>
           ))}
       </span>

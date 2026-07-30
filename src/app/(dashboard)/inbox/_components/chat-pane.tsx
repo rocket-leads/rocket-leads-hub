@@ -2127,7 +2127,7 @@ function ThreadMessages({
           caps the reading column so the conversation stays comfortable on
           wide monitors instead of stretching edge-to-edge - Roy 2026-07-15
           "chat box ineens heel erg breed". */}
-      <div ref={scrollRef} className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto bg-background/40">
+      <div ref={scrollRef} className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto bg-muted/50">
         <div className={cn("mx-auto w-full min-w-0 space-y-3 px-4 py-3", isEmail ? "max-w-3xl" : "max-w-4xl")}>
           {messagesQuery.isLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -2707,37 +2707,81 @@ function WhatsAppTemplateControls({
   onParamChange: (idx: number, value: string) => void
 }) {
   const locale = useLocale()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  const triggerLabel = selectedTemplate
+    ? `${selectedTemplate.title}${selectedTemplate.language ? ` (${selectedTemplate.language})` : ""}`
+    : loading
+      ? t("inbox.chat.loading_templates", locale)
+      : templates.length === 0
+        ? t("inbox.chat.no_templates", locale)
+        : t("inbox.chat.select_template", locale)
+
   return (
     <div className="rounded-md border border-border/60 bg-background p-2.5 mb-2 space-y-2">
       <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
         {t("inbox.chat.wa_template", locale)}
       </label>
-      <div className="relative">
-        <select
-          value={selectedTemplate?.id ?? ""}
-          onChange={(e) => {
-            const id = parseInt(e.target.value, 10)
-            const t = templates.find((x) => x.id === id) ?? null
-            onPick(t)
-          }}
+      {/* 187N dropdown (was a bare OS <select>: off-theme + it didn't reflect
+          the picked template). Trigger shows the selection explicitly; the list
+          opens upward since the composer sits at the bottom. Roy 2026-07-30. */}
+      <div ref={ref} className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
           disabled={loading || templates.length === 0}
-          className="w-full h-8 pl-2.5 pr-7 rounded-md border border-input bg-background text-xs appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-card px-2.5 text-xs transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
         >
-          <option value="">
-            {loading
-              ? t("inbox.chat.loading_templates", locale)
-              : templates.length === 0
-                ? t("inbox.chat.no_templates", locale)
-                : t("inbox.chat.select_template", locale)}
-          </option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title}
-              {t.language ? ` (${t.language})` : ""}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <span className={cn("min-w-0 flex-1 truncate text-left", !selectedTemplate && "text-muted-foreground/60")}>
+            {triggerLabel}
+          </span>
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform", open && "rotate-180")} />
+        </button>
+        {open && templates.length > 0 && (
+          <div
+            role="listbox"
+            className="absolute bottom-full left-0 right-0 z-30 mb-1 max-h-[280px] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+          >
+            {templates.map((tpl) => {
+              const active = selectedTemplate?.id === tpl.id
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onPick(tpl)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+                    active
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {tpl.title}
+                    {tpl.language ? ` (${tpl.language})` : ""}
+                  </span>
+                  {active && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
       {error && (
         <p className="text-[11px] text-destructive">{t("inbox.chat.templates_load_failed", locale)}{error}</p>
@@ -3682,12 +3726,12 @@ function MessageBubble({
         className={cn(
           // 187N chat bubble: rounded with a small tail corner (bottom-right for
           // our sends, bottom-left for theirs), soft shadow. Roy 2026-07-24.
-          "min-w-0 max-w-[75%] rounded-2xl px-3.5 py-2.5 shadow-xs",
+          "min-w-0 max-w-[75%] rounded-2xl px-3.5 py-2.5 shadow-sm",
           isInternal
             ? "rounded-bl-md border border-amber-500/30 bg-amber-500/15 text-foreground"
             : isUs
               ? "rounded-br-md bg-primary text-primary-foreground"
-              : "rounded-bl-md border border-border/50 bg-card",
+              : "rounded-bl-md border border-border bg-card",
         )}
       >
         <div className="flex items-baseline gap-2 mb-0.5">
