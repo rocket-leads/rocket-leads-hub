@@ -3726,12 +3726,12 @@ function MessageBubble({
         className={cn(
           // 187N chat bubble: rounded with a small tail corner (bottom-right for
           // our sends, bottom-left for theirs), soft shadow. Roy 2026-07-24.
-          "min-w-0 max-w-[75%] rounded-2xl px-3.5 py-2.5 shadow-sm",
+          "min-w-0 max-w-[75%] rounded-2xl px-3.5 py-2.5",
           isInternal
-            ? "rounded-bl-md border border-amber-500/30 bg-amber-500/15 text-foreground"
+            ? "rounded-bl-md border border-amber-500/30 bg-amber-500/15 text-foreground shadow-sm"
             : isUs
-              ? "rounded-br-md bg-primary text-primary-foreground"
-              : "rounded-bl-md border border-border bg-card",
+              ? "rounded-br-md bg-primary text-primary-foreground shadow-md shadow-primary/30"
+              : "rounded-bl-md border border-border bg-card shadow-sm",
         )}
       >
         <div className="flex items-baseline gap-2 mb-0.5">

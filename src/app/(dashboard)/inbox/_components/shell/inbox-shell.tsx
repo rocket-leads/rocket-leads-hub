@@ -650,10 +650,15 @@ export function InboxShell({
     return c
   }, [extBase, mentionedOnly, mentionDone])
 
-  // Per-channel-kind threads + unread, for the compact COMMS hero strip.
+  // Per-channel-kind threads + unread for the compact COMMS hero strip. Scoped
+  // to the AM's FAVOURITE channels (the ones they care about) — falls back to
+  // all channels when nothing is favourited yet. Roy 2026-07-30.
   const channelStats = useMemo(() => {
+    const favSet = new Set(favoriteChannelIds)
+    const useFav = favSet.size > 0
     let waT = 0, waU = 0, emT = 0, emU = 0
     for (const th of threads) {
+      if (useFav && !th.channelIds?.some((id) => favSet.has(id))) continue
       const isOpen = !th.isArchived && !th.isAssigned
       const unread = isOpen && th.unreadCount > 0 ? 1 : 0
       if (th.channelKind === "whatsapp") { waT += 1; waU += unread }
@@ -663,7 +668,7 @@ export function InboxShell({
       { label: "WhatsApp", threads: waT, unread: waU },
       { label: "Email", threads: emT, unread: emU },
     ]
-  }, [threads])
+  }, [threads, favoriteChannelIds])
 
   // Mentioned has no "assigned" state; fall back to Open if it's selected.
   const effectiveState: TicketState = mentionedOnly && extState === "assigned" ? "open" : extState
