@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { Calendar, MessageCircle, AlertCircle, Check, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2 } from "lucide-react"
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { Calendar, AlertCircle, Check, RotateCcw, Link2Off, Clock, UserCog, ListTodo, MessageSquare, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SourcePill } from "./source-pill"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
+import { fmtRelative } from "./chat-pane"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
 
 export type RowUser = { id: string; name: string | null; email: string }
@@ -160,6 +160,89 @@ export function InboxListRow({
   // sits before the read bubble.
   const showSelectCheckbox = onToggleSelect !== undefined
 
+  // 187N calm-row (Roy 2026-07-30): bring the internal task/update rows to the
+  // exact same shape as the external chat rows (feed-row.tsx) so the internal
+  // inbox reads as calm and fluent, not a dense Monday grid. Structure now
+  // mirrors the external row 1:1:
+  //   [ kind-tile ] [ subject + relative-time | detail-line | tiny meta ] [ hover actions ]
+  // The loud left rail, source pill, author→assignee trail and always-on big
+  // action buttons are gone; kind is carried by a soft tinted icon tile, and
+  // the Done/Delete actions are hover-revealed like the external row's affordances.
+  const KindIcon = isUpdate ? MessageSquare : ListTodo
+  const iconTint = isUpdate ? "text-sky-500" : "text-violet-500"
+  // Unread/active drives the bold treatment (mirrors external: unread = bold).
+  const needsAttention = isUpdate
+    ? isUnread
+    : item.status === "open" || item.status === "in_progress"
+  const struck = item.status === "done" || item.status === "cancelled"
+
+  // Subject = the row's headline. With a client we lead on the client name
+  // (like the external row leads on the contact); otherwise the title itself.
+  const hasClientName =
+    showClient && !item.isUnlinked && !!item.clientName && item.clientName !== "(unknown)"
+  const isUnlinkedRow = showClient && item.isUnlinked
+  const clientLeads = hasClientName || isUnlinkedRow
+  const subjectClass = cn(
+    "min-w-0 truncate text-[13.5px]",
+    isUnlinkedRow
+      ? "font-semibold text-amber-500/90 dark:text-amber-400"
+      : needsAttention
+        ? "font-semibold text-foreground"
+        : "font-medium text-foreground/85",
+    struck && "text-muted-foreground/70 line-through",
+  )
+  const detailClass = cn(
+    "min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground/75",
+    struck && "line-through",
+  )
+
+  // Delivery signal for delegated items ("things I sent to others"): the
+  // internal equivalent of the external "sent" mirror. Seen > Delivered > not.
+  const deliveryNode = isDelegated ? (
+    item.seenAt ? (
+      <span className="st-label live" title={`Seen ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
+        Seen {fmtDeliveryStamp(item.seenAt)}
+      </span>
+    ) : item.notifiedAt ? (
+      <span className="st-label idle" title={`Delivered ${new Date(item.notifiedAt).toLocaleString("en-GB")}`}>
+        Delivered {fmtDeliveryStamp(item.notifiedAt)}
+      </span>
+    ) : (
+      <span className="st-label warn" title="Not delivered to the assignee yet">
+        Not delivered
+      </span>
+    )
+  ) : null
+
+  // Tiny meta line — only what earns its place: task status, delivery signal,
+  // the assignee (delegated only; in "my items" it's always me = noise), and
+  // the due date. Rendered only when there's something to show.
+  const dueNode = item.dueDate ? (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 font-mono tabular-nums",
+        fmtDueDate(item.dueDate).overdue && "text-red-400",
+      )}
+    >
+      <Calendar className="h-3 w-3" />
+      {fmtDueDate(item.dueDate).text}
+    </span>
+  ) : null
+  const metaNodes: ReactNode[] = [
+    taskStatus ? <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span> : null,
+    deliveryNode,
+    isDelegated ? <span className="truncate">→ {item.assigneeName}</span> : null,
+    dueNode,
+  ].filter(Boolean)
+
+  const titleEditable = onAction != null
+  const renderTitle = (className: string) =>
+    titleEditable ? (
+      <RowTitle title={item.title} statusClass={className} onSave={(title) => onAction!({ type: "rename", title })} />
+    ) : (
+      <span className={className}>{item.title}</span>
+    )
+
   return (
     <div
       role="button"
@@ -173,45 +256,18 @@ export function InboxListRow({
       }}
       data-inbox-row-id={item.id}
       className={cn(
-        // 187N compact row (Roy 2026-07-24): no heavy card/border/shadow, tight
-        // padding, soft wash on hover/active. The type rail (left) stays as the
-        // task-vs-update signal; pl-5 keeps content clear of it.
-        "group relative w-full cursor-pointer overflow-hidden rounded-lg px-3 py-2.5 pl-5 text-left transition-colors",
-        "hover:bg-muted/50",
-        selected && "bg-primary/[0.07]",
-        keyboardFocused && "bg-primary/[0.07]",
+        // Same chrome as the external chat row: compact padding, soft wash on
+        // hover, purple wash when active/selected. No rail, no border.
+        "group relative w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors",
+        selected || keyboardFocused ? "bg-primary/[0.07]" : "hover:bg-muted/50",
         isCompleted && "opacity-60",
       )}
     >
-      {/* Type rail on the left edge - always rendered (so type is visible
-          at a glance on every row), but dimmed to ~45% when the item is
-          done/cancelled/read so completed rows visually recede. Unread
-          updates get the rail at full saturation: the rail does double
-          duty as the unread signal, which keeps a single column of meaning
-          on the left edge instead of two competing stripes. */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute left-0 top-0 bottom-0 w-1",
-          kindTreatment.rail,
-          isCompleted && "opacity-40",
-        )}
-      />
-      {/* Subtle background tint for unread updates - kept from the old
-          treatment because the rail alone isn't quite strong enough on a
-          dense list. The colour is sky-tinted to match the Update rail
-          (was primary/violet before, which clashed with the new Task rail). */}
-      {isUnread && (
-        <span
-          aria-hidden
-          className={cn("absolute inset-0 pointer-events-none", kindTreatment.tint)}
-        />
-      )}
-      <div className="flex items-start gap-3">
-        {/* Bulk-select checkbox for tasks. Hover-revealed by default, pinned
-            visible when this row is selected so the AM can see what's in their
-            current batch without hovering. Clicking it doesn't open the row. */}
-        {showSelectCheckbox && (
+      <div className="flex items-start gap-2.5">
+        {/* Kind tile — a soft square carrying the task/update icon (tinted so
+            kind still reads at a glance). Morphs into a bulk-select checkbox on
+            hover / when selected, exactly like the external row's avatar. */}
+        {showSelectCheckbox ? (
           <button
             type="button"
             role="checkbox"
@@ -220,169 +276,84 @@ export function InboxListRow({
               e.stopPropagation()
               onToggleSelect?.()
             }}
-            className={cn(
-              "h-5 w-5 shrink-0 rounded border-2 inline-flex items-center justify-center mt-0.5 transition-all",
-              selected
-                ? "bg-primary border-primary text-primary-foreground"
-                // Always visible but muted by default so the affordance is
-                // discoverable without hover. Sharpens on hover/focus.
-                : "border-muted-foreground/40 opacity-40 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40",
-            )}
             title={selected ? "Deselecteer" : "Selecteer voor bulk-actie"}
+            className="relative flex h-9 w-9 shrink-0 items-center justify-center self-start"
           >
-            {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+            <span
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground opacity-100"
+                  : "border-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:border-foreground",
+              )}
+            >
+              {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+            </span>
+            <span
+              className={cn(
+                "pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-muted/70 transition-opacity",
+                selected ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+              )}
+            >
+              <KindIcon className={cn("h-4 w-4", iconTint)} />
+            </span>
           </button>
+        ) : (
+          <span
+            aria-label={kindTreatment.label}
+            title={kindTreatment.label}
+            className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-lg bg-muted/70"
+          >
+            <KindIcon className={cn("h-4 w-4", iconTint, isCompleted && "opacity-50")} />
+          </span>
         )}
 
-        <div className="flex-1 min-w-0">
-          {/* Visual hierarchy (Roy 2026-06-10):
-                1. Client - small bold, 14px. Scannable as the row's
-                   subject, but doesn't outrank the headline.
-                2. Title - 15px bold, the main signal. "What happened."
-                   When there's no client (orphan / locked view) the
-                   title is promoted to 16px to stay the row's anchor.
-                3. Meta - 11px muted. Kind dot, source, status, people,
-                   date, due, comments - all visually recessed.
-              The left rail still carries kind colour for peripheral
-              scanning; the bordered TYPE chip is gone (dot+label only)
-              so it stops competing with the headline. */}
-
-          {/* Row 1 - client. Compact, bold; reads as the row's subject. */}
-          {showClient && item.isUnlinked && (
-            <div className="flex items-center gap-1.5 min-w-0 mb-0.5">
-              <Link2Off className="h-3.5 w-3.5 text-amber-500/90 dark:text-amber-400 shrink-0" />
-              <span
-                className="text-sm font-semibold text-amber-500/90 dark:text-amber-400 truncate"
-                title="This Trengo contact isn't linked to a client yet"
-              >
-                Unlinked contact
-              </span>
-              {isHighPriority && (
-                <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-              )}
-            </div>
-          )}
-          {showClient && !item.isUnlinked && item.clientName && item.clientName !== "(unknown)" && (
-            <div className="flex items-center gap-2 min-w-0 mb-0.5">
-              <span className="text-sm font-semibold text-foreground/90 truncate">
-                {item.clientName}
-              </span>
-              {isHighPriority && (
-                <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-              )}
-            </div>
-          )}
-
-          {/* Row 2 - title. The primary headline of the row. Bold by
-              default; line-through + muted when completed; promotes to
-              16px when no client header is rendered above. */}
-          {(() => {
-            const hasClientHeader =
-              showClient &&
-              (item.isUnlinked ||
-                (!!item.clientName && item.clientName !== "(unknown)"))
-            const titleClass = cn(
-              "truncate font-semibold",
-              hasClientHeader ? "text-[15px]" : "text-base",
-              isCompleted ? "text-muted-foreground" : "text-foreground",
-              (item.status === "done" || item.status === "cancelled") &&
-                "line-through",
-            )
-            return onAction ? (
-              <RowTitle
-                title={item.title}
-                statusClass={titleClass}
-                onSave={(title) => onAction({ type: "rename", title })}
-              />
+        <div className="min-w-0 flex-1">
+          {/* Line 1 — subject (client name, or the title when there's no
+              client) + relative time on the right. */}
+          <div className="flex items-baseline gap-2">
+            {isUnlinkedRow && <Link2Off className="h-3.5 w-3.5 shrink-0 self-center text-amber-500/90 dark:text-amber-400" />}
+            {clientLeads ? (
+              <p className={subjectClass}>{isUnlinkedRow ? "Unlinked contact" : item.clientName}</p>
             ) : (
-              <span className={titleClass}>{item.title}</span>
-            )
-          })()}
-
-          {/* Row 3 - meta. Tiny, muted. Kind dot replaces the bordered
-              chip; source + task-status pills still appear but stripped
-              of background fills where possible. People-and-time trail
-              uses very-faint separators so the comma-rhythm doesn't
-              compete visually. */}
-          <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/75 flex-wrap">
-            <span
-              className="inline-flex items-center gap-1.5 font-mono font-medium uppercase tracking-wide text-[10px] text-muted-foreground/80 shrink-0"
-              title={kindTreatment.label}
-            >
-              <span
-                aria-hidden
-                className={cn("h-1.5 w-1.5 rounded-full", kindTreatment.dot)}
-              />
-              {kindTreatment.label}
+              renderTitle(subjectClass)
+            )}
+            {isHighPriority && <AlertCircle className="h-3.5 w-3.5 shrink-0 self-center text-red-400" />}
+            <span className="ml-auto shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/45">
+              {fmtRelative(item.createdAt)}
             </span>
-            <SourcePill
-              source={item.source}
-              channelKind={item.channelKind}
-            />
-            {taskStatus && <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span>}
-            {isDelegated && (() => {
-              // Delivery signal for things I delegated. Reuses the .st-label
-              // dot+mono chrome the task statuses use so it sits naturally in
-              // the meta row. Seen > Delivered > Sending in priority.
-              if (item.seenAt) {
-                return (
-                  <span className="st-label live" title={`Seen ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
-                    Seen {fmtDeliveryStamp(item.seenAt)}
-                  </span>
-                )
-              }
-              if (item.notifiedAt) {
-                return (
-                  <span className="st-label idle" title={`Delivered ${new Date(item.notifiedAt).toLocaleString("en-GB")}`}>
-                    Delivered {fmtDeliveryStamp(item.notifiedAt)}
-                  </span>
-                )
-              }
-              return (
-                <span className="st-label warn" title="Not delivered to the assignee yet">
-                  Not delivered
-                </span>
-              )
-            })()}
-            {!showClient && isHighPriority && (
-              <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
-            )}
-            <span className="text-muted-foreground/30">·</span>
-            <span>{item.authorName}</span>
-            <span className="text-muted-foreground/30">→</span>
-            <span>{item.assigneeName}</span>
-            <span className="text-muted-foreground/30">·</span>
-            <span className="font-mono tabular-nums">{fmtDate(item.createdAt)}</span>
-            {item.dueDate && (
-              <>
-                <span className="text-muted-foreground/30">·</span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 font-mono tabular-nums",
-                    fmtDueDate(item.dueDate).overdue && "text-red-400",
-                  )}
-                >
-                  <Calendar className="h-3 w-3" />
-                  {fmtDueDate(item.dueDate).text}
-                </span>
-              </>
-            )}
-            {item.commentCount > 0 && (
-              <>
-                <span className="text-muted-foreground/30">·</span>
-                <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-                  <MessageCircle className="h-3 w-3" />
-                  {item.commentCount}
-                </span>
-              </>
-            )}
           </div>
+
+          {/* Line 2 — detail. The title (when a client leads above), or the
+              body preview (when the title is already the subject). */}
+          {clientLeads ? (
+            <div className="mt-0.5 flex items-center gap-2">{renderTitle(detailClass)}</div>
+          ) : item.body ? (
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className={detailClass}>{item.body}</p>
+            </div>
+          ) : null}
+
+          {/* Line 3 — tiny meta (status / delivery / assignee / due). */}
+          {metaNodes.length > 0 && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground/70">
+              {metaNodes.map((node, i) => (
+                <Fragment key={i}>
+                  {i > 0 && <span className="text-muted-foreground/25">·</span>}
+                  {node}
+                </Fragment>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Unified right-side action set - renders the same Done / Reopen
-            chrome for both Tasks and Updates. Kind-specific extras (Snooze
-            for tasks, Make-task for updates) are wired inside RowActions. */}
-        {onAction && <RowActions item={item} onAction={onAction} users={users} />}
+        {/* Actions — hover-revealed (calm at rest, like the external row).
+            Done / Reopen + Delete; snooze/reassign live in the detail pane. */}
+        {onAction && (
+          <div className="shrink-0 self-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <RowActions item={item} onAction={onAction} users={users} />
+          </div>
+        )}
       </div>
     </div>
   )
