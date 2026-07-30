@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, Circle, User, CircleCheck, Search, X, ChevronDown, ListTodo, MessageSquare } from "lucide-react"
@@ -1602,9 +1603,12 @@ export function InboxShell({
       />
 
       {/* Bulk-select action bar — appears once ≥1 ticket is selected via the
-          left icon. Same h-9 rounded-md chip chrome as the chat bulk bar. */}
-      {selectable && selectedTickets.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-popover px-2 py-1.5 shadow-lg">
+          left icon. Same h-9 rounded-md chip chrome as the chat bulk bar.
+          Portaled to <body> so its `fixed` positioning is viewport-relative —
+          inline it sat inside a contained/transformed inbox ancestor and the
+          bar dropped below the fold, forcing a scroll to reach it. Roy 2026-07-30. */}
+      {selectable && selectedTickets.size > 0 && typeof document !== "undefined" && createPortal(
+        <div className="fixed bottom-4 left-1/2 z-[60] inline-flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-popover px-2 py-1.5 shadow-lg">
           <span className="px-2 text-xs font-medium tabular-nums">
             {t("inbox.shell.bulk.selected", locale, { n: selectedTickets.size })}
           </span>
@@ -1642,7 +1646,8 @@ export function InboxShell({
             <X className="h-3.5 w-3.5" />
             {t("inbox.shell.bulk.clear", locale)}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
