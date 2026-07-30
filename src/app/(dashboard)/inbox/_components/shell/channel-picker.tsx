@@ -199,16 +199,31 @@ function Tab({
    *  lighter single-channel chips. Roy 2026-07-29. */
   strong?: boolean
 }) {
-  // Whole-pill traffic-light tint (non-selected tabs only; the selected tab
-  // keeps the purple .active fill so you always know where you are).
-  const toneClass =
-    dot && !active
-      ? count === 0
-        ? "bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-400"
-        : count < 10
-          ? "bg-amber-500/12 border-amber-500/35 text-amber-700 dark:text-amber-500"
-          : "bg-red-500/12 border-red-500/35 text-red-700 dark:text-red-400"
-      : ""
+  // Whole-pill traffic-light tint. "All" (dot off) is neutral grey; channels go
+  // green / amber / red by open-ticket load. The SELECTED tab keeps its own tone
+  // (never purple) but gets a thick dark inset ring + darker border/text so it's
+  // obvious which one you're on. Roy 2026-07-30.
+  const toneKey = !dot ? "neutral" : count === 0 ? "green" : count < 10 ? "amber" : "red"
+  const tone = {
+    neutral: {
+      base: "bg-muted border-border text-foreground/70",
+      selected: "bg-muted border-foreground/60 text-foreground ring-foreground/45",
+    },
+    green: {
+      base: "bg-emerald-500/12 border-emerald-500/35 text-emerald-700 dark:text-emerald-400",
+      selected:
+        "bg-emerald-500/20 border-emerald-600 text-emerald-800 dark:text-emerald-200 ring-emerald-500/70",
+    },
+    amber: {
+      base: "bg-amber-500/12 border-amber-500/35 text-amber-700 dark:text-amber-500",
+      selected:
+        "bg-amber-500/20 border-amber-600 text-amber-800 dark:text-amber-200 ring-amber-500/70",
+    },
+    red: {
+      base: "bg-red-500/12 border-red-500/35 text-red-700 dark:text-red-400",
+      selected: "bg-red-500/22 border-red-600 text-red-800 dark:text-red-200 ring-red-500/75",
+    },
+  }[toneKey]
   return (
     <button
       type="button"
@@ -216,9 +231,8 @@ function Tab({
       aria-pressed={active}
       className={cn(
         "chip h-8 max-w-[170px]",
-        active && "active",
-        toneClass,
-        strong && !active && "bg-muted font-semibold text-foreground/80",
+        active ? cn(tone.selected, "font-semibold ring-2 ring-inset") : tone.base,
+        strong && "font-semibold",
       )}
       title={dot ? `${label} — ${count} open` : label}
     >
