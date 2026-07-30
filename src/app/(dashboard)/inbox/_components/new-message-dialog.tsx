@@ -22,7 +22,7 @@ import { EmailComposer } from "./email-composer"
 export type NewMessageChannel = { id: number; name: string; kind: "whatsapp" | "email" }
 
 type WaTemplate = { id: number; title: string; slug: string; message: string; language: string }
-type Contact = { id: number; name: string; phone: string | null; email: string | null }
+type Contact = { id: string; name: string; phone: string | null; email: string | null }
 type Medium = "whatsapp" | "email"
 
 function MediumIcon({ kind, className }: { kind: Medium; className?: string }) {
@@ -435,9 +435,13 @@ export function NewMessageDialog({
       ? emailReady && (html.trim() || subject.trim())
       : (waPhone || search).trim() && !!selectedTemplate)
 
-  if (!open) return null
+  if (!open || typeof document === "undefined") return null
 
-  return (
+  // Portal to <body> so the fixed overlay is relative to the VIEWPORT, not a
+  // transformed dashboard ancestor — otherwise it only darkens the inbox column
+  // and the panel sticks to the top instead of the palette's 12vh drop.
+  // Roy 2026-07-30.
+  return createPortal(
     <div className="cmd-overlay open" onMouseDown={close}>
       <div
         className="cmd-panel"
@@ -578,6 +582,7 @@ export function NewMessageDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
