@@ -1012,15 +1012,25 @@ export async function searchTrengoContacts(
  *  phone for a WhatsApp send and the email for a mail send. Roy 2026-07-30. */
 export async function searchTrengoContactsFull(
   query: string,
-  limit = 12,
+  limit = 40,
+  maxPages = 3,
 ): Promise<Array<{ id: number; name: string; phone: string | null; email: string | null }>> {
   const trimmed = query.trim()
-  const cap = Math.min(Math.max(limit, 1), 25)
-  const path = trimmed.length === 0 ? `/contacts` : `/contacts?term=${encodeURIComponent(trimmed)}`
+  const cap = Math.min(Math.max(limit, 1), 100)
   type Page = { data?: TrengoContact[] } & { [key: string]: unknown }
-  const raw = await trengoFetch<Page | TrengoContact[]>(path)
-  const contacts = Array.isArray(raw) ? raw : (raw.data ?? [])
-  return contacts.slice(0, cap).map((c) => ({
+  const base = trimmed.length === 0 ? `/contacts` : `/contacts?term=${encodeURIComponent(trimmed)}`
+  const sep = base.includes("?") ? "&" : "?"
+  const out: TrengoContact[] = []
+  // Page through so the picker isn't limited to Trengo's first page — a term
+  // search is usually short, but browsing (empty query) needs a few pages to
+  // feel complete. Roy 2026-07-30.
+  for (let page = 1; page <= maxPages && out.length < cap; page++) {
+    const raw = await trengoFetch<Page | TrengoContact[]>(`${base}${sep}page=${page}`)
+    const rows = Array.isArray(raw) ? raw : (raw.data ?? [])
+    out.push(...rows)
+    if (rows.length < 20) break
+  }
+  return out.slice(0, cap).map((c) => ({
     id: c.id,
     name: c.full_name ?? c.name ?? c.email ?? c.phone ?? String(c.id),
     phone: c.phone ?? null,

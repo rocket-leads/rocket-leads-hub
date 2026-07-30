@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Image from "next/image"
-import { Mail, Loader2, Send, ChevronDown, Check, Search, User } from "lucide-react"
+import { Mail, Loader2, Send, ChevronDown, Check, Search, User, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -12,11 +12,12 @@ import { EmailComposer } from "./email-composer"
 
 /**
  * "New message" composer — compose a brand-new conversation from scratch,
- * Trengo-style. Pick a channel (all channels, WhatsApp + email, in ONE
- * dropdown — the medium follows the channel; defaults to the AM's personal
- * channel), a recipient (searched from Trengo contacts by name, or typed
- * raw; email supports multiple), then compose: the full email composer for
- * mail, or a template + variables for WhatsApp. Roy 2026-07-30.
+ * Trengo-style. Uses the same command-palette shell (top-aligned overlay, one
+ * fixed panel with a scrolling body) as the global search so it reads as the
+ * same product surface. One channel dropdown (WhatsApp + email; medium follows
+ * the channel; defaults to the AM's personal channel), a contact-search
+ * recipient (email = multiple), then the email composer or a WhatsApp template
+ * + variables. Dropdown panels are portaled so they never clip. Roy 2026-07-30.
  */
 export type NewMessageChannel = { id: number; name: string; kind: "whatsapp" | "email" }
 
@@ -24,8 +25,6 @@ type WaTemplate = { id: number; title: string; slug: string; message: string; la
 type Contact = { id: number; name: string; phone: string | null; email: string | null }
 type Medium = "whatsapp" | "email"
 
-/** Channel medium icon — matches the inbox: the WhatsApp brand logo, a blue
- *  Mail for email. */
 function MediumIcon({ kind, className }: { kind: Medium; className?: string }) {
   if (kind === "whatsapp") {
     return (
@@ -62,8 +61,52 @@ function useDebounced<T>(value: T, ms: number): T {
   return v
 }
 
-/** Small 187N dropdown — bordered trigger + floating option panel (no native
- *  <select> that clips). */
+/** A floating option panel anchored under a trigger, rendered in a portal so
+ *  it's never clipped by the dialog's scroll container. */
+function FloatingPanel({
+  anchorRef,
+  open,
+  onRequestClose,
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>
+  open: boolean
+  onRequestClose: () => void
+  children: React.ReactNode
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) return
+    const r = anchorRef.current.getBoundingClientRect()
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+  }, [open, anchorRef])
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      const t = e.target as Node
+      if (anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      onRequestClose()
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open, anchorRef, onRequestClose])
+
+  if (!open || !pos || typeof document === "undefined") return null
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, zIndex: 1200 }}
+      className="max-h-72 overflow-y-auto rounded-lg border border-[var(--line-strong)] bg-popover p-1 shadow-[var(--shadow-lg)]"
+    >
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
 function Dropdown<T extends string | number>({
   value,
   options,
@@ -78,19 +121,12 @@ function Dropdown<T extends string | number>({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [open])
+  const btnRef = useRef<HTMLButtonElement>(null)
   const selected = options.find((o) => o.value === value) ?? null
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
@@ -102,37 +138,31 @@ function Dropdown<T extends string | number>({
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
-          {options.length === 0 && (
-            <p className="px-2.5 py-2 text-sm text-muted-foreground">Geen opties</p>
-          )}
-          {options.map((o) => (
-            <button
-              key={String(o.value)}
-              type="button"
-              onClick={() => {
-                onChange(o.value)
-                setOpen(false)
-              }}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted",
-                o.value === value && "bg-primary/10 font-medium",
-              )}
-            >
-              {o.icon}
-              <span className="min-w-0 flex-1 truncate">{o.label}</span>
-              {o.value === value && <Check className="h-4 w-4 shrink-0 text-primary" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      <FloatingPanel anchorRef={btnRef} open={open} onRequestClose={() => setOpen(false)}>
+        {options.length === 0 && <p className="px-2.5 py-2 text-sm text-muted-foreground">Geen opties</p>}
+        {options.map((o) => (
+          <button
+            key={String(o.value)}
+            type="button"
+            onClick={() => {
+              onChange(o.value)
+              setOpen(false)
+            }}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted",
+              o.value === value && "bg-primary/10 font-medium",
+            )}
+          >
+            {o.icon}
+            <span className="min-w-0 flex-1 truncate">{o.label}</span>
+            {o.value === value && <Check className="h-4 w-4 shrink-0 text-primary" />}
+          </button>
+        ))}
+      </FloatingPanel>
+    </>
   )
 }
 
-/** Recipient picker — search Trengo contacts by name and pick one, or type a
- *  raw phone/email + Enter. */
 function ContactSearch({
   medium,
   query,
@@ -147,16 +177,8 @@ function ContactSearch({
   onSubmitRaw: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const debounced = useDebounced(query, 250)
-  useEffect(() => {
-    if (!open) return
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [open])
 
   const q = useQuery<{ contacts: Contact[] }>({
     queryKey: ["contact-search", medium, debounced],
@@ -170,11 +192,11 @@ function ContactSearch({
   const contacts = q.data?.contacts ?? []
 
   return (
-    <div ref={ref} className="relative flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-muted-foreground">
         {medium === "whatsapp" ? "Naar (naam of telefoonnummer)" : "Naar (naam of e-mailadres)"}
       </label>
-      <div className="relative">
+      <div ref={wrapRef} className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
         <Input
           value={query}
@@ -194,41 +216,39 @@ function ContactSearch({
           className="pl-9"
         />
       </div>
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
-          {q.isLoading && (
-            <p className="flex items-center gap-2 px-2.5 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zoeken…
-            </p>
-          )}
-          {!q.isLoading && contacts.length === 0 && (
-            <p className="px-2.5 py-2 text-sm text-muted-foreground">
-              Geen contacten — typ het {medium === "whatsapp" ? "nummer" : "adres"} en druk op Enter.
-            </p>
-          )}
-          {contacts.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => {
-                onPickContact(c)
-                setOpen(false)
-              }}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted"
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <User className="h-3.5 w-3.5" />
+      <FloatingPanel anchorRef={wrapRef} open={open} onRequestClose={() => setOpen(false)}>
+        {q.isLoading && (
+          <p className="flex items-center gap-2 px-2.5 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zoeken…
+          </p>
+        )}
+        {!q.isLoading && contacts.length === 0 && (
+          <p className="px-2.5 py-2 text-sm text-muted-foreground">
+            Geen contacten — typ het {medium === "whatsapp" ? "nummer" : "adres"} en druk op Enter.
+          </p>
+        )}
+        {contacts.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              onPickContact(c)
+              setOpen(false)
+            }}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <User className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{c.name}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {medium === "whatsapp" ? c.phone : c.email}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{c.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {medium === "whatsapp" ? c.phone : c.email}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+            </span>
+          </button>
+        ))}
+      </FloatingPanel>
     </div>
   )
 }
@@ -246,7 +266,6 @@ export function NewMessageDialog({
   favoriteIds: number[]
   onSent: () => void
 }) {
-  // The AM's personal channels → default selection.
   const defaultsQuery = useQuery<{ email: number | null; whatsapp: number | null }>({
     queryKey: ["inbox-default-channels"],
     queryFn: () => fetch("/api/inbox/default-channels").then((r) => r.json()),
@@ -258,26 +277,22 @@ export function NewMessageDialog({
   const selectedChannel = channels.find((c) => c.id === channelId) ?? null
   const medium: Medium = selectedChannel?.kind ?? "email"
 
-  // Recipient — WhatsApp: single phone in `waPhone`. Email: multiple in `emailTo`.
   const [search, setSearch] = useState("")
   const [waPhone, setWaPhone] = useState("")
   const [emailTo, setEmailTo] = useState<string[]>([])
 
-  // Email composer state
   const [subject, setSubject] = useState("")
   const [cc, setCc] = useState<string[]>([])
   const [bcc, setBcc] = useState<string[]>([])
   const [html, setHtml] = useState("")
   const [signature, setSignature] = useState<string | null>(null)
 
-  // WhatsApp state
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [params, setParams] = useState<string[]>([])
 
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // All channels in one dropdown, favourites first, then by medium/name.
   const orderedChannels = useMemo(() => {
     const fav = new Set(favoriteIds)
     return [...channels].sort((a, b) => {
@@ -288,8 +303,6 @@ export function NewMessageDialog({
     })
   }, [channels, favoriteIds])
 
-  // Initialise the channel once defaults + channels are ready → the AM's
-  // personal channel (email preferred, else WhatsApp, else first).
   const initedRef = useRef(false)
   useEffect(() => {
     if (!open) {
@@ -337,10 +350,26 @@ export function NewMessageDialog({
     setParams([])
     setError(null)
   }
-  function close(v: boolean) {
-    if (!v) reset()
-    onOpenChange(v)
+  function close() {
+    reset()
+    onOpenChange(false)
   }
+
+  // Escape closes; lock body scroll while open — matching the command palette.
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close()
+    }
+    document.addEventListener("keydown", onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prev
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   async function send() {
     if (!channelId) {
@@ -352,7 +381,6 @@ export function NewMessageDialog({
     try {
       let payload: Record<string, unknown>
       if (medium === "email") {
-        // Pull in a typed-but-not-yet-added address too.
         const extra = search.includes("@") ? [search.trim()] : []
         const recipients = Array.from(new Set([...emailTo, ...extra])).filter(Boolean)
         if (recipients.length === 0) throw new Error("Kies of typ minimaal één e-mailadres")
@@ -392,7 +420,7 @@ export function NewMessageDialog({
         )
       }
       onSent()
-      close(false)
+      close()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Verzenden mislukt")
     } finally {
@@ -407,126 +435,141 @@ export function NewMessageDialog({
       ? emailReady && (html.trim() || subject.trim())
       : (waPhone || search).trim() && !!selectedTemplate)
 
-  return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-h-[88vh] w-full overflow-y-auto p-6 sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-lg">Nieuw bericht</DialogTitle>
-        </DialogHeader>
+  if (!open) return null
 
-        {/* Single channel dropdown — all channels (WhatsApp + email); the medium
-            follows the channel. */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Kanaal</label>
-          <Dropdown<number>
-            value={channelId}
-            onChange={(id) => {
-              setChannelId(id)
-              // Reset recipient/template when switching medium.
-              setTemplateId(null)
-              setParams([])
-              setError(null)
-            }}
-            placeholder="Kies kanaal"
-            options={orderedChannels.map((c) => ({
-              value: c.id,
-              label: c.name,
-              icon: <MediumIcon kind={c.kind} />,
-            }))}
-          />
+  return (
+    <div className="cmd-overlay open" onMouseDown={close}>
+      <div
+        className="cmd-panel"
+        onMouseDown={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nieuw bericht"
+      >
+        {/* Header — mirrors the command palette's search bar chrome. */}
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-4">
+          <h2 className="text-base font-semibold">Nieuw bericht</h2>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Sluiten"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        {/* Recipient */}
-        {channelId != null && (
-          <ContactSearch
-            medium={medium}
-            query={search}
-            onQueryChange={setSearch}
-            onPickContact={(c) => {
-              if (medium === "whatsapp") {
-                setWaPhone(c.phone ?? "")
-                setSearch(c.phone ?? "")
-              } else if (c.email) {
-                addEmail(c.email)
-              }
-            }}
-            onSubmitRaw={() => {
-              if (medium === "whatsapp") {
-                setWaPhone(search.trim())
-              } else if (search.includes("@")) {
-                addEmail(search)
-              }
-            }}
-          />
-        )}
+        {/* Scrolling body. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Kanaal</label>
+            <Dropdown<number>
+              value={channelId}
+              onChange={(id) => {
+                setChannelId(id)
+                setTemplateId(null)
+                setParams([])
+                setError(null)
+              }}
+              placeholder="Kies kanaal"
+              options={orderedChannels.map((c) => ({
+                value: c.id,
+                label: c.name,
+                icon: <MediumIcon kind={c.kind} />,
+              }))}
+            />
+          </div>
 
-        {/* Email composer — To reflects the picked recipients (add more via the
-            search above, or the To chips here). */}
-        {medium === "email" && channelId != null && (
-          <EmailComposer
-            fromChannelId={channelId}
-            onFromChannelChange={setChannelId}
-            emailChannels={channels.filter((c) => c.kind === "email").map((c) => ({ id: c.id, name: c.name }))}
-            threadKey=""
-            to={emailTo}
-            onToChange={setEmailTo}
-            mode="forward"
-            subject={subject}
-            onSubjectChange={setSubject}
-            cc={cc}
-            onCcChange={setCc}
-            bcc={bcc}
-            onBccChange={setBcc}
-            htmlBody={html}
-            onHtmlBodyChange={setHtml}
-            onSignatureChange={setSignature}
-            disabled={sending}
-          />
-        )}
+          {channelId != null && (
+            <ContactSearch
+              medium={medium}
+              query={search}
+              onQueryChange={setSearch}
+              onPickContact={(c) => {
+                if (medium === "whatsapp") {
+                  setWaPhone(c.phone ?? "")
+                  setSearch(c.phone ?? "")
+                } else if (c.email) {
+                  addEmail(c.email)
+                }
+              }}
+              onSubmitRaw={() => {
+                if (medium === "whatsapp") {
+                  setWaPhone(search.trim())
+                } else if (search.includes("@")) {
+                  addEmail(search)
+                }
+              }}
+            />
+          )}
 
-        {medium === "whatsapp" && channelId != null && (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted-foreground">Template</label>
-              <Dropdown<number>
-                value={templateId}
-                onChange={(id) => {
-                  setTemplateId(id)
-                  const tpl = templates.find((t) => t.id === id)
-                  setParams(Array(tpl ? countTemplateVariables(tpl.message) : 0).fill(""))
-                }}
-                placeholder={templatesQuery.isLoading ? "Templates laden…" : "Kies een template…"}
-                options={templates.map((tpl) => ({ value: tpl.id, label: `${tpl.title} (${tpl.language})` }))}
-              />
-            </div>
-            {selectedTemplate && (
-              <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-xs leading-relaxed text-foreground/80">
-                {selectedTemplate.message}
-              </div>
-            )}
-            {Array.from({ length: varCount }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-muted-foreground">{`Variabele {{${i + 1}}}`}</label>
-                <Input
-                  value={params[i] ?? ""}
-                  onChange={(e) =>
-                    setParams((prev) => {
-                      const next = [...prev]
-                      next[i] = e.target.value
-                      return next
-                    })
-                  }
-                  disabled={sending}
+          {medium === "email" && channelId != null && (
+            <EmailComposer
+              fromChannelId={channelId}
+              onFromChannelChange={setChannelId}
+              emailChannels={channels.filter((c) => c.kind === "email").map((c) => ({ id: c.id, name: c.name }))}
+              threadKey=""
+              to={emailTo}
+              onToChange={setEmailTo}
+              mode="forward"
+              subject={subject}
+              onSubjectChange={setSubject}
+              cc={cc}
+              onCcChange={setCc}
+              bcc={bcc}
+              onBccChange={setBcc}
+              htmlBody={html}
+              onHtmlBodyChange={setHtml}
+              onSignatureChange={setSignature}
+              disabled={sending}
+            />
+          )}
+
+          {medium === "whatsapp" && channelId != null && (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted-foreground">Template</label>
+                <Dropdown<number>
+                  value={templateId}
+                  onChange={(id) => {
+                    setTemplateId(id)
+                    const tpl = templates.find((t) => t.id === id)
+                    setParams(Array(tpl ? countTemplateVariables(tpl.message) : 0).fill(""))
+                  }}
+                  placeholder={templatesQuery.isLoading ? "Templates laden…" : "Kies een template…"}
+                  options={templates.map((tpl) => ({ value: tpl.id, label: `${tpl.title} (${tpl.language})` }))}
                 />
               </div>
-            ))}
-          </div>
-        )}
+              {selectedTemplate && (
+                <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-xs leading-relaxed text-foreground/80">
+                  {selectedTemplate.message}
+                </div>
+              )}
+              {Array.from({ length: varCount }).map((_, i) => (
+                <div key={i} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-muted-foreground">{`Variabele {{${i + 1}}}`}</label>
+                  <Input
+                    value={params[i] ?? ""}
+                    onChange={(e) =>
+                      setParams((prev) => {
+                        const next = [...prev]
+                        next[i] = e.target.value
+                        return next
+                      })
+                    }
+                    disabled={sending}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
 
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="outline" onClick={() => close(false)} disabled={sending}>
+        {/* Footer actions. */}
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--line)] px-5 py-3.5">
+          <Button variant="outline" onClick={close} disabled={sending}>
             Annuleren
           </Button>
           <Button onClick={send} disabled={sending || !canSend}>
@@ -534,7 +577,7 @@ export function NewMessageDialog({
             Versturen
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }
