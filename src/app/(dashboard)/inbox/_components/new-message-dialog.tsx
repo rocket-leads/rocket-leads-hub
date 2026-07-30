@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Image from "next/image"
-import { Mail, Loader2, Send, ChevronDown, Check, Search, User, X } from "lucide-react"
+import { Mail, Loader2, Send, ChevronDown, Check, Search, User, X, LayoutGrid } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,7 +22,13 @@ import { EmailComposer } from "./email-composer"
 export type NewMessageChannel = { id: number; name: string; kind: "whatsapp" | "email" }
 
 type WaTemplate = { id: number; title: string; slug: string; message: string; language: string }
-type Contact = { id: string; name: string; phone: string | null; email: string | null }
+type Contact = {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  source: "trengo" | "monday"
+}
 type Medium = "whatsapp" | "email"
 
 function MediumIcon({ kind, className }: { kind: Medium; className?: string }) {
@@ -274,14 +280,29 @@ function ContactSearch({
             }}
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <User className="h-3.5 w-3.5" />
+            <span
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                c.source === "monday"
+                  ? "bg-orange-500/15 text-orange-500"
+                  : "bg-muted text-muted-foreground",
+              )}
+              title={c.source === "monday" ? "Monday-klant" : "Trengo-contact"}
+            >
+              {c.source === "monday" ? (
+                <LayoutGrid className="h-3.5 w-3.5" />
+              ) : (
+                <User className="h-3.5 w-3.5" />
+              )}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{c.name}</span>
               <span className="block truncate text-xs text-muted-foreground">
                 {medium === "whatsapp" ? c.phone : c.email}
               </span>
+            </span>
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted-foreground/40">
+              {c.source === "monday" ? "Monday" : "Trengo"}
             </span>
           </button>
         ))}
