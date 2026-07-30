@@ -96,6 +96,30 @@ function threadState(t: ChatThreadSummary): TicketState {
   return t.isAssigned ? "assigned" : "open"
 }
 
+/** Persisted "where was I" snapshot for the GLOBAL inbox, so returning from
+ *  another section restores the last scope / channel / state tab / open ticket
+ *  instead of resetting to the internal inbox. Per-user localStorage (a UI
+ *  preference, no cross-device sync). Roy 2026-07-30. */
+type InboxViewSnapshot = {
+  scope?: InboxScope
+  viewMode?: "all" | "mentioned" | "channel"
+  channelId?: number | null
+  extState?: TicketState
+  intState?: TicketState
+  rowId?: string | null
+}
+function inboxViewKey(userId: string) {
+  return `inbox:last-view:${userId}`
+}
+function readInboxViewSnapshot(userId: string): InboxViewSnapshot | null {
+  try {
+    const raw = localStorage.getItem(inboxViewKey(userId))
+    return raw ? (JSON.parse(raw) as InboxViewSnapshot) : null
+  } catch {
+    return null
+  }
+}
+
 /** The instant, client-side state change a thread action implies, applied
  *  optimistically to the cached thread so the row moves tabs / clears its badge
  *  the moment you click - before the server (and its background Trengo mirror)
@@ -238,6 +262,19 @@ export function InboxShell({
     [router, searchParams],
   )
   const isExternal = scope === "external"
+
+  // "Where was I" restore (global inbox only). Read the saved snapshot ONCE, on
+  // the first client render, into a ref — refs don't affect the SSR output so
+  // there's no hydration mismatch (unlike a lazy useState initializer). Applied
+  // by an effect below. Roy 2026-07-30.
+  const restoredViewRef = useRef<InboxViewSnapshot | null | undefined>(undefined)
+  if (restoredViewRef.current === undefined) {
+    restoredViewRef.current =
+      typeof window !== "undefined" && !locked ? readInboxViewSnapshot(currentUser.id) : null
+  }
+  // The row id we still want to auto-select on restore (cleared once matched or
+  // once the user manually opens something).
+  const pendingRowIdRef = useRef<string | null>(null)
 
 
   // --- Data sources ----------------------------------------------------------
@@ -486,6 +523,31 @@ export function InboxShell({
     }
   }, [favoritesHydrated, identityChannels.length, favoriteChannels])
 
+  // Restore the last inbox position on mount (global inbox only). Runs once,
+  // before the default-to-favourite effect can fire (which it guards against via
+  // didInitDefaultRef), so a remembered channel wins over the generic default.
+  // A `?scope=` link still takes precedence for the top-level scope. The open
+  // ticket is restored by the auto-open effect via pendingRowIdRef once its rows
+  // load. Roy 2026-07-30.
+  useEffect(() => {
+    if (locked) return
+    const snap = restoredViewRef.current
+    if (!snap) return
+    if (!urlScope && snap.scope && (snap.scope !== "external" || canViewComms)) {
+      setScopeState(snap.scope)
+    }
+    if (snap.viewMode) {
+      setViewMode(snap.viewMode)
+      setSelectedChannelId(snap.channelId ?? null)
+      didInitDefaultRef.current = true
+    }
+    if (snap.extState) setExtState(snap.extState)
+    if (snap.intState) setIntState(snap.intState)
+    pendingRowIdRef.current = snap.rowId ?? null
+    // Mount-only restore; deliberately no deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // The Mentioned feed is driven by the mention UPDATE rows (one per teammate
   // per note), NOT by intersecting with the loaded thread list - otherwise a
   // mention on a CLOSED/unloaded Trengo ticket silently vanished (Roy 2026-07-16
@@ -711,6 +773,20 @@ export function InboxShell({
   useEffect(() => {
     const stillVisible = openRow != null && activeVisibleRows.some((r) => r.id === openRow.id)
     if (stillVisible) return
+    // Restore the remembered ticket first (returning from another section). Keep
+    // waiting while its rows haven't loaded yet; give up once rows exist without
+    // a match. Roy 2026-07-30.
+    if (pendingRowIdRef.current) {
+      const match = activeVisibleRows.find((r) => r.id === pendingRowIdRef.current)
+      if (match) {
+        pendingRowIdRef.current = null
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setOpenRow(match)
+        return
+      }
+      if (activeVisibleRows.length === 0) return // rows not loaded yet — wait
+      pendingRowIdRef.current = null // loaded but gone — fall through to top row
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenRow(activeVisibleRows[0] ?? null)
   }, [activeVisibleRows, openRow])
@@ -756,6 +832,7 @@ export function InboxShell({
   )
   const openItem = useCallback(
     (row: FeedRow) => {
+      pendingRowIdRef.current = null // manual pick beats any pending restore
       setOpenRow(row)
       if (row.kind === "chat" && row.thread && row.thread.unreadCount > 0) {
         markThread(row.thread, "mark_read")
@@ -796,6 +873,26 @@ export function InboxShell({
       setExtState((s) => (s === "open" || s === "closed" ? "assigned" : s))
     }
   }, [openRow, markThread])
+
+  // Persist the current inbox position (scope / view / channel / state tab /
+  // open ticket) so returning from another section lands you right back here.
+  // Global inbox only — the per-client inbox is contextual. Roy 2026-07-30.
+  useEffect(() => {
+    if (locked) return
+    const snap: InboxViewSnapshot = {
+      scope,
+      viewMode,
+      channelId: selectedChannelId,
+      extState,
+      intState,
+      rowId: openRow?.id ?? null,
+    }
+    try {
+      localStorage.setItem(inboxViewKey(currentUser.id), JSON.stringify(snap))
+    } catch {
+      // ignore blocked / full storage
+    }
+  }, [locked, scope, viewMode, selectedChannelId, extState, intState, openRow, currentUser.id])
 
   // Explicit 3-state transitions (Open / Assigned / Closed) for the ticket
   // header buttons - the user always sees the two states it's NOT in.
