@@ -99,18 +99,29 @@ export async function POST(
   const key = `ticket${ticketId}`
   const url = `https://app.trengo.com/api/v2/ticket_draft_attachments?channel_id=${event.trengo_channel_id}&key=${encodeURIComponent(key)}`
 
-  const fd = new FormData()
-  fd.append("channel_id", String(event.trengo_channel_id))
-  fd.append("key", key)
-  fd.append("file", file, file.name)
-
+  // Retry on 429 — the AM's personal token is shared with the every-minute
+  // private-inbox poll, so a burst throttle shouldn't fail an interactive
+  // attachment/voice-memo upload. Rebuild the FormData per attempt (a consumed
+  // multipart body can't be re-sent). Roy 2026-07-30.
   let trengoRes: Response
   try {
-    trengoRes = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      body: fd,
-    })
+    let attempt = 0
+    for (;;) {
+      const fd = new FormData()
+      fd.append("channel_id", String(event.trengo_channel_id))
+      fd.append("key", key)
+      fd.append("file", file, file.name)
+      trengoRes = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        body: fd,
+      })
+      if (trengoRes.status !== 429 || attempt >= 3) break
+      const ra = parseInt(trengoRes.headers.get("retry-after") ?? "", 10)
+      const delay = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 1000 * 2 ** attempt
+      await new Promise((r) => setTimeout(r, Math.min(delay, 8000)))
+      attempt++
+    }
   } catch (e) {
     return NextResponse.json(
       { error: `Trengo upload failed: ${e instanceof Error ? e.message : String(e)}` },

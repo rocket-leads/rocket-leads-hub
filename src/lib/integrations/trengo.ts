@@ -425,15 +425,10 @@ export async function sendEmailToAddressAsUser(args: {
   let lastErr = ""
   let lastStatus = 0
   for (const payload of candidates) {
-    const res = await fetch(`https://app.trengo.com/api/v2/tickets`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payload),
-    })
+    // Retry on 429 — the AM's personal token is shared with the every-minute
+    // private-inbox poll, so a burst throttle shouldn't fail an interactive
+    // email send. Roy 2026-07-30.
+    const res = await trengoPostWithRetry(`https://app.trengo.com/api/v2/tickets`, userToken, payload)
     if (res.ok) {
       const json = (await res.json()) as {
         id?: number | string

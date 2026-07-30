@@ -201,8 +201,13 @@ export function EmailComposer({
         // this class lives on the contenteditable node, not in getHTML(), so
         // the sent email keeps images at full size. The branded signature is
         // no longer inside the editor (see the read-only preview below).
+        // Explicit block styling: the Hub doesn't ship @tailwindcss/typography,
+        // so `prose` is a no-op and Tailwind Preflight strips list markers +
+        // indent — bullet/numbered lists rendered as plain text ("nothing
+        // happened"). These arbitrary variants restore lists/headings/quotes in
+        // the composer (the SENT HTML always had them). Roy 2026-07-30.
         class:
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[140px] px-3 py-2 [&_img]:!max-h-40 [&_img]:!w-auto [&_img]:!object-contain",
+          "max-w-none focus:outline-none min-h-[140px] px-3 py-2 leading-relaxed [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_a]:text-primary [&_a]:underline [&_img]:!max-h-40 [&_img]:!w-auto [&_img]:!object-contain",
       },
       // Intercept clipboard image data and route to the parent's file
       // upload pipeline (📎 attachment flow). Non-image clipboard contents
