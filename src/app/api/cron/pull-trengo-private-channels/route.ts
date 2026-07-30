@@ -129,6 +129,10 @@ type EventToInsert = {
    *  `noreply@vueling.com` next to the display name and the AM can spot
    *  phishing at a glance. Null for non-email rows. */
   emailFrom: string | null
+  /** Raw Trengo media/file attachments ({ name, url, ... }) for this message,
+   *  stored in inbox_events.attachments so the chat pane can render them inline
+   *  instead of the "Image"/"Video" placeholder text. Roy 2026-07-30. */
+  attachments: unknown[]
   authorKind: "rl_team" | "client"
   /** True for Trengo internal notes (NOTE / INTERNAL_* types) - @mentions to
    *  teammates and externally-posted [AI Summary] blocks. Rendered as internal
@@ -228,7 +232,12 @@ function eventsFromMessageList(
     // some plans and `body` for others. Prefer `message` (current API)
     // but accept `body` so we don't drop legacy-shaped rows.
     const raw = (m.message ?? m.body ?? "").trim()
-    if (!raw) continue
+    // Media/file attachments (WhatsApp photo/video/voice memo, email files).
+    // Keep the raw Trengo shape ({ name, url }) — the fetcher normalises it.
+    const attachments = Array.isArray(m.attachments) ? m.attachments : []
+    // Skip only when there's NOTHING to show — no text AND no attachment. A
+    // media-only message (empty/placeholder text) must still land. Roy 2026-07-30.
+    if (!raw && attachments.length === 0) continue
     // Strip HTML at ingest so the body lands as readable text - email
     // tickets carry raw HTML in `message`/`body` (signature blocks,
     // marketing wrappers, the works) and the chat bubble's
@@ -236,7 +245,7 @@ function eventsFromMessageList(
     // literally. The webhook already strips at write time (since
     // 2026-05-05); polling cron now matches.
     let body = stripHtml(raw).trim()
-    if (!body) continue
+    if (!body && attachments.length === 0) continue
     const contact = ticket.contact
     const contactId = String(contact?.id ?? "")
     if (!contactId) continue
@@ -327,6 +336,7 @@ function eventsFromMessageList(
       bodyHtml,
       emailSubject,
       emailFrom,
+      attachments,
       authorKind,
       isInternal,
       authorName,
@@ -469,6 +479,7 @@ async function insertEvents(
       body_html: e.bodyHtml,
       email_subject: e.emailSubject,
       email_from: e.emailFrom,
+      attachments: e.attachments.length > 0 ? e.attachments : null,
       status,
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,

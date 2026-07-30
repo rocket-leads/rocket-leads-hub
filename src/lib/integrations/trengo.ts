@@ -1275,6 +1275,37 @@ export async function fetchUserTicketMessages(args: {
  * 429-safe via trengoFetch. Returns [] on failure so callers fall back to
  * stored rows. Roy 2026-07-30.
  */
+/** Hostnames we're willing to proxy media from (attachment URLs Trengo hands
+ *  us). Keeps the media proxy from being turned into an open SSRF relay. */
+const TRENGO_MEDIA_HOSTS = [
+  "trengo.com",
+  "trengo.eu",
+  "amazonaws.com", // Trengo stores uploads on S3-backed buckets
+  "cloudfront.net",
+]
+
+export function isAllowedTrengoMediaUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== "https:") return false
+    return TRENGO_MEDIA_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))
+  } catch {
+    return false
+  }
+}
+
+/** Fetch a Trengo media/attachment URL server-side and return the raw Response
+ *  (so the caller can stream it). Adds the workspace Bearer token when the URL
+ *  is on the Trengo API host (some attachment URLs are auth-gated); public
+ *  bucket URLs are fetched as-is. Caller MUST validate the host first via
+ *  isAllowedTrengoMediaUrl. Roy 2026-07-30. */
+export async function fetchTrengoMedia(url: string): Promise<Response> {
+  const onApiHost = /(^|\.)trengo\.(com|eu)$/.test(new URL(url).hostname)
+  const headers: Record<string, string> = {}
+  if (onApiHost) headers.Authorization = `Bearer ${await getTrengoToken()}`
+  return fetch(url, { headers })
+}
+
 export async function fetchTicketMessages(
   ticketId: string | number,
   maxPages = 4,

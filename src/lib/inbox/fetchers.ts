@@ -747,6 +747,58 @@ export type ChatThreadSummary = {
   pendingCount: number
 }
 
+/** A media/file attachment on a chat message (WhatsApp photo/video/voice memo,
+ *  email attachment, or a file we sent). `url` is proxied through the Hub at
+ *  render time so the browser never talks to Trengo directly. Roy 2026-07-30. */
+export type ChatAttachment = {
+  url: string
+  name: string | null
+  /** Coarse render kind, inferred from mime / file extension. */
+  kind: "image" | "video" | "audio" | "file"
+  mime: string | null
+}
+
+/** Trengo puts a placeholder word ("Image", "Video", "Audio", "[bijlage]", …)
+ *  in the message body when a WhatsApp/email message is media-only. Once we
+ *  render the real attachment we don't also want that word as a caption, so we
+ *  blank it. A genuine caption ("check this photo") is kept. Roy 2026-07-30. */
+const MEDIA_PLACEHOLDER_RE =
+  /^\[?\s*(image|images|photo|video|videos|audio|voice(?:\s?(?:memo|message|note))?|gif|sticker|document|file|bestand|afbeelding|bijlage|attachment|location|locatie|contact)\s*\]?$/i
+function isMediaPlaceholderBody(body: string): boolean {
+  return MEDIA_PLACEHOLDER_RE.test(body.trim())
+}
+
+/** Infer the coarse attachment kind from a mime type and/or filename/URL. */
+function inferAttachmentKind(mime: string | null, nameOrUrl: string | null): ChatAttachment["kind"] {
+  const m = (mime ?? "").toLowerCase()
+  if (m.startsWith("image/")) return "image"
+  if (m.startsWith("video/")) return "video"
+  if (m.startsWith("audio/")) return "audio"
+  const ext = (nameOrUrl ?? "").toLowerCase().split(/[?#]/)[0].split(".").pop() ?? ""
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "svg"].includes(ext)) return "image"
+  if (["mp4", "mov", "webm", "m4v", "avi", "mkv", "3gp", "quicktime"].includes(ext)) return "video"
+  if (["mp3", "ogg", "oga", "opus", "wav", "m4a", "aac", "amr", "weba"].includes(ext)) return "audio"
+  return "file"
+}
+
+/** Normalise a raw Trengo/DB attachment record ({ name?, url?, mime_type?, ... })
+ *  into a ChatAttachment. Returns null when there's no usable URL. */
+function toChatAttachment(raw: unknown): ChatAttachment | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  const url = typeof r.url === "string" ? r.url : typeof r.full_url === "string" ? r.full_url : null
+  if (!url) return null
+  const name =
+    typeof r.name === "string"
+      ? r.name
+      : typeof r.client_name === "string"
+        ? r.client_name
+        : null
+  const mime =
+    typeof r.mime_type === "string" ? r.mime_type : typeof r.type === "string" ? r.type : null
+  return { url, name, mime, kind: inferAttachmentKind(mime, name ?? url) }
+}
+
 export type ChatMessage = {
   id: string
   authorKind: "rl_team" | "client" | "external" | null
@@ -789,6 +841,10 @@ export type ChatMessage = {
    *  (green when handled), even when they aren't the one mentioned. Null for
    *  non-notes / notes with no mentions. Roy 2026-07-30. */
   noteMention: { names: string[]; allDone: boolean } | null
+  /** Media/file attachments (WhatsApp photo/video/voice memo, email files). The
+   *  chat pane renders these inline instead of the "Image"/"Video" placeholder
+   *  text Trengo puts in the body. Empty when the message has none. Roy 2026-07-30. */
+  attachments: ChatAttachment[]
 }
 
 type RawChatRow = {
@@ -819,6 +875,7 @@ type RawChatRow = {
   is_internal: boolean | null
   source_msg_id: string | null
   source_thread: string | null
+  attachments: unknown
   author: { id: string; name: string | null; email: string } | null
   assignee: { id: string; name: string | null; email: string } | null
 }
@@ -828,6 +885,7 @@ const CHAT_SELECT = `
   author_kind, author_external, author_name_cached, title, body, body_html,
   email_subject, email_from, status, starred, archived_at, assigned_at, snoozed_until,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal, source_msg_id, source_thread,
+  attachments,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
@@ -1665,7 +1723,11 @@ function rowToChatMessage(r: RawChatRow, avatarByName: Map<string, string>): Cha
   const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
   const authorName = rowAuthorName(r)
   const rawBody = (r.body ?? r.title ?? "").trim()
-  const body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
+  let body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
+  const attachments = Array.isArray(r.attachments)
+    ? r.attachments.map(toChatAttachment).filter((a): a is ChatAttachment => a !== null)
+    : []
+  if (attachments.length > 0 && isMediaPlaceholderBody(body)) body = ""
   return {
     id: r.id,
     authorKind,
@@ -1683,6 +1745,7 @@ function rowToChatMessage(r: RawChatRow, avatarByName: Map<string, string>): Cha
     isInternal: r.is_internal === true,
     sourceMsgId: r.source_msg_id ?? null,
     noteMention: null,
+    attachments,
   }
 }
 
@@ -1717,7 +1780,10 @@ function liveTrengoMsgToChatMessage(
         : "rl_team"
   const rawBody = (m.message ?? m.body ?? "").trim()
   let body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
-  if (!body && m.attachments && m.attachments.length > 0) body = "[bijlage]"
+  const attachments = Array.isArray(m.attachments)
+    ? m.attachments.map(toChatAttachment).filter((a): a is ChatAttachment => a !== null)
+    : []
+  if (attachments.length > 0 && isMediaPlaceholderBody(body)) body = ""
   const emailHtml = m.email_message?.html?.trim() ?? null
   const bodyHtml =
     emailHtml && emailHtml.includes("<") ? emailHtml : rawBody.includes("<") ? rawBody : null
@@ -1750,6 +1816,7 @@ function liveTrengoMsgToChatMessage(
     isInternal,
     sourceMsgId: `trengo:msg:${m.id}`,
     noteMention,
+    attachments,
   }
 }
 
@@ -1778,6 +1845,9 @@ function mergeStoredAndLive(stored: ChatMessage[], live: ChatMessage[]): ChatMes
         // Live mention state (from Trengo's `mentions` array) is fresher than
         // the ingested fan-out rows, so prefer it when present. Roy 2026-07-30.
         noteMention: lm.noteMention ?? s.noteMention,
+        // Prefer live attachments — the poll cron / older ingests may not have
+        // captured them; live always carries the full set. Roy 2026-07-30.
+        attachments: lm.attachments.length > 0 ? lm.attachments : s.attachments,
       })
     } else {
       result.push(lm)

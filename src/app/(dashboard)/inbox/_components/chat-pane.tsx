@@ -42,7 +42,7 @@ import { t } from "@/lib/i18n/t"
 import { UserAvatar } from "@/components/ui/user-avatar"
 import { cn } from "@/lib/utils"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
-import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
+import type { ChatScope, ChatThreadSummary, ChatMessage, ChatAttachment } from "@/lib/inbox/fetchers"
 import type { InboxUser } from "./shell/types"
 import { EmailComposer } from "./email-composer"
 import { ClientUpdateButton } from "@/app/(dashboard)/clients/_components/client-update-button"
@@ -3588,6 +3588,79 @@ function renderMentions(text: string, names: string[]): React.ReactNode {
   ]
 }
 
+/** Every attachment is fetched through the Hub's server-side proxy (keeps the
+ *  Trengo token off the client, dodges CORS/CSP + signed-URL expiry). */
+function mediaProxyUrl(url: string): string {
+  return `/api/inbox/media?url=${encodeURIComponent(url)}`
+}
+
+/** Inline media/file rendering for a chat message — photos, videos, voice
+ *  memos, and generic files, replacing Trengo's "Image"/"Video" placeholder
+ *  text. Roy 2026-07-30. */
+function MessageAttachments({
+  attachments,
+  tone,
+}: {
+  attachments: ChatAttachment[]
+  /** Match the surrounding bubble so the file chip stays legible. */
+  tone: "light" | "dark"
+}) {
+  if (!attachments || attachments.length === 0) return null
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      {attachments.map((a, i) => {
+        const src = mediaProxyUrl(a.url)
+        const label = a.name?.trim() || "Bestand"
+        if (a.kind === "image") {
+          return (
+            <a key={i} href={src} target="_blank" rel="noopener noreferrer" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={label}
+                loading="lazy"
+                className="max-h-72 max-w-full rounded-lg border border-border/60 object-cover"
+              />
+            </a>
+          )
+        }
+        if (a.kind === "video") {
+          return (
+            <video
+              key={i}
+              src={src}
+              controls
+              preload="metadata"
+              className="max-h-72 max-w-full rounded-lg border border-border/60"
+            />
+          )
+        }
+        if (a.kind === "audio") {
+          return <audio key={i} src={src} controls preload="metadata" className="w-full max-w-[300px]" />
+        }
+        return (
+          <a
+            key={i}
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={label}
+            className={cn(
+              "inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+              tone === "dark"
+                ? "border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+                : "border-border bg-muted/50 text-foreground hover:bg-muted",
+            )}
+          >
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="truncate">{label}</span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 function MessageBubble({
   msg,
   isEmailThread,
@@ -3723,9 +3796,12 @@ function MessageBubble({
               {fmtTime(msg.at)}
             </span>
           </div>
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
-            {renderMentions(msg.body, mentionNames)}
-          </p>
+          {msg.body && (
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
+              {renderMentions(msg.body, mentionNames)}
+            </p>
+          )}
+          <MessageAttachments attachments={msg.attachments} tone="light" />
         </div>
         {onMakeTask && <MakeTaskInlineButton onClick={onMakeTask} />}
       </div>
@@ -3772,7 +3848,10 @@ function MessageBubble({
             {fmtTime(msg.at)}
           </span>
         </div>
-        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">{renderMentions(msg.body, mentionNames)}</p>
+        {msg.body && (
+          <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">{renderMentions(msg.body, mentionNames)}</p>
+        )}
+        <MessageAttachments attachments={msg.attachments} tone={isUs ? "dark" : "light"} />
       </div>
       {!isUs && onMakeTask && (
         <MakeTaskInlineButton onClick={onMakeTask} />
@@ -3993,6 +4072,11 @@ function EmailMessageCard({
           {msg.body || (
             <span className="italic text-muted-foreground/60">No body content.</span>
           )}
+        </div>
+      )}
+      {msg.attachments.length > 0 && (
+        <div className="border-t border-border/40 px-4 py-3">
+          <MessageAttachments attachments={msg.attachments} tone="light" />
         </div>
       )}
     </div>
