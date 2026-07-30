@@ -80,7 +80,17 @@ function FloatingPanel({
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) return
     const r = anchorRef.current.getBoundingClientRect()
-    setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+    // The app zooms <body> (`zoom: var(--ui-scale)`). getBoundingClientRect
+    // returns VISUAL px, but this panel is portaled inside that zoom, so its
+    // fixed top/left are interpreted in the zoomed space — divide by the scale
+    // so it lands under the anchor. Roy 2026-07-30.
+    const scale =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) || 1
+    setPos({
+      top: r.bottom / scale + 4,
+      left: r.left / scale,
+      width: r.width / scale,
+    })
   }, [open, anchorRef])
 
   useEffect(() => {
