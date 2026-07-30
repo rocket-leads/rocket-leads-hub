@@ -161,6 +161,16 @@ export type TrengoMessage = {
   created_at: string
   type: string
   attachments: Array<{ name: string; url: string }> | null
+  /** WhatsApp (and other) media live in these TOP-LEVEL fields, NOT in
+   *  `attachments` (which is [] for media messages). `body_type` is
+   *  IMAGE/VIDEO/AUDIO/VOICE/DOCUMENT/FILE; `file_url` is a signed S3 URL
+   *  (expires ~7d, so read it live, don't persist long-term); `file_caption`
+   *  is the optional caption while `message` stays the "Image" placeholder.
+   *  Roy 2026-07-30. */
+  body_type?: string | null
+  file_url?: string | null
+  file_name?: string | null
+  file_caption?: string | null
   /** Email-specific envelope, present only for messages on Trengo email
    *  channels. Subject + From/To/Cc come through here even when the
    *  outer `message` field is the plain-text or HTML body. Used by the

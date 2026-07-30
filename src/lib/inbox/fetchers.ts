@@ -787,6 +787,17 @@ function mediaPreviewLabel(attachments: ChatAttachment[]): string {
   return `📎 ${n} attachments`
 }
 
+/** Trengo's `body_type` (IMAGE/VIDEO/AUDIO/VOICE/DOCUMENT/FILE/…) → our coarse
+ *  kind. Null when it's not a media body_type. */
+function bodyTypeToKind(bodyType: string | null | undefined): ChatAttachment["kind"] | null {
+  const t = (bodyType ?? "").toUpperCase()
+  if (t === "IMAGE") return "image"
+  if (t === "VIDEO") return "video"
+  if (t === "AUDIO" || t === "VOICE") return "audio"
+  if (t === "DOCUMENT" || t === "FILE") return "file"
+  return null
+}
+
 /** Infer the coarse attachment kind from a mime type and/or filename/URL. */
 function inferAttachmentKind(mime: string | null, nameOrUrl: string | null): ChatAttachment["kind"] {
   const m = (mime ?? "").toLowerCase()
@@ -1819,7 +1830,21 @@ function liveTrengoMsgToChatMessage(
   const attachments = Array.isArray(m.attachments)
     ? m.attachments.map(toChatAttachment).filter((a): a is ChatAttachment => a !== null)
     : []
-  if (attachments.length > 0 && isMediaPlaceholderBody(body)) body = ""
+  // WhatsApp (and other) media live in the top-level `file_url`, not the
+  // (empty) `attachments` array — this is where the real photo/video/voice-memo
+  // URL comes from. `file_caption` is the real caption; `message` stays the
+  // "Image"/"Video" placeholder. Roy 2026-07-30.
+  if (m.file_url) {
+    attachments.push({
+      url: m.file_url,
+      name: m.file_name ?? null,
+      kind: bodyTypeToKind(m.body_type) ?? inferAttachmentKind(null, m.file_name ?? m.file_url),
+      mime: null,
+    })
+  }
+  const caption = m.file_caption?.trim()
+  if (caption) body = caption
+  else if (attachments.length > 0 && isMediaPlaceholderBody(body)) body = ""
   const emailHtml = m.email_message?.html?.trim() ?? null
   const bodyHtml =
     emailHtml && emailHtml.includes("<") ? emailHtml : rawBody.includes("<") ? rawBody : null
@@ -2073,15 +2098,19 @@ export async function getChatThreadMessages(
         const [liveRawArr, trengoUsers] = await Promise.all([
           Promise.all(
             ticketIds.map(async (id) => {
+              // Workspace token first — it reads shared AND most WhatsApp
+              // channels. Only if it comes back empty (a genuinely private
+              // channel it can't see) do we retry with a channel owner's
+              // personal token. Roy 2026-07-30.
+              const viaWorkspace = await fetchTicketMessages(id)
+              if (viaWorkspace.length > 0) return viaWorkspace
               const ch = ticketChannel.get(id)
-              if (ch != null) {
-                if (!channelToken.has(ch)) {
-                  channelToken.set(ch, await resolvePersonalTokenForChannel(supabase, ch))
-                }
-                const tok = channelToken.get(ch)
-                if (tok) return fetchTicketMessagesWithToken(id, tok)
+              if (ch == null) return viaWorkspace
+              if (!channelToken.has(ch)) {
+                channelToken.set(ch, await resolvePersonalTokenForChannel(supabase, ch))
               }
-              return fetchTicketMessages(id)
+              const tok = channelToken.get(ch)
+              return tok ? fetchTicketMessagesWithToken(id, tok) : viaWorkspace
             }),
           ),
           // Resolve @-mention user ids → names for the note checkbox tooltip.
