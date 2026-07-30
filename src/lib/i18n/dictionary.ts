@@ -2874,6 +2874,9 @@ export const DICTIONARY = {
   "inbox.rail.filters_aria": { nl: "Filters", en: "Filters" },
   "inbox.rail.type_header": { nl: "Type", en: "Type" },
   "inbox.rail.deadline_header": { nl: "Deadline", en: "Deadline" },
+  "inbox.detail.click_to_edit": { nl: "Klik om te bewerken", en: "Click to edit" },
+  "inbox.detail.no_description": { nl: "Geen beschrijving.", en: "No description." },
+  "inbox.detail.truncated": { nl: "… {chars} tekens totaal – tekst ingekort voor weergave. Klik om te bewerken en de volledige tekst te zien.", en: "… {chars} chars total - body truncated for display. Click to edit and see the full text." },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

@@ -1389,6 +1389,7 @@ function EditableTitle({
   onSave: (next: string) => void | Promise<void>
   className?: string
 }) {
+  const locale = useLocale()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1456,7 +1457,7 @@ function EditableTitle({
         "group/title text-left rounded-md px-2 py-1 -mx-2 -my-1 hover:bg-muted/40 transition-colors flex items-start gap-1.5",
         className,
       )}
-      title="Click to edit"
+      title={t("inbox.detail.click_to_edit", locale)}
     >
       <h2 className="font-heading text-base font-medium leading-snug flex-1">{value}</h2>
       <Pencil className="h-3.5 w-3.5 mt-1 text-muted-foreground/40 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
@@ -1479,6 +1480,7 @@ function EditableBody({
   users: InboxUser[]
   currentUserId: string
 }) {
+  const locale = useLocale()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -1685,7 +1687,7 @@ function EditableBody({
       type="button"
       onClick={() => setEditing(true)}
       className="group/body w-full text-left rounded-md px-2 py-2 -mx-2 hover:bg-muted/40 transition-colors min-h-[2.5rem]"
-      title="Click to edit"
+      title={t("inbox.detail.click_to_edit", locale)}
     >
       {value ? (
         <>
@@ -1694,14 +1696,14 @@ function EditableBody({
           </span>
           {truncated && (
             <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-              … {value.length.toLocaleString()} chars total - body truncated for display. Click to edit and see the full text.
+              {t("inbox.detail.truncated", locale, { chars: value.length.toLocaleString() })}
             </span>
           )}
         </>
       ) : (
         <span className="text-xs text-muted-foreground/50 italic inline-flex items-center gap-1.5">
           <Pencil className="h-3 w-3" />
-          Geen beschrijving.
+          {t("inbox.detail.no_description", locale)}
         </span>
       )}
     </button>
