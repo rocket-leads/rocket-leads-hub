@@ -12,6 +12,7 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { ComposerDialog } from "../composer-dialog"
 import { LinkToClientPicker } from "../chat-pane"
+import { NewMessageDialog, type NewMessageChannel } from "../new-message-dialog"
 import { type ChannelEntry, type ExternalGroup } from "./external-rail"
 import { type InternalType, type DeadlineFilter } from "./internal-rail"
 import { UnifiedFeed } from "./unified-feed"
@@ -1104,6 +1105,16 @@ export function InboxShell({
     setComposerOpen(true)
   }, [])
 
+  // "New message" (external) — compose a fresh conversation on a chosen channel.
+  const [newMessageOpen, setNewMessageOpen] = useState(false)
+  const newMessageChannels: NewMessageChannel[] = useMemo(
+    () => [
+      ...waEntries.map((c) => ({ id: c.id, name: c.name, kind: "whatsapp" as const })),
+      ...emailEntries.map((c) => ({ id: c.id, name: c.name, kind: "email" as const })),
+    ],
+    [waEntries, emailEntries],
+  )
+
   const handleRowAction = useCallback(
     async (row: FeedRow, action: RowAction) => {
       if (row.kind === "chat" || !row.item) return
@@ -1194,16 +1205,7 @@ export function InboxShell({
 
   return (
     <div className="flex flex-col gap-4">
-      {!locked && (
-        <PageHeader
-          title={t("inbox.shell.header.title", locale)}
-          actions={
-            <Button size="sm" onClick={() => openComposer(isExternal ? "task" : "update")}>
-              <Plus className="h-4 w-4" /> {t("inbox.shell.action.new", locale)}
-            </Button>
-          }
-        />
-      )}
+      {!locked && <PageHeader title={t("inbox.shell.header.title", locale)} />}
 
       <div className="flex items-center gap-2">
         {(!locked || canViewComms) && (
@@ -1227,6 +1229,19 @@ export function InboxShell({
               </button>
             ))}
           </div>
+        )}
+        {/* "New" sits right next to the Internal/External toggle. Its meaning
+            follows the scope: External composes a new message on a channel;
+            Internal creates a new task/update. Roy 2026-07-30. */}
+        {!locked && (
+          <Button
+            size="sm"
+            className="ml-1"
+            onClick={() => (isExternal ? setNewMessageOpen(true) : openComposer("task"))}
+          >
+            <Plus className="h-4 w-4" />
+            {isExternal ? "New message" : "New"}
+          </Button>
         )}
       </div>
 
@@ -1455,6 +1470,17 @@ export function InboxShell({
         defaultClientId={composerDefaults.clientId}
         defaultTitle={composerDefaults.title}
         defaultBody={composerDefaults.body}
+      />
+
+      <NewMessageDialog
+        open={newMessageOpen}
+        onOpenChange={setNewMessageOpen}
+        channels={newMessageChannels}
+        favoriteIds={favoriteChannelIds}
+        onSent={() => {
+          setNewMessageOpen(false)
+          queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
+        }}
       />
 
       {/* Bulk-select action bar — appears once ≥1 ticket is selected via the
