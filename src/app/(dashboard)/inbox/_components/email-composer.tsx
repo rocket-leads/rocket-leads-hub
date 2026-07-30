@@ -394,6 +394,12 @@ function RichTextToolbar({ editor, disabled }: { editor: Editor | null; disabled
   ) => (
     <button
       type="button"
+      // Keep the editor's caret: a plain <button> steals focus on mousedown,
+      // which collapses a bare (no-selection) caret to the document start — so
+      // toggling a list from an empty line wrapped the FIRST paragraph instead
+      // of the current one. preventDefault keeps focus in the editor so the
+      // command applies exactly where the cursor is. Roy 2026-07-30.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       disabled={disabled}
       title={title}
