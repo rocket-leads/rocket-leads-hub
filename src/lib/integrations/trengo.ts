@@ -1267,6 +1267,40 @@ export async function fetchUserTicketMessages(args: {
 }
 
 /**
+ * Fetch the full message history of a SHARED-channel ticket via the workspace
+ * token, walking up to `maxPages` pages (Trengo paginates ~25/page). Used to
+ * show a COMPLETE conversation on thread-open — the Hub only stores messages it
+ * ingested via webhook/poll, so contacts that existed before tracking (or whose
+ * media messages landed as "Image") show an incomplete thread. Cached 300s +
+ * 429-safe via trengoFetch. Returns [] on failure so callers fall back to
+ * stored rows. Roy 2026-07-30.
+ */
+export async function fetchTicketMessages(
+  ticketId: string | number,
+  maxPages = 4,
+): Promise<TrengoMessage[]> {
+  const out: TrengoMessage[] = []
+  try {
+    for (let page = 1; page <= maxPages; page++) {
+      const data = await trengoFetch<MessagePage>(
+        `/tickets/${ticketId}/messages?page=${page}`,
+      )
+      const rows = data.data ?? []
+      out.push(...rows)
+      // Trengo returns a partial (or empty) page when the history is exhausted.
+      if (rows.length < 20) break
+    }
+  } catch (e) {
+    console.error(
+      `[trengo] fetchTicketMessages failed (ticket=${ticketId}):`,
+      e instanceof Error ? e.message : e,
+    )
+    return []
+  }
+  return out
+}
+
+/**
  * Fetch the rich email HTML for a single message on a SHARED channel, using
  * the workspace token.
  *

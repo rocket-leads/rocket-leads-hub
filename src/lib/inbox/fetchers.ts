@@ -3,8 +3,10 @@ import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import {
   fetchTrengoChannels,
+  fetchTicketMessages,
   isEmailChannelType,
   isWhatsAppChannelType,
+  type TrengoMessage,
 } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
@@ -810,6 +812,7 @@ type RawChatRow = {
   trengo_assignee_user_id: number | null
   is_internal: boolean | null
   source_msg_id: string | null
+  source_thread: string | null
   author: { id: string; name: string | null; email: string } | null
   assignee: { id: string; name: string | null; email: string } | null
 }
@@ -818,7 +821,7 @@ const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, body_html,
   email_subject, email_from, status, starred, archived_at, assigned_at, snoozed_until,
-  created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal, source_msg_id,
+  created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal, source_msg_id, source_thread,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
@@ -1651,6 +1654,120 @@ export async function getChatThreadTicketIds(threadKey: string): Promise<string[
   return Array.from(ids)
 }
 
+/** Map one stored inbox_events chat row to a ChatMessage. */
+function rowToChatMessage(r: RawChatRow, avatarByName: Map<string, string>): ChatMessage {
+  const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
+  const authorName = rowAuthorName(r)
+  const rawBody = (r.body ?? r.title ?? "").trim()
+  const body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
+  return {
+    id: r.id,
+    authorKind,
+    authorName,
+    authorAvatarUrl:
+      authorKind === "rl_team" ? (avatarByName.get(authorName.trim().toLowerCase()) ?? null) : null,
+    authorExternal: r.author_external ?? null,
+    body,
+    bodyHtml: r.body_html ?? null,
+    emailSubject: r.email_subject ?? null,
+    emailFromAddress: r.email_from ?? null,
+    at: rowDisplayAt(r),
+    source: r.source,
+    status: r.status,
+    isInternal: r.is_internal === true,
+    sourceMsgId: r.source_msg_id ?? null,
+  }
+}
+
+/** Trengo timestamps are "YYYY-MM-DD HH:mm:ss" in UTC; coerce to ISO so they
+ *  sort + format the same as stored `created_at_src`. */
+function trengoTsToIso(s: string | null | undefined): string {
+  if (!s) return new Date(0).toISOString()
+  const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z"
+  const ms = new Date(iso).getTime()
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date(0).toISOString()
+}
+
+/** Map a live Trengo message (from `/tickets/{id}/messages`) to a ChatMessage,
+ *  matching the quality of the stored-row mapping (author kind, HTML-stripped
+ *  body, email envelope, internal-note flag, teammate avatar). Roy 2026-07-30. */
+function liveTrengoMsgToChatMessage(
+  m: TrengoMessage,
+  contactName: string,
+  avatarByName: Map<string, string>,
+): ChatMessage {
+  const type = (m.type ?? "").toUpperCase()
+  const inbound = type === "INBOUND" || type === "INBOUND_MESSAGE"
+  const isInternal = type.startsWith("NOTE") || type.includes("INTERNAL")
+  const outbound = type.startsWith("OUTBOUND") || isInternal
+  const authorKind: ChatMessage["authorKind"] = inbound
+    ? "client"
+    : outbound
+      ? "rl_team"
+      : m.author_type === "Contact"
+        ? "client"
+        : "rl_team"
+  const rawBody = (m.message ?? m.body ?? "").trim()
+  let body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
+  if (!body && m.attachments && m.attachments.length > 0) body = "[bijlage]"
+  const emailHtml = m.email_message?.html?.trim() ?? null
+  const bodyHtml =
+    emailHtml && emailHtml.includes("<") ? emailHtml : rawBody.includes("<") ? rawBody : null
+  const teamName = m.agent?.name ?? m.author?.name ?? "Team"
+  const authorName = authorKind === "client" ? contactName : teamName
+  return {
+    id: `trengo:msg:${m.id}`,
+    authorKind,
+    authorName,
+    authorAvatarUrl:
+      authorKind === "rl_team" ? (avatarByName.get(authorName.trim().toLowerCase()) ?? null) : null,
+    authorExternal: null,
+    body,
+    bodyHtml,
+    emailSubject: m.email_message?.subject?.trim() || null,
+    emailFromAddress: m.email_message?.from?.trim() || null,
+    at: trengoTsToIso(m.created_at),
+    source: "trengo",
+    status: "read",
+    isInternal,
+    sourceMsgId: `trengo:msg:${m.id}`,
+  }
+}
+
+/** Merge stored + live messages by source_msg_id. Live is the completeness
+ *  source (fills gaps + fixes placeholder bodies like "Image"); stored keeps
+ *  its Hub enrichment (avatar, internal flag, mention rewrite) for the messages
+ *  it already has. Sorted oldest-first. Roy 2026-07-30. */
+function mergeStoredAndLive(stored: ChatMessage[], live: ChatMessage[]): ChatMessage[] {
+  const storedByMsg = new Map<string, ChatMessage>()
+  for (const s of stored) if (s.sourceMsgId) storedByMsg.set(s.sourceMsgId, s)
+  const seen = new Set<string>()
+  const result: ChatMessage[] = []
+  for (const lm of live) {
+    const key = lm.sourceMsgId
+    if (key) seen.add(key)
+    const s = key ? storedByMsg.get(key) : undefined
+    if (s) {
+      // Keep the Hub-enriched stored row but prefer the live body when it's
+      // richer (e.g. real text vs. an ingested "Image" placeholder).
+      result.push({
+        ...s,
+        body: lm.body || s.body,
+        bodyHtml: lm.bodyHtml ?? s.bodyHtml,
+        emailSubject: lm.emailSubject ?? s.emailSubject,
+        emailFromAddress: lm.emailFromAddress ?? s.emailFromAddress,
+      })
+    } else {
+      result.push(lm)
+    }
+  }
+  for (const s of stored) {
+    if (!s.sourceMsgId || !seen.has(s.sourceMsgId)) result.push(s)
+  }
+  result.sort((a, b) => a.at.localeCompare(b.at))
+  return result
+}
+
 export async function getChatThreadMessages(
   threadKey: string,
   userId: string,
@@ -1709,38 +1826,41 @@ export async function getChatThreadMessages(
   if (error) throw new Error(`Failed to load thread: ${error.message}`)
 
   const avatarByName = await getHubAvatarByName(supabase)
+  const rows = (data ?? []) as unknown as RawChatRow[]
+  const storedMessages = rows.map((r) => rowToChatMessage(r, avatarByName))
 
-  return ((data ?? []) as unknown as RawChatRow[]).map((r) => {
-    const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
-    const authorName = rowAuthorName(r)
-    // Defensive HTML strip: ingest paths (webhook, polling cron) should
-    // already strip at write time, but legacy rows + email tickets
-    // (where the body is raw HTML with signature blocks + tracking
-    // wrappers) need a fallback so the chat bubble doesn't render
-    // <p><span ...> literally. Cheap on the 99% of rows that are
-    // already plain text - the `<` check skips the regex pass entirely.
-    const rawBody = (r.body ?? r.title ?? "").trim()
-    const body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
-    return {
-      id: r.id,
-      authorKind,
-      authorName,
-      authorAvatarUrl:
-        authorKind === "rl_team"
-          ? (avatarByName.get(authorName.trim().toLowerCase()) ?? null)
-          : null,
-      authorExternal: r.author_external ?? null,
-      body,
-      bodyHtml: r.body_html ?? null,
-      emailSubject: r.email_subject ?? null,
-      emailFromAddress: r.email_from ?? null,
-      at: rowDisplayAt(r),
-      source: r.source,
-      status: r.status,
-      isInternal: r.is_internal === true,
-      sourceMsgId: r.source_msg_id ?? null,
+  // Live-fetch the full Trengo conversation and merge it in, so the thread
+  // shows the COMPLETE history — the Hub only stores what it ingested via
+  // webhook/poll, so contacts that existed before tracking (or whose media
+  // messages landed as "Image") otherwise show a partial thread. Best-effort:
+  // any failure (a private channel the workspace token can't read, a rate
+  // limit, a parse error) falls back to the stored rows. Roy 2026-07-30.
+  try {
+    if (rows.some((r) => r.source === "trengo")) {
+      const ticketIds = Array.from(
+        new Set(
+          rows
+            .map((r) => r.source_thread?.match(/^trengo:ticket:(\d+)/)?.[1])
+            .filter((x): x is string => !!x),
+        ),
+      ).slice(0, 3)
+      if (ticketIds.length > 0) {
+        const liveRaw = (await Promise.all(ticketIds.map((id) => fetchTicketMessages(id)))).flat()
+        if (liveRaw.length > 0) {
+          const contactName =
+            storedMessages.find((m) => m.authorKind === "client")?.authorName ?? "Contact"
+          const live = liveRaw.map((m) => liveTrengoMsgToChatMessage(m, contactName, avatarByName))
+          return mergeStoredAndLive(storedMessages, live)
+        }
+      }
     }
-  })
+  } catch (e) {
+    console.error(
+      "[getChatThreadMessages] live Trengo merge failed:",
+      e instanceof Error ? e.message : e,
+    )
+  }
+  return storedMessages
 }
 
 export type { InboxKind, InboxPriority, InboxSource, TaskStatus, UpdateStatus }
