@@ -783,6 +783,11 @@ export type ChatMessage = {
    *  an internal note to the current user's mention row so it can render a
    *  per-note "done" checkbox on the note itself. Null for rows without one. */
   sourceMsgId: string | null
+  /** For internal notes that @-mention teammates: who was tagged + whether
+   *  they've all ticked it off. Lets EVERY viewer see the note's done-state
+   *  (green when handled), even when they aren't the one mentioned. Null for
+   *  non-notes / notes with no mentions. Roy 2026-07-30. */
+  noteMention: { names: string[]; allDone: boolean } | null
 }
 
 type RawChatRow = {
@@ -1676,6 +1681,7 @@ function rowToChatMessage(r: RawChatRow, avatarByName: Map<string, string>): Cha
     status: r.status,
     isInternal: r.is_internal === true,
     sourceMsgId: r.source_msg_id ?? null,
+    noteMention: null,
   }
 }
 
@@ -1731,6 +1737,7 @@ function liveTrengoMsgToChatMessage(
     status: "read",
     isInternal,
     sourceMsgId: `trengo:msg:${m.id}`,
+    noteMention: null,
   }
 }
 
@@ -1766,6 +1773,59 @@ function mergeStoredAndLive(stored: ChatMessage[], live: ChatMessage[]): ChatMes
   }
   result.sort((a, b) => a.at.localeCompare(b.at))
   return result
+}
+
+/** Attach per-note mention completion to internal-note messages: who was
+ *  @-tagged and whether they've all ticked it off. Sourced from the mention
+ *  fan-out `update` rows (`trengo:mention:<noteMsgId>:<hubId>`, status read =
+ *  done), so every viewer sees the note's state — not just the mentioned user.
+ *  Best-effort. Roy 2026-07-30. */
+async function attachNoteMentions(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  messages: ChatMessage[],
+): Promise<ChatMessage[]> {
+  const noteIds = Array.from(
+    new Set(
+      messages
+        .filter((m) => m.isInternal && m.sourceMsgId)
+        .map((m) => m.sourceMsgId!.match(/^trengo:msg:(\d+)$/)?.[1])
+        .filter((x): x is string => !!x),
+    ),
+  )
+  if (noteIds.length === 0) return messages
+  try {
+    const orClause = noteIds.map((id) => `source_msg_id.like.trengo:mention:${id}:*`).join(",")
+    const { data } = await supabase
+      .from("inbox_events")
+      .select("source_msg_id, status, assignee:users!inbox_items_assignee_id_fkey(name, email)")
+      .eq("kind", "update")
+      .or(orClause)
+    const byNote = new Map<string, { names: Set<string>; total: number; done: number }>()
+    for (const r of (data ?? []) as unknown as Array<{
+      source_msg_id: string | null
+      status: string
+      assignee: { name: string | null; email: string | null } | null
+    }>) {
+      const m = (r.source_msg_id ?? "").match(/^trengo:mention:(\d+):/)
+      if (!m) continue
+      const e = byNote.get(m[1]) ?? { names: new Set<string>(), total: 0, done: 0 }
+      const nm = (r.assignee?.name ?? r.assignee?.email ?? "").trim()
+      if (nm) e.names.add(nm)
+      e.total += 1
+      if (r.status === "read") e.done += 1
+      byNote.set(m[1], e)
+    }
+    return messages.map((msg) => {
+      if (!msg.isInternal || !msg.sourceMsgId) return msg
+      const id = msg.sourceMsgId.match(/^trengo:msg:(\d+)$/)?.[1]
+      const e = id ? byNote.get(id) : undefined
+      if (!e || e.total === 0) return msg
+      return { ...msg, noteMention: { names: Array.from(e.names), allDone: e.done >= e.total } }
+    })
+  } catch (e) {
+    console.error("[attachNoteMentions] failed:", e instanceof Error ? e.message : e)
+    return messages
+  }
 }
 
 export async function getChatThreadMessages(
@@ -1828,6 +1888,7 @@ export async function getChatThreadMessages(
   const avatarByName = await getHubAvatarByName(supabase)
   const rows = (data ?? []) as unknown as RawChatRow[]
   const storedMessages = rows.map((r) => rowToChatMessage(r, avatarByName))
+  let result: ChatMessage[] = storedMessages
 
   // Live-fetch the full Trengo conversation and merge it in, so the thread
   // shows the COMPLETE history — the Hub only stores what it ingested via
@@ -1850,7 +1911,7 @@ export async function getChatThreadMessages(
           const contactName =
             storedMessages.find((m) => m.authorKind === "client")?.authorName ?? "Contact"
           const live = liveRaw.map((m) => liveTrengoMsgToChatMessage(m, contactName, avatarByName))
-          return mergeStoredAndLive(storedMessages, live)
+          result = mergeStoredAndLive(storedMessages, live)
         }
       }
     }
@@ -1860,7 +1921,7 @@ export async function getChatThreadMessages(
       e instanceof Error ? e.message : e,
     )
   }
-  return storedMessages
+  return attachNoteMentions(supabase, result)
 }
 
 export type { InboxKind, InboxPriority, InboxSource, TaskStatus, UpdateStatus }

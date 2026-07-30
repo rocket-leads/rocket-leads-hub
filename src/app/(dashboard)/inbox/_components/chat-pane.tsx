@@ -3686,7 +3686,9 @@ function MessageBubble({
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
               {fmtTime(msg.at)}
             </span>
-            {hasMention && (
+            {hasMention ? (
+              // The current user is tagged → interactive check to tick off their
+              // own notification (full opacity = "this one's for me").
               <button
                 type="button"
                 role="checkbox"
@@ -3703,7 +3705,22 @@ function MessageBubble({
               >
                 <Check className="h-4 w-4" strokeWidth={3} />
               </button>
-            )}
+            ) : msg.noteMention ? (
+              // Someone else is tagged → read-only, FADED indicator so you can
+              // still see whether they've handled it (green = done). Roy 2026-07-30.
+              <span
+                aria-label={`${msg.noteMention.names.join(", ")} — ${msg.noteMention.allDone ? "afgehandeld" : "nog open"}`}
+                title={`${msg.noteMention.names.join(", ")} — ${msg.noteMention.allDone ? "afgehandeld" : "nog open"}`}
+                className={cn(
+                  "ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 opacity-45",
+                  msg.noteMention.allDone
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : "border-amber-500/50 bg-card text-transparent",
+                )}
+              >
+                <Check className="h-4 w-4" strokeWidth={3} />
+              </span>
+            ) : null}
           </div>
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
             {renderMentions(msg.body, mentionNames)}
