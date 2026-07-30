@@ -1,5 +1,8 @@
 "use client"
 
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+
 /**
  * Thin, calm COMMS status line for the external inbox — the honest, compact
  * cousin of the 187N Chats hero (no fabricated median-reply / sparkline metrics
@@ -25,6 +28,7 @@ export function InboxHero({
   /** Leading strip label — "Comms" (external) / "Workspace" (internal). */
   label?: string
 }) {
+  const locale = useLocale()
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1 font-mono text-[11px] text-muted-foreground/60">
       <span className="flex items-center gap-1.5">
@@ -33,8 +37,8 @@ export function InboxHero({
       </span>
       {/* Zero counts render no number at all — a stat only shows when it has
           something to act on. Roy 2026-07-30. */}
-      {newCount > 0 && <Stat label="New" value={newCount} strong />}
-      {assignedCount > 0 && <Stat label="Opgepakt" value={assignedCount} />}
+      {newCount > 0 && <Stat label={t("inbox.hero.new", locale)} value={newCount} strong />}
+      {assignedCount > 0 && <Stat label={t("inbox.hero.picked_up", locale)} value={assignedCount} />}
       {/* "Gesloten" total dropped — the closed archive count isn't actionable
           and just added noise. Channel strip shows unread only (the number that
           actually needs a reply), not the full thread total. Roy 2026-07-30. */}
@@ -44,7 +48,7 @@ export function InboxHero({
           .map((c) => (
             <span key={c.label} className="tabular-nums text-muted-foreground/60">
               <span className="uppercase tracking-wide text-muted-foreground/40">{c.label}</span>{" "}
-              {c.unread} unread
+              {c.unread} {t("inbox.hero.unread", locale)}
             </span>
           ))}
       </span>

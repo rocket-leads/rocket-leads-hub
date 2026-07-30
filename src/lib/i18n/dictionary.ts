@@ -2856,6 +2856,9 @@ export const DICTIONARY = {
   "inbox.scope.my_items": { nl: "Mijn items", en: "My items" },
   "inbox.scope.delegated": { nl: "Gedelegeerd", en: "Delegated" },
   "inbox.shell.new_message": { nl: "Nieuw bericht", en: "New message" },
+  "inbox.hero.new": { nl: "Nieuw", en: "New" },
+  "inbox.hero.picked_up": { nl: "Opgepakt", en: "Picked up" },
+  "inbox.hero.unread": { nl: "ongelezen", en: "unread" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
