@@ -75,6 +75,14 @@ type Props = {
   onSignatureChange?: (signature: string | null) => void
   /** Disabled while a send is in flight or uploads are running. */
   disabled?: boolean
+  /** Extra classes on the editor body. In the docked reply the editor grows
+   *  unbounded (rides the thread scrollbar); the New-message DIALOG passes a
+   *  max-height + overflow so the editor scrolls internally and the signature
+   *  + Send footer stay put instead of being pushed off. Roy 2026-07-30. */
+  editorBodyClassName?: string
+  /** Optional toolbar extras (e.g. an attach button) rendered on the right of
+   *  the formatting toolbar. */
+  toolbarExtras?: React.ReactNode
 }
 
 /**
@@ -106,6 +114,8 @@ export function EmailComposer({
   onPasteFiles,
   onSignatureChange,
   disabled = false,
+  editorBodyClassName,
+  toolbarExtras,
 }: Props) {
   const [ccBccExpanded, setCcBccExpanded] = useState(cc.length > 0 || bcc.length > 0)
 
@@ -335,13 +345,13 @@ export function EmailComposer({
         </HeaderRow>
       </div>
 
-      {/* Toolbar */}
-      <RichTextToolbar editor={editor} disabled={disabled} />
+      {/* Toolbar (+ optional extras like an attach button on the right) */}
+      <RichTextToolbar editor={editor} disabled={disabled} extras={toolbarExtras} />
 
-      {/* Editor body — grows with content (no inner max-height/scroll) so the
-          whole composer rides the ONE thread scrollbar instead of spawning a
-          second one. Roy 2026-07-26. */}
-      <div className="bg-card min-h-[140px]">
+      {/* Editor body — grows with content by default (rides the ONE thread
+          scrollbar). A caller can pass `editorBodyClassName` (e.g. a max-height
+          + overflow) so the editor scrolls internally instead. Roy 2026-07-26. */}
+      <div className={cn("bg-card min-h-[140px]", editorBodyClassName)}>
         <EditorContent editor={editor} />
       </div>
 
@@ -384,7 +394,15 @@ function HeaderRow({ label, children }: { label: string; children: React.ReactNo
 /** Rich-text formatting toolbar - Bold/Italic/Underline/Strike/H2/Quote/
  *  Lists/Link/Undo/Redo. Each button calls into the TipTap editor's command
  *  chain and mirrors the active-mark state via `editor.isActive(name)`. */
-function RichTextToolbar({ editor, disabled }: { editor: Editor | null; disabled: boolean }) {
+function RichTextToolbar({
+  editor,
+  disabled,
+  extras,
+}: {
+  editor: Editor | null
+  disabled: boolean
+  extras?: React.ReactNode
+}) {
   if (!editor) return null
   const btn = (
     active: boolean,
@@ -428,6 +446,7 @@ function RichTextToolbar({ editor, disabled }: { editor: Editor | null; disabled
       <span className="h-4 w-px bg-border/60 mx-0.5" aria-hidden />
       {btn(false, () => editor.chain().focus().undo().run(), "Undo (⌘Z)", <Undo className="h-3.5 w-3.5" />)}
       {btn(false, () => editor.chain().focus().redo().run(), "Redo (⌘⇧Z)", <Redo className="h-3.5 w-3.5" />)}
+      {extras && <div className="ml-auto flex items-center gap-0.5">{extras}</div>}
     </div>
   )
 }

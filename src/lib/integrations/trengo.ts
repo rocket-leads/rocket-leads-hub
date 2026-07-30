@@ -385,6 +385,8 @@ export async function sendEmailToAddressAsUser(args: {
    *  comma-joined strings (mirrors sendTrengoReplyAsUser). */
   cc?: string[]
   bcc?: string[]
+  /** Trengo draft-attachment ids to attach to the outgoing mail. */
+  attachmentIds?: number[]
 }): Promise<{ ticketId: string; messageId: string }> {
   const { userToken, channelId, email, name, subject, cc, bcc } = args
   const displayName = name ?? email
@@ -438,7 +440,15 @@ export async function sendEmailToAddressAsUser(args: {
       const ticketId =
         json.id ?? json.ticket_id ?? json.data?.id ?? json.data?.ticket_id
       if (ticketId) {
-        return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body, cc, bcc })
+        return sendBodyIntoTicket({
+          userToken,
+          ticketId: String(ticketId),
+          subject,
+          body,
+          cc,
+          bcc,
+          attachmentIds: args.attachmentIds,
+        })
       }
     } else {
       lastStatus = res.status
@@ -466,6 +476,7 @@ export async function sendEmailToAddressAsUser(args: {
       body,
       cc,
       bcc,
+      attachmentIds: args.attachmentIds,
     })
   } catch (e) {
     const fallbackMsg = e instanceof Error ? e.message : String(e)
@@ -499,6 +510,7 @@ async function sendBodyIntoTicket(args: {
   body: string
   cc?: string[]
   bcc?: string[]
+  attachmentIds?: number[]
 }): Promise<{ ticketId: string; messageId: string }> {
   const sendRes = await trengoPostWithRetry(
     `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`,
@@ -507,6 +519,9 @@ async function sendBodyIntoTicket(args: {
       message: args.body,
       subject: args.subject,
       internal_note: false,
+      ...(args.attachmentIds && args.attachmentIds.length > 0
+        ? { attachment_ids: args.attachmentIds }
+        : {}),
       ...emailCcBccPayload(args.cc, args.bcc),
     },
   )
@@ -538,6 +553,7 @@ export async function createEmailMessageForContact(args: {
   body: string
   cc?: string[]
   bcc?: string[]
+  attachmentIds?: number[]
 }): Promise<{ ticketId: string; messageId: string }> {
   // Step 1 - create the ticket.
   const createRes = await fetch(`https://app.trengo.com/api/v2/tickets`, {
@@ -601,6 +617,9 @@ export async function createEmailMessageForContact(args: {
       message: args.body,
       subject: args.subject,
       internal_note: false,
+      ...(args.attachmentIds && args.attachmentIds.length > 0
+        ? { attachment_ids: args.attachmentIds }
+        : {}),
       ...emailCcBccPayload(args.cc, args.bcc),
     },
   )

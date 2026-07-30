@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Image from "next/image"
-import { Mail, Loader2, Send, ChevronDown, Check, Search, User, X, LayoutGrid } from "lucide-react"
+import { Mail, Loader2, Send, ChevronDown, Check, Search, User, X, LayoutGrid, Paperclip, FileText } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -348,6 +348,11 @@ export function NewMessageDialog({
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [params, setParams] = useState<string[]>([])
 
+  // Email attachments — uploaded to Trengo's draft store; ids sent with the mail.
+  const [attachments, setAttachments] = useState<Array<{ id: number; name: string }>>([])
+  const [uploading, setUploading] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -394,6 +399,42 @@ export function NewMessageDialog({
     setSearch("")
   }
 
+  async function uploadFiles(files: FileList | File[]) {
+    const list = Array.from(files)
+    if (list.length === 0 || channelId == null) return
+    setError(null)
+    setUploading((c) => c + list.length)
+    await Promise.all(
+      list.map(async (file) => {
+        try {
+          const fd = new FormData()
+          fd.append("file", file, file.name)
+          fd.append("channelId", String(channelId))
+          const res = await fetch("/api/inbox/attachment-upload", { method: "POST", body: fd })
+          const data = (await res.json().catch(() => ({}))) as {
+            id?: number
+            client_name?: string
+            needsConnect?: string
+            error?: string
+          }
+          if (!res.ok || typeof data.id !== "number") {
+            setError(
+              data.needsConnect
+                ? "Verbind eerst Trengo in je account-instellingen."
+                : data.error ?? "Upload mislukt",
+            )
+            return
+          }
+          setAttachments((prev) => [...prev, { id: data.id!, name: data.client_name ?? file.name }])
+        } catch {
+          setError("Upload mislukt")
+        } finally {
+          setUploading((c) => Math.max(0, c - 1))
+        }
+      }),
+    )
+  }
+
   function reset() {
     initedRef.current = false
     setSearch("")
@@ -406,6 +447,7 @@ export function NewMessageDialog({
     setSignature(null)
     setTemplateId(null)
     setParams([])
+    setAttachments([])
     setError(null)
   }
   function close() {
@@ -451,6 +493,7 @@ export function NewMessageDialog({
           bcc,
           subject,
           html: fullHtml,
+          attachmentIds: attachments.map((a) => a.id),
         }
       } else {
         const phone = (waPhone || search).trim()
@@ -584,7 +627,63 @@ export function NewMessageDialog({
               onHtmlBodyChange={setHtml}
               onSignatureChange={setSignature}
               disabled={sending}
+              // Editor scrolls internally so the signature + Send footer stay
+              // put instead of being pushed off the dialog. Roy 2026-07-30.
+              editorBodyClassName="max-h-[34vh] overflow-y-auto"
+              toolbarExtras={
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending || uploading > 0}
+                  title="Bestand bijvoegen"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  {uploading > 0 ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              }
             />
+          )}
+
+          {/* Attachment chips + hidden file input (email). */}
+          {medium === "email" && channelId != null && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) uploadFiles(e.target.files)
+                  e.target.value = ""
+                }}
+              />
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {attachments.map((a) => (
+                    <span
+                      key={a.id}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{a.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                        className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+                        aria-label="Verwijderen"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {medium === "whatsapp" && channelId != null && (
@@ -639,7 +738,7 @@ export function NewMessageDialog({
           <Button variant="outline" onClick={close} disabled={sending}>
             Annuleren
           </Button>
-          <Button onClick={send} disabled={sending || !canSend}>
+          <Button onClick={send} disabled={sending || uploading > 0 || !canSend}>
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Versturen
           </Button>

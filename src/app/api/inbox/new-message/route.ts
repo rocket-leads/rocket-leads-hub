@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
     bcc?: unknown[]
     subject?: string
     html?: string
+    attachmentIds?: unknown[]
     templateName?: string
     templateParams?: unknown[]
   } | null
@@ -57,6 +58,11 @@ export async function POST(req: NextRequest) {
       }
       const toStrArr = (v: unknown[] | undefined): string[] =>
         Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : []
+      const attachmentIds = Array.isArray(body?.attachmentIds)
+        ? body.attachmentIds
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        : []
       const sent = await sendEmailToAddressAsUser({
         userToken,
         channelId,
@@ -67,6 +73,7 @@ export async function POST(req: NextRequest) {
         bodyIsHtml: true,
         cc: toStrArr(body?.cc),
         bcc: toStrArr(body?.bcc),
+        attachmentIds,
       })
       return NextResponse.json({ ok: true, ticketId: sent.ticketId, messageId: sent.messageId })
     }
