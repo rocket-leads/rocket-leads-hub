@@ -578,6 +578,10 @@ export async function replyToInboxEvent(
   options: {
     internalNote?: boolean
     attachmentIds?: number[]
+    /** Attachment display metadata ({ url, name, mime }) for the ones being
+     *  sent, stored on the mirror row so the Hub shows the media instantly
+     *  (before the live Trengo re-fetch backfills it). Roy 2026-07-30. */
+    attachmentsMeta?: Array<{ url: string; name: string | null; mime: string | null }>
     /** When set, sends a WhatsApp Business template instead of free text.
      *  Required for outbound outside the 24h conversation window (Meta
      *  rule); also valid inside the window when the AM picks Template
@@ -777,6 +781,12 @@ export async function replyToInboxEvent(
       assignee_id: userId,
       title: titlePreview,
       body: bodyFull,
+      // Media we just sent — stored so the mirror bubble renders the file
+      // immediately (same shape the fetcher normalises). Roy 2026-07-30.
+      attachments:
+        options.attachmentsMeta && options.attachmentsMeta.length > 0
+          ? options.attachmentsMeta
+          : null,
       status: "read", // user just sent it - already read for them
       source: event.source,
       source_thread: event.source_thread,

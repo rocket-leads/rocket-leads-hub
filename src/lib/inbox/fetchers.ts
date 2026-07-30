@@ -795,7 +795,13 @@ function toChatAttachment(raw: unknown): ChatAttachment | null {
         ? r.client_name
         : null
   const mime =
-    typeof r.mime_type === "string" ? r.mime_type : typeof r.type === "string" ? r.type : null
+    typeof r.mime_type === "string"
+      ? r.mime_type
+      : typeof r.mime === "string"
+        ? r.mime
+        : typeof r.type === "string"
+          ? r.type
+          : null
   return { url, name, mime, kind: inferAttachmentKind(mime, name ?? url) }
 }
 

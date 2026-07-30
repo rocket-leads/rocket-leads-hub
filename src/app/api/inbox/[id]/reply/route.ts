@@ -28,6 +28,7 @@ export async function POST(
         message?: string
         internalNote?: boolean
         attachmentIds?: number[]
+        attachmentsMeta?: Array<{ url?: unknown; name?: unknown; mime?: unknown }>
         template?: { name?: string; language?: string; params?: unknown[]; body?: string }
         email?: {
           subject?: string
@@ -40,6 +41,15 @@ export async function POST(
   const message = (body?.message ?? "").toString()
   const attachmentIds = Array.isArray(body?.attachmentIds)
     ? body.attachmentIds.filter((n): n is number => typeof n === "number" && Number.isFinite(n))
+    : []
+  const attachmentsMeta = Array.isArray(body?.attachmentsMeta)
+    ? body.attachmentsMeta
+        .map((a) => ({
+          url: typeof a?.url === "string" ? a.url : "",
+          name: typeof a?.name === "string" ? a.name : null,
+          mime: typeof a?.mime === "string" ? a.mime : null,
+        }))
+        .filter((a) => a.url)
     : []
   const template = body?.template
     ? {
@@ -84,6 +94,7 @@ export async function POST(
     const result = await replyToInboxEvent(session.user.id, id, message, {
       internalNote: body?.internalNote === true,
       attachmentIds,
+      attachmentsMeta,
       template,
       email,
     })

@@ -1948,6 +1948,13 @@ function ThreadMessages({
           internalNote: isInternal,
           message: htmlToPlain(fullHtml),
           attachmentIds: attachments.map((a) => a.id),
+          // Metadata so the sent-message mirror row can render the media
+          // instantly, before the live Trengo re-fetch backfills it. Roy 2026-07-30.
+          attachmentsMeta: attachments.map((a) => ({
+            url: a.fullUrl,
+            name: a.clientName,
+            mime: a.mimeType,
+          })),
           email: {
             subject: emailSubject || undefined,
             cc: emailCc,
@@ -1960,6 +1967,11 @@ function ThreadMessages({
           internalNote: isInternal,
           message: trimmed,
           attachmentIds: attachments.map((a) => a.id),
+          attachmentsMeta: attachments.map((a) => ({
+            url: a.fullUrl,
+            name: a.clientName,
+            mime: a.mimeType,
+          })),
         }
       }
       const res = await fetch(url, {
