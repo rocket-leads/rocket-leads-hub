@@ -228,9 +228,17 @@ export function InboxListRow({
       {fmtDueDate(item.dueDate).text}
     </span>
   ) : null
+  // Exactly ONE status chip per row (Roy 2026-07-30): in the Delegated view the
+  // delivery signal is the point, so it wins; in My items it's the task status.
+  // Completion still reads from the row's strikethrough + dimming, so dropping
+  // the task-status chip in Delegated loses nothing.
+  const statusNode = isDelegated
+    ? deliveryNode
+    : taskStatus
+      ? <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span>
+      : null
   const metaNodes: ReactNode[] = [
-    taskStatus ? <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span> : null,
-    deliveryNode,
+    statusNode,
     isDelegated ? <span className="truncate">→ {item.assigneeName}</span> : null,
     dueNode,
   ].filter(Boolean)
