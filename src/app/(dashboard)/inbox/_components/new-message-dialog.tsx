@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Mail, MessageCircle, Loader2, Send, ChevronDown, Check, Search, User } from "lucide-react"
+import Image from "next/image"
+import { Mail, Loader2, Send, ChevronDown, Check, Search, User } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -11,16 +12,35 @@ import { EmailComposer } from "./email-composer"
 
 /**
  * "New message" composer — compose a brand-new conversation from scratch,
- * Trengo-style. Pick a medium (WhatsApp / Email), a channel (defaults to the
- * AM's personal channel), a recipient (searched from Trengo contacts by name,
- * or typed raw), then compose: the full email composer for mail, or a template
- * + variables for WhatsApp. Roy 2026-07-30.
+ * Trengo-style. Pick a channel (all channels, WhatsApp + email, in ONE
+ * dropdown — the medium follows the channel; defaults to the AM's personal
+ * channel), a recipient (searched from Trengo contacts by name, or typed
+ * raw; email supports multiple), then compose: the full email composer for
+ * mail, or a template + variables for WhatsApp. Roy 2026-07-30.
  */
 export type NewMessageChannel = { id: number; name: string; kind: "whatsapp" | "email" }
 
 type WaTemplate = { id: number; title: string; slug: string; message: string; language: string }
 type Contact = { id: number; name: string; phone: string | null; email: string | null }
 type Medium = "whatsapp" | "email"
+
+/** Channel medium icon — matches the inbox: the WhatsApp brand logo, a blue
+ *  Mail for email. */
+function MediumIcon({ kind, className }: { kind: Medium; className?: string }) {
+  if (kind === "whatsapp") {
+    return (
+      <Image
+        src="/logos/brands/whatsapp.svg"
+        alt=""
+        width={16}
+        height={16}
+        className={cn("h-4 w-4 shrink-0 object-contain", className)}
+        unoptimized
+      />
+    )
+  }
+  return <Mail className={cn("h-4 w-4 shrink-0 text-blue-500", className)} />
+}
 
 function countTemplateVariables(message: string): number {
   let max = 0
@@ -42,8 +62,8 @@ function useDebounced<T>(value: T, ms: number): T {
   return v
 }
 
-/** Small 187N dropdown — a bordered trigger + a floating option panel, matching
- *  the channel-tab / composer chrome (no native <select> that clips). */
+/** Small 187N dropdown — bordered trigger + floating option panel (no native
+ *  <select> that clips). */
 function Dropdown<T extends string | number>({
   value,
   options,
@@ -112,23 +132,23 @@ function Dropdown<T extends string | number>({
 }
 
 /** Recipient picker — search Trengo contacts by name and pick one, or type a
- *  raw phone/email. Shows the medium-appropriate value. */
+ *  raw phone/email + Enter. */
 function ContactSearch({
   medium,
-  selected,
-  onSelect,
-  rawValue,
-  onRawChange,
+  query,
+  onQueryChange,
+  onPickContact,
+  onSubmitRaw,
 }: {
   medium: Medium
-  selected: Contact | null
-  onSelect: (c: Contact | null) => void
-  rawValue: string
-  onRawChange: (v: string) => void
+  query: string
+  onQueryChange: (v: string) => void
+  onPickContact: (c: Contact) => void
+  onSubmitRaw: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const debounced = useDebounced(rawValue, 250)
+  const debounced = useDebounced(query, 250)
   useEffect(() => {
     if (!open) return
     function onDoc(e: MouseEvent) {
@@ -138,16 +158,16 @@ function ContactSearch({
     return () => document.removeEventListener("mousedown", onDoc)
   }, [open])
 
-  const query = useQuery<{ contacts: Contact[] }>({
+  const q = useQuery<{ contacts: Contact[] }>({
     queryKey: ["contact-search", medium, debounced],
     queryFn: () =>
-      fetch(
-        `/api/inbox/contact-search?kind=${medium}&q=${encodeURIComponent(debounced)}`,
-      ).then((r) => r.json()),
+      fetch(`/api/inbox/contact-search?kind=${medium}&q=${encodeURIComponent(debounced)}`).then((r) =>
+        r.json(),
+      ),
     enabled: open,
     staleTime: 30_000,
   })
-  const contacts = query.data?.contacts ?? []
+  const contacts = q.data?.contacts ?? []
 
   return (
     <div ref={ref} className="relative flex flex-col gap-1">
@@ -157,27 +177,33 @@ function ContactSearch({
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
         <Input
-          value={rawValue}
+          value={query}
           onChange={(e) => {
-            onRawChange(e.target.value)
-            if (selected) onSelect(null)
+            onQueryChange(e.target.value)
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              onSubmitRaw()
+              setOpen(false)
+            }
+          }}
           placeholder={medium === "whatsapp" ? "Zoek contact of +31 6…" : "Zoek contact of naam@bedrijf.nl"}
           className="pl-9"
         />
       </div>
-      {open && (rawValue.trim().length > 0 || contacts.length > 0) && (
+      {open && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
-          {query.isLoading && (
+          {q.isLoading && (
             <p className="flex items-center gap-2 px-2.5 py-2 text-sm text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zoeken…
             </p>
           )}
-          {!query.isLoading && contacts.length === 0 && (
+          {!q.isLoading && contacts.length === 0 && (
             <p className="px-2.5 py-2 text-sm text-muted-foreground">
-              Geen contacten gevonden — je kunt het {medium === "whatsapp" ? "nummer" : "adres"} ook direct typen.
+              Geen contacten — typ het {medium === "whatsapp" ? "nummer" : "adres"} en druk op Enter.
             </p>
           )}
           {contacts.map((c) => (
@@ -185,8 +211,7 @@ function ContactSearch({
               key={c.id}
               type="button"
               onClick={() => {
-                onSelect(c)
-                onRawChange(medium === "whatsapp" ? c.phone ?? "" : c.email ?? "")
+                onPickContact(c)
                 setOpen(false)
               }}
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted"
@@ -221,9 +246,6 @@ export function NewMessageDialog({
   favoriteIds: number[]
   onSent: () => void
 }) {
-  const waChannels = useMemo(() => channels.filter((c) => c.kind === "whatsapp"), [channels])
-  const emailChannels = useMemo(() => channels.filter((c) => c.kind === "email"), [channels])
-
   // The AM's personal channels → default selection.
   const defaultsQuery = useQuery<{ email: number | null; whatsapp: number | null }>({
     queryKey: ["inbox-default-channels"],
@@ -232,12 +254,14 @@ export function NewMessageDialog({
     staleTime: 5 * 60 * 1000,
   })
 
-  const [medium, setMedium] = useState<Medium>("email")
   const [channelId, setChannelId] = useState<number | null>(null)
+  const selectedChannel = channels.find((c) => c.id === channelId) ?? null
+  const medium: Medium = selectedChannel?.kind ?? "email"
 
-  // Recipient
-  const [contact, setContact] = useState<Contact | null>(null)
-  const [rawRecipient, setRawRecipient] = useState("")
+  // Recipient — WhatsApp: single phone in `waPhone`. Email: multiple in `emailTo`.
+  const [search, setSearch] = useState("")
+  const [waPhone, setWaPhone] = useState("")
+  const [emailTo, setEmailTo] = useState<string[]>([])
 
   // Email composer state
   const [subject, setSubject] = useState("")
@@ -253,51 +277,35 @@ export function NewMessageDialog({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const mediumChannels = medium === "whatsapp" ? waChannels : emailChannels
-  // Order: favourites first.
+  // All channels in one dropdown, favourites first, then by medium/name.
   const orderedChannels = useMemo(() => {
     const fav = new Set(favoriteIds)
-    return [...mediumChannels].sort((a, b) => (fav.has(b.id) ? 1 : 0) - (fav.has(a.id) ? 1 : 0))
-  }, [mediumChannels, favoriteIds])
+    return [...channels].sort((a, b) => {
+      const fd = (fav.has(b.id) ? 1 : 0) - (fav.has(a.id) ? 1 : 0)
+      if (fd !== 0) return fd
+      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
+      return a.name.localeCompare(b.name)
+    })
+  }, [channels, favoriteIds])
 
-  // Initialise medium + channel once defaults + channels are ready.
+  // Initialise the channel once defaults + channels are ready → the AM's
+  // personal channel (email preferred, else WhatsApp, else first).
   const initedRef = useRef(false)
   useEffect(() => {
     if (!open) {
       initedRef.current = false
       return
     }
-    if (initedRef.current) return
-    if (defaultsQuery.isLoading) return
+    if (initedRef.current || defaultsQuery.isLoading) return
     initedRef.current = true
     const d = defaultsQuery.data
-    // Prefer the medium whose personal channel exists; else whichever we have.
-    const startMedium: Medium =
-      d?.email && emailChannels.length > 0
-        ? "email"
-        : d?.whatsapp && waChannels.length > 0
-          ? "whatsapp"
-          : emailChannels.length > 0
-            ? "email"
-            : "whatsapp"
-    setMedium(startMedium)
-    const pool = startMedium === "whatsapp" ? waChannels : emailChannels
-    const preferred = startMedium === "whatsapp" ? d?.whatsapp : d?.email
-    setChannelId(pool.find((c) => c.id === preferred)?.id ?? pool[0]?.id ?? null)
-  }, [open, defaultsQuery.isLoading, defaultsQuery.data, emailChannels, waChannels])
-
-  // When medium changes, pick that medium's personal channel (or first).
-  function switchMedium(next: Medium) {
-    setMedium(next)
-    setContact(null)
-    setRawRecipient("")
-    setTemplateId(null)
-    setParams([])
-    setError(null)
-    const pool = next === "whatsapp" ? waChannels : emailChannels
-    const preferred = next === "whatsapp" ? defaultsQuery.data?.whatsapp : defaultsQuery.data?.email
-    setChannelId(pool.find((c) => c.id === preferred)?.id ?? pool[0]?.id ?? null)
-  }
+    const pick =
+      channels.find((c) => c.id === d?.email)?.id ??
+      channels.find((c) => c.id === d?.whatsapp)?.id ??
+      orderedChannels[0]?.id ??
+      null
+    setChannelId(pick)
+  }, [open, defaultsQuery.isLoading, defaultsQuery.data, channels, orderedChannels])
 
   const templatesQuery = useQuery<{ templates: WaTemplate[] }>({
     queryKey: ["wa-templates", channelId],
@@ -308,10 +316,18 @@ export function NewMessageDialog({
   const selectedTemplate = templates.find((tpl) => tpl.id === templateId) ?? null
   const varCount = selectedTemplate ? countTemplateVariables(selectedTemplate.message) : 0
 
+  function addEmail(addr: string) {
+    const a = addr.trim()
+    if (!a) return
+    setEmailTo((prev) => (prev.includes(a) ? prev : [...prev, a]))
+    setSearch("")
+  }
+
   function reset() {
     initedRef.current = false
-    setContact(null)
-    setRawRecipient("")
+    setSearch("")
+    setWaPhone("")
+    setEmailTo([])
     setSubject("")
     setCc([])
     setBcc([])
@@ -334,24 +350,30 @@ export function NewMessageDialog({
     setSending(true)
     setError(null)
     try {
-      const recipient = (contact
-        ? medium === "whatsapp"
-          ? contact.phone
-          : contact.email
-        : rawRecipient
-      )?.trim()
       let payload: Record<string, unknown>
       if (medium === "email") {
-        if (!recipient) throw new Error("Kies of typ een e-mailadres")
+        // Pull in a typed-but-not-yet-added address too.
+        const extra = search.includes("@") ? [search.trim()] : []
+        const recipients = Array.from(new Set([...emailTo, ...extra])).filter(Boolean)
+        if (recipients.length === 0) throw new Error("Kies of typ minimaal één e-mailadres")
         const fullHtml = signature ? `${html}<br><br>${signature}` : html
-        payload = { channelId, kind: "email", to: recipient, subject, html: fullHtml }
+        payload = {
+          channelId,
+          kind: "email",
+          to: recipients[0],
+          cc: [...cc, ...recipients.slice(1)],
+          bcc,
+          subject,
+          html: fullHtml,
+        }
       } else {
-        if (!recipient) throw new Error("Kies of typ een telefoonnummer")
+        const phone = (waPhone || search).trim()
+        if (!phone) throw new Error("Kies of typ een telefoonnummer")
         if (!selectedTemplate) throw new Error("Kies een WhatsApp-template")
         payload = {
           channelId,
           kind: "whatsapp",
-          to: recipient,
+          to: phone,
           templateName: selectedTemplate.slug || selectedTemplate.title,
           templateParams: params.slice(0, varCount),
         }
@@ -378,15 +400,12 @@ export function NewMessageDialog({
     }
   }
 
-  const hasRecipient = !!(contact
-    ? medium === "whatsapp"
-      ? contact.phone
-      : contact.email
-    : rawRecipient.trim())
+  const emailReady = emailTo.length > 0 || search.includes("@")
   const canSend =
     !!channelId &&
-    hasRecipient &&
-    (medium === "email" ? html.trim() || subject.trim() : !!selectedTemplate)
+    (medium === "email"
+      ? emailReady && (html.trim() || subject.trim())
+      : (waPhone || search).trim() && !!selectedTemplate)
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -395,64 +414,62 @@ export function NewMessageDialog({
           <DialogTitle className="text-lg">Nieuw bericht</DialogTitle>
         </DialogHeader>
 
-        {/* Medium + channel selectors, side by side. */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">Type</label>
-            <Dropdown<Medium>
-              value={medium}
-              onChange={switchMedium}
-              placeholder="Kies type"
-              options={[
-                { value: "email", label: "E-mail", icon: <Mail className="h-4 w-4" /> },
-                { value: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4" /> },
-              ]}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">Kanaal</label>
-            <Dropdown<number>
-              value={channelId}
-              onChange={setChannelId}
-              placeholder="Kies kanaal"
-              options={orderedChannels.map((c) => ({
-                value: c.id,
-                label: c.name,
-                icon:
-                  c.kind === "whatsapp" ? (
-                    <MessageCircle className="h-4 w-4" />
-                  ) : (
-                    <Mail className="h-4 w-4" />
-                  ),
-              }))}
-            />
-          </div>
+        {/* Single channel dropdown — all channels (WhatsApp + email); the medium
+            follows the channel. */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground">Kanaal</label>
+          <Dropdown<number>
+            value={channelId}
+            onChange={(id) => {
+              setChannelId(id)
+              // Reset recipient/template when switching medium.
+              setTemplateId(null)
+              setParams([])
+              setError(null)
+            }}
+            placeholder="Kies kanaal"
+            options={orderedChannels.map((c) => ({
+              value: c.id,
+              label: c.name,
+              icon: <MediumIcon kind={c.kind} />,
+            }))}
+          />
         </div>
 
         {/* Recipient */}
-        <ContactSearch
-          medium={medium}
-          selected={contact}
-          onSelect={setContact}
-          rawValue={rawRecipient}
-          onRawChange={setRawRecipient}
-        />
+        {channelId != null && (
+          <ContactSearch
+            medium={medium}
+            query={search}
+            onQueryChange={setSearch}
+            onPickContact={(c) => {
+              if (medium === "whatsapp") {
+                setWaPhone(c.phone ?? "")
+                setSearch(c.phone ?? "")
+              } else if (c.email) {
+                addEmail(c.email)
+              }
+            }}
+            onSubmitRaw={() => {
+              if (medium === "whatsapp") {
+                setWaPhone(search.trim())
+              } else if (search.includes("@")) {
+                addEmail(search)
+              }
+            }}
+          />
+        )}
 
-        {/* Composer */}
+        {/* Email composer — To reflects the picked recipients (add more via the
+            search above, or the To chips here). */}
         {medium === "email" && channelId != null && (
           <EmailComposer
             fromChannelId={channelId}
             onFromChannelChange={setChannelId}
-            emailChannels={emailChannels.map((c) => ({ id: c.id, name: c.name }))}
+            emailChannels={channels.filter((c) => c.kind === "email").map((c) => ({ id: c.id, name: c.name }))}
             threadKey=""
-            to={
-              contact?.email
-                ? [contact.email]
-                : rawRecipient.includes("@")
-                  ? [rawRecipient.trim()]
-                  : []
-            }
-            onToChange={(v) => setRawRecipient(v[0] ?? "")}
+            to={emailTo}
+            onToChange={setEmailTo}
             mode="forward"
             subject={subject}
             onSubjectChange={setSubject}
@@ -467,7 +484,7 @@ export function NewMessageDialog({
           />
         )}
 
-        {medium === "whatsapp" && (
+        {medium === "whatsapp" && channelId != null && (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-muted-foreground">Template</label>

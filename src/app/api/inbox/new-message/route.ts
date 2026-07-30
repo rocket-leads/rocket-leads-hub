@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
     channelId?: number
     kind?: "email" | "whatsapp"
     to?: string
+    cc?: unknown[]
+    bcc?: unknown[]
     subject?: string
     html?: string
     templateName?: string
@@ -53,6 +55,8 @@ export async function POST(req: NextRequest) {
       if (!userToken) {
         return NextResponse.json({ ok: false, needsConnect: "trengo" }, { status: 409 })
       }
+      const toStrArr = (v: unknown[] | undefined): string[] =>
+        Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : []
       const sent = await sendEmailToAddressAsUser({
         userToken,
         channelId,
@@ -61,6 +65,8 @@ export async function POST(req: NextRequest) {
         subject: (body?.subject ?? "").trim() || "(no subject)",
         body: html,
         bodyIsHtml: true,
+        cc: toStrArr(body?.cc),
+        bcc: toStrArr(body?.bcc),
       })
       return NextResponse.json({ ok: true, ticketId: sent.ticketId, messageId: sent.messageId })
     }

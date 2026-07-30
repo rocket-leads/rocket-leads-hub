@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q") ?? ""
   const kind = req.nextUrl.searchParams.get("kind")
   try {
-    const all = await searchTrengoContactsFull(q, 15)
+    const all = await searchTrengoContactsFull(q, 25)
     const contacts =
       kind === "whatsapp"
         ? all.filter((c) => !!c.phone)
