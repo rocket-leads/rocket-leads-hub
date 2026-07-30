@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 type ClientOption = {
   monday_item_id: string
@@ -32,6 +34,7 @@ type Props = {
  * a concrete confirmation toast / message.
  */
 export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose, onLinked }: Props) {
+  const locale = useLocale()
   const [search, setSearch] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -73,12 +76,12 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
         error?: string
       }
       if (!res.ok) {
-        setError(data.error ?? "Linking failed")
+        setError(data.error ?? t("inbox.link.failed", locale))
         return
       }
       onLinked(selectedClient.monday_item_id, selectedClient.name, data.backfilled ?? 0)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Linking failed")
+      setError(e instanceof Error ? e.message : t("inbox.link.failed", locale))
     } finally {
       setSubmitting(false)
     }
@@ -88,7 +91,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Link Trengo contact</DialogTitle>
+          <DialogTitle>{t("inbox.link.title", locale)}</DialogTitle>
         </DialogHeader>
 
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400/90 leading-snug">
@@ -97,8 +100,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
             <span className="font-mono text-[11px]">({trengoContactId})</span>
           </p>
           <p className="text-amber-600/80 dark:text-amber-400/70 mt-0.5">
-            We&apos;ll write this Trengo Contact ID onto the client you pick and
-            re-route any past unlinked messages to that client.
+            {t("inbox.link.note", locale)}
           </p>
         </div>
 
@@ -108,7 +110,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search clients…"
+            placeholder={t("inbox.link.search_placeholder", locale)}
             className="pl-8"
           />
         </div>
@@ -120,7 +122,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
             </div>
           ) : filtered.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
-              {search ? "No clients match." : "No clients available."}
+              {search ? t("inbox.link.no_match", locale) : t("inbox.link.none", locale)}
             </p>
           ) : (
             filtered.map((c) => {
@@ -159,7 +161,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
 
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t("inbox.link.cancel", locale)}
           </Button>
           <Button size="sm" onClick={submit} disabled={!selectedClient || submitting}>
             {submitting ? (
@@ -167,7 +169,7 @@ export function LinkTrengoContactDialog({ trengoContactId, contactName, onClose,
             ) : (
               <Link2 className="h-3.5 w-3.5" />
             )}
-            Link
+            {t("inbox.link.action", locale)}
           </Button>
         </div>
       </DialogContent>

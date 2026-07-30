@@ -2877,6 +2877,14 @@ export const DICTIONARY = {
   "inbox.detail.click_to_edit": { nl: "Klik om te bewerken", en: "Click to edit" },
   "inbox.detail.no_description": { nl: "Geen beschrijving.", en: "No description." },
   "inbox.detail.truncated": { nl: "… {chars} tekens totaal – tekst ingekort voor weergave. Klik om te bewerken en de volledige tekst te zien.", en: "… {chars} chars total - body truncated for display. Click to edit and see the full text." },
+  "inbox.link.title": { nl: "Trengo-contact koppelen", en: "Link Trengo contact" },
+  "inbox.link.note": { nl: "We schrijven dit Trengo Contact-ID op de klant die je kiest en routeren eerdere niet-gekoppelde berichten opnieuw naar die klant.", en: "We'll write this Trengo Contact ID onto the client you pick and re-route any past unlinked messages to that client." },
+  "inbox.link.search_placeholder": { nl: "Klanten zoeken…", en: "Search clients…" },
+  "inbox.link.no_match": { nl: "Geen klanten gevonden.", en: "No clients match." },
+  "inbox.link.none": { nl: "Geen klanten beschikbaar.", en: "No clients available." },
+  "inbox.link.cancel": { nl: "Annuleren", en: "Cancel" },
+  "inbox.link.action": { nl: "Koppelen", en: "Link" },
+  "inbox.link.failed": { nl: "Koppelen mislukt", en: "Linking failed" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
