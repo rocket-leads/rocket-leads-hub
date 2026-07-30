@@ -194,6 +194,14 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
               </button>
             )}
           </div>
+          {/* Channel name (e.g. "Danny WhatsApp") in a very small muted line so
+              you can tell at a glance which inbox a ticket came from — for both
+              WhatsApp and email rows. Roy 2026-07-30. */}
+          {thread.channelName && (
+            <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-wide text-muted-foreground/40">
+              {thread.channelName}
+            </p>
+          )}
         </div>
       </div>
     </div>
