@@ -2862,6 +2862,18 @@ export const DICTIONARY = {
   "inbox.kind.task": { nl: "Taak", en: "Task" },
   "inbox.kind.update": { nl: "Update", en: "Update" },
   "inbox.kind.chat": { nl: "Chat", en: "Chat" },
+  "inbox.types.all": { nl: "Alle types", en: "All types" },
+  "inbox.types.tasks": { nl: "Taken", en: "Tasks" },
+  "inbox.types.updates": { nl: "Updates", en: "Updates" },
+  "inbox.types.none": { nl: "Geen types", en: "No types" },
+  "inbox.deadline.all": { nl: "Elke deadline", en: "Any deadline" },
+  "inbox.deadline.overdue": { nl: "Te laat", en: "Overdue" },
+  "inbox.deadline.today": { nl: "Vandaag", en: "Due today" },
+  "inbox.deadline.week": { nl: "Deze week", en: "Due this week" },
+  "inbox.deadline.none": { nl: "Geen deadline", en: "No deadline" },
+  "inbox.rail.filters_aria": { nl: "Filters", en: "Filters" },
+  "inbox.rail.type_header": { nl: "Type", en: "Type" },
+  "inbox.rail.deadline_header": { nl: "Deadline", en: "Deadline" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react"
 import { ChevronDown, SlidersHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { InternalRail, type InternalType, type DeadlineFilter } from "./internal-rail"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
 /**
  * Compact Type/Deadline selector that folds the old internal rail into the
@@ -12,12 +15,12 @@ import { InternalRail, type InternalType, type DeadlineFilter } from "./internal
  * holds the full Type + Deadline controls (the existing InternalRail verbatim).
  * Mirrors the ChannelPicker on the external side. Roy 2026-07-24.
  */
-const DEADLINE_LABEL: Record<DeadlineFilter, string> = {
-  all: "Any deadline",
-  overdue: "Overdue",
-  today: "Due today",
-  week: "Due this week",
-  none: "No deadline",
+const DEADLINE_LABEL: Record<DeadlineFilter, DictionaryKey> = {
+  all: "inbox.deadline.all",
+  overdue: "inbox.deadline.overdue",
+  today: "inbox.deadline.today",
+  week: "inbox.deadline.week",
+  none: "inbox.deadline.none",
 }
 
 type Props = {
@@ -37,6 +40,7 @@ export function InternalPicker({
   onSelectAllTypes,
   onDeadlineChange,
 }: Props) {
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -51,8 +55,8 @@ export function InternalPicker({
 
   const hasTask = types.has("task")
   const hasUpdate = types.has("update")
-  const typeLabel = hasTask && hasUpdate ? "All types" : hasTask ? "Tasks" : hasUpdate ? "Updates" : "No types"
-  const label = deadline === "all" ? typeLabel : `${typeLabel} · ${DEADLINE_LABEL[deadline]}`
+  const typeLabel = hasTask && hasUpdate ? t("inbox.types.all", locale) : hasTask ? t("inbox.types.tasks", locale) : hasUpdate ? t("inbox.types.updates", locale) : t("inbox.types.none", locale)
+  const label = deadline === "all" ? typeLabel : `${typeLabel} · ${t(DEADLINE_LABEL[deadline], locale)}`
   const count = (hasTask ? counts.task : 0) + (hasUpdate ? counts.update : 0)
 
   return (
