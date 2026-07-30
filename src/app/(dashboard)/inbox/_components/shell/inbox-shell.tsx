@@ -668,13 +668,21 @@ export function InboxShell({
     rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
     return rows
   }, [threads])
-  const allCount = useMemo(
-    () =>
-      threads.filter(
-        (t) => !t.isArchived && (t.channelKind === "whatsapp" || t.channelKind === "email"),
-      ).length,
-    [threads],
-  )
+  // "All" tab badge = OPEN tickets (not assigned, not closed) on the AM's
+  // FAVOURITE channels only (falls back to all channels when none favourited) —
+  // a "what's on my plate" number, not a grand total. Roy 2026-07-30.
+  const allCount = useMemo(() => {
+    const favSet = new Set(favoriteChannelIds)
+    const useFav = favSet.size > 0
+    let n = 0
+    for (const t of threads) {
+      if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
+      if (t.isArchived || t.isAssigned) continue
+      if (useFav && !t.channelIds?.some((id) => favSet.has(id))) continue
+      n += 1
+    }
+    return n
+  }, [threads, favoriteChannelIds])
 
   // --- External selection + detail ------------------------------------------
   const [openRow, setOpenRow] = useState<FeedRow | null>(null)
