@@ -19,6 +19,21 @@ export async function GET(
   const item = await getInboxItem(id, session.user.id, session.user.role)
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+  // Delivery tracking: the first time the ASSIGNEE opens a task/update we
+  // haven't marked seen yet, stamp seen_at. This is what flips the creator's
+  // Delegated row from "Delivered" to "Seen". Only for task/update kinds and
+  // only when the viewer is the recipient. Roy 2026-07-30.
+  if (
+    (item.kind === "task" || item.kind === "update") &&
+    item.assigneeId === session.user.id &&
+    !item.seenAt
+  ) {
+    const nowIso = new Date().toISOString()
+    const supabase = await createAdminClient()
+    await supabase.from("inbox_events").update({ seen_at: nowIso }).eq("id", id)
+    item.seenAt = nowIso
+  }
+
   const comments = item.kind === "task" ? await listInboxComments(id) : []
   return NextResponse.json({ item, comments })
 }
@@ -103,13 +118,28 @@ export async function PATCH(
     update.status = patch.status
     const isTerminal = ["done", "cancelled", "read"].includes(patch.status)
     update.completed_at = isTerminal ? new Date().toISOString() : null
+    // A status change by the assignee proves they've seen it - stamp seen_at
+    // if the GET-on-open path didn't already (e.g. status flipped straight
+    // from a row action without opening the detail). Roy 2026-07-30.
+    if (isAssignee && !item.seenAt) {
+      update.seen_at = new Date().toISOString()
+    }
   }
 
   // Reassignment is open to anyone with visibility - handing a task off is a
   // routine team operation, not an authorial edit. The other metadata edits
   // (title, body, due date, priority) stay author/admin-only because changing
   // them silently after creation can mislead the assignee.
+  const reassignedToDifferent =
+    patch.assigneeId !== undefined && patch.assigneeId !== item.assigneeId
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
+  // Handing the item to a NEW recipient resets its delivery state: the new
+  // assignee hasn't been notified or seen it yet. notified_at is re-stamped
+  // below once the reassign push confirms delivery. Roy 2026-07-30.
+  if (reassignedToDifferent) {
+    update.notified_at = null
+    update.seen_at = null
+  }
 
   // Snooze is also open to anyone with visibility - pushing a task to later
   // is a personal triage move, not an authorial edit. Null wakes it up.
@@ -174,19 +204,30 @@ export async function PATCH(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Push notification on reassignment to a different user. Skip when the new
-  // assignee is the actor (you don't notify yourself), and best-effort fail
-  // silently - notification delivery shouldn't block the API response.
+  // assignee is the actor (you don't notify yourself). Awaited so we can stamp
+  // notified_at on delivery - that's what drives the "Delivered" signal on the
+  // creator's Delegated view. Best-effort: failures are swallowed and never
+  // block the response. Roy 2026-07-30.
   if (
-    patch.assigneeId !== undefined &&
-    patch.assigneeId !== item.assigneeId &&
+    reassignedToDifferent &&
     patch.assigneeId !== session.user.id
   ) {
-    sendPushToUser(patch.assigneeId, {
-      title: "Nieuwe taak op je naam",
-      body: item.title.length > 120 ? item.title.slice(0, 117) + "…" : item.title,
-      url: "/inbox",
-      tag: `inbox-task-${id}`,
-    }).catch((e) => console.error("Reassign push send failed:", e))
+    try {
+      const { delivered } = await sendPushToUser(patch.assigneeId as string, {
+        title: "Nieuwe taak op je naam",
+        body: item.title.length > 120 ? item.title.slice(0, 117) + "…" : item.title,
+        url: "/inbox",
+        tag: `inbox-task-${id}`,
+      })
+      if (delivered > 0) {
+        await supabase
+          .from("inbox_events")
+          .update({ notified_at: new Date().toISOString() })
+          .eq("id", id)
+      }
+    } catch (e) {
+      console.error("Reassign push send failed:", e)
+    }
   }
 
   return NextResponse.json({ ok: true })

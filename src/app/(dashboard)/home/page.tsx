@@ -323,6 +323,8 @@ async function fetchMyInbox(
         createdAt: t.latestAt,
         updatedAt: t.latestAt,
         completedAt: null,
+        notifiedAt: null,
+        seenAt: null,
         commentCount: t.unreadCount,
       }))
     return [...tasks, ...updates, ...chats].sort(

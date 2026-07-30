@@ -29,6 +29,11 @@ export async function GET(req: NextRequest) {
       ? snoozedRaw
       : undefined
   const mentionsOnly = sp.get("mentions") === "1"
+  const ownerRaw = sp.get("owner")
+  const owner: "assigned" | "created" | "all" | undefined =
+    ownerRaw === "assigned" || ownerRaw === "created" || ownerRaw === "all"
+      ? ownerRaw
+      : undefined
 
   try {
     const items = await listInboxItems(session.user.id, session.user.role, {
@@ -38,6 +43,7 @@ export async function GET(req: NextRequest) {
       statuses,
       snoozed,
       mentionsOnly,
+      owner,
     })
     return NextResponse.json({ items })
   } catch (e) {
@@ -151,18 +157,33 @@ export async function POST(req: NextRequest) {
   // a "new task" ping at creation time for something that's hidden until
   // next Tuesday; the surface-time push is a separate concern (cron-driven,
   // fase 2).
+  // Await the push (instead of fire-and-forget) so we can record delivery:
+  // when at least one endpoint accepts it we stamp `notified_at`, which drives
+  // the "Delivered" signal on the creator's Delegated view. A push send is a
+  // short web-push HTTP call; the added latency is acceptable. Failures are
+  // swallowed - the task itself is already persisted. Roy 2026-07-30.
   const isScheduledFuture = snoozedUntil !== null && new Date(snoozedUntil).getTime() > Date.now()
   if (
     body.kind === "task" &&
     body.assigneeId !== session.user.id &&
     !isScheduledFuture
   ) {
-    sendPushToUser(body.assigneeId, {
-      title: "Nieuwe taak op je naam",
-      body: data.title.length > 120 ? data.title.slice(0, 117) + "…" : data.title,
-      url: "/inbox",
-      tag: `inbox-task-${data.id}`,
-    }).catch((e) => console.error("Inbox-create push failed:", e))
+    try {
+      const { delivered } = await sendPushToUser(body.assigneeId, {
+        title: "Nieuwe taak op je naam",
+        body: data.title.length > 120 ? data.title.slice(0, 117) + "…" : data.title,
+        url: "/inbox",
+        tag: `inbox-task-${data.id}`,
+      })
+      if (delivered > 0) {
+        await supabase
+          .from("inbox_events")
+          .update({ notified_at: new Date().toISOString() })
+          .eq("id", data.id)
+      }
+    } catch (e) {
+      console.error("Inbox-create push failed:", e)
+    }
   }
 
   return NextResponse.json({ id: data.id }, { status: 201 })

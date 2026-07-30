@@ -69,6 +69,10 @@ type RawInboxRow = {
   created_at: string
   updated_at: string
   completed_at: string | null
+  /** Delivery tracking (Roy 2026-07-30). notified_at = assignee push confirmed
+   *  sent; seen_at = first assignee open/read. Drive the delegated-view signal. */
+  notified_at: string | null
+  seen_at: string | null
   author: { id: string; name: string | null; email: string; avatar_url: string | null } | null
   assignee: { id: string; name: string | null; email: string; avatar_url: string | null } | null
   inbox_comments: Array<{ count: number }> | null
@@ -93,6 +97,16 @@ type ListFilters = {
   snoozed?: "active" | "snoozed" | "all"
   /** Only @-mention update rows (source_ref.trengo_mention_in_thread_key set). */
   mentionsOnly?: boolean
+  /**
+   * Ownership scope for task/update kinds (Roy 2026-07-30, Delegated view):
+   *  - 'assigned' (default) - items assigned to me. Preserves the historical
+   *    "for me" to-do behaviour, so every existing caller is unchanged.
+   *  - 'created'  - items I authored FOR SOMEONE ELSE (author=me, assignee≠me).
+   *    The "Sent items" equivalent - what I delegated.
+   *  - 'all'      - either authored or assigned by me.
+   * Only applied to task/update kinds; ignored for chat.
+   */
+  owner?: "assigned" | "created" | "all"
 }
 
 /**
@@ -218,6 +232,8 @@ function rowToItem(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
+    notifiedAt: row.notified_at,
+    seenAt: row.seen_at,
     commentCount: row.inbox_comments?.[0]?.count ?? 0,
   }
 }
@@ -227,7 +243,7 @@ const ITEM_SELECT = `
   due_date, scheduled_at, snoozed_until, source, source_ref, source_msg_id, monday_update_id, trengo_channel_id,
   trengo_assignee_user_id,
   author_name_cached, author_external,
-  created_at, updated_at, completed_at,
+  created_at, updated_at, completed_at, notified_at, seen_at,
   author:users!inbox_items_author_id_fkey(id, name, email, avatar_url),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email, avatar_url),
   inbox_comments(count)
@@ -258,7 +274,18 @@ export async function listInboxItems(
   // (lib/webhooks/monday/route.ts:261) so @-mentions still reach the
   // right person through this same filter.
   if (filters.kind === "task" || filters.kind === "update") {
-    query = query.eq("assignee_id", userId)
+    // Ownership scope (Roy 2026-07-30, Delegated view). Default 'assigned'
+    // preserves the historical assignee-only to-do behaviour; 'created' powers
+    // the "things I sent to others" view (author=me, assignee≠me); 'all' is the
+    // union. Without an explicit owner the branch is identical to before.
+    const owner = filters.owner ?? "assigned"
+    if (owner === "created") {
+      query = query.eq("author_id", userId).neq("assignee_id", userId)
+    } else if (owner === "all") {
+      query = query.or(`author_id.eq.${userId},assignee_id.eq.${userId}`)
+    } else {
+      query = query.eq("assignee_id", userId)
+    }
   } else if (filters.assignedToMe) {
     query = query.eq("assignee_id", userId)
   }

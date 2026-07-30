@@ -65,6 +65,14 @@ export type InboxItem = {
   createdAt: string
   updatedAt: string
   completedAt: string | null
+  /** ISO timestamp stamped when the assignee push was confirmed sent (tasks
+   *  only; re-stamped on reassign). Null = not yet delivered. Drives the
+   *  "Delivered" signal on delegated rows. */
+  notifiedAt: string | null
+  /** ISO timestamp stamped the first time the assignee opened/read the item.
+   *  Null = the recipient hasn't seen it yet. Drives the "Seen" signal on
+   *  delegated rows. */
+  seenAt: string | null
   commentCount: number
 }
 
