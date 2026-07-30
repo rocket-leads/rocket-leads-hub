@@ -643,8 +643,27 @@ export async function replyToInboxEvent(
   let mirrorBody = trimmed
 
   if (event.source === "trengo") {
-    // source_thread is `trengo:ticket:<id>`
-    const ticketId = (event.source_thread ?? "").replace(/^trengo:ticket:/, "")
+    // source_thread is `trengo:ticket:<id>`. The event the composer targets can
+    // be one without a ticket id (a fanned-out @-mention row, or an older
+    // ingest that predates source_thread) even though sibling events in the
+    // same thread carry it — so fall back to the thread when it's missing.
+    // Roy 2026-07-30.
+    let ticketId = (event.source_thread ?? "").replace(/^trengo:ticket:/, "")
+    if (!ticketId && event.thread_key) {
+      const { data: sibling } = await supabase
+        .from("inbox_events")
+        .select("source_thread")
+        .eq("thread_key", event.thread_key)
+        .eq("source", "trengo")
+        .like("source_thread", "trengo:ticket:%")
+        .order("created_at_src", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      ticketId = ((sibling as { source_thread: string | null } | null)?.source_thread ?? "").replace(
+        /^trengo:ticket:/,
+        "",
+      )
+    }
     if (!ticketId) throw new Error("Missing Trengo ticket id on event")
     if (template) {
       const r = await sendTrengoTemplateAsUser(

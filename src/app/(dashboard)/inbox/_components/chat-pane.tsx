@@ -3679,16 +3679,10 @@ function MessageBubble({
           )}
         >
           <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-sm font-semibold">{msg.authorName}</span>
-            <span className="rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-              {t("inbox.chat.tab_internal", locale)}
-            </span>
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
-              {fmtTime(msg.at)}
-            </span>
             {hasMention ? (
               // The current user is tagged → interactive check to tick off their
-              // own notification (full opacity = "this one's for me").
+              // own notification (full opacity = "this one's for me"). On the
+              // LEFT of the note, Trengo-style. Roy 2026-07-30.
               <button
                 type="button"
                 role="checkbox"
@@ -3697,13 +3691,13 @@ function MessageBubble({
                 title={mentionDone ? t("inbox.chat.mention_unresolve_title", locale) : t("inbox.chat.mention_check_title", locale)}
                 aria-label={mentionDone ? t("inbox.chat.mention_done_aria", locale) : t("inbox.chat.mention_check_title", locale)}
                 className={cn(
-                  "ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-colors",
+                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-colors",
                   mentionDone
                     ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
                     : "border-amber-500/60 bg-card text-transparent hover:border-emerald-500 hover:text-emerald-500/50",
                 )}
               >
-                <Check className="h-4 w-4" strokeWidth={3} />
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
               </button>
             ) : msg.noteMention ? (
               // Someone else is tagged → read-only, FADED indicator so you can
@@ -3712,15 +3706,22 @@ function MessageBubble({
                 aria-label={`${msg.noteMention.names.join(", ")} — ${msg.noteMention.allDone ? "afgehandeld" : "nog open"}`}
                 title={`${msg.noteMention.names.join(", ")} — ${msg.noteMention.allDone ? "afgehandeld" : "nog open"}`}
                 className={cn(
-                  "ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 opacity-45",
+                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 opacity-45",
                   msg.noteMention.allDone
                     ? "border-emerald-500 bg-emerald-500 text-white"
                     : "border-amber-500/50 bg-card text-transparent",
                 )}
               >
-                <Check className="h-4 w-4" strokeWidth={3} />
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
               </span>
             ) : null}
+            <span className="text-sm font-semibold">{msg.authorName}</span>
+            <span className="rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              {t("inbox.chat.tab_internal", locale)}
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
+              {fmtTime(msg.at)}
+            </span>
           </div>
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
             {renderMentions(msg.body, mentionNames)}
