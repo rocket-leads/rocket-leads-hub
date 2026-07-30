@@ -1,9 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { useHubMutation } from "@/lib/mutations/use-hub-mutation"
+import type { ConnectionService } from "@/lib/clients/connection-overrides"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,6 +34,16 @@ export type ServiceKey =
   | "meta-ad-account"
   | "trengo-contact"
   | "drive-folder"
+
+/** Maps the picker's ServiceKey to the short health/override service key
+ *  (client_connection_overrides.service + ClientHealth fields). */
+const SERVICE_TO_OVERRIDE_KEY: Record<ServiceKey, ConnectionService> = {
+  "stripe-customer": "stripe",
+  "monday-board": "monday",
+  "meta-ad-account": "meta",
+  "trengo-contact": "trengo",
+  "drive-folder": "drive",
+}
 
 /**
  * Per-service config. `required` says whether a missing link is a real
@@ -185,7 +196,9 @@ export function ConnectedEntity({
   companyName,
 }: Props) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const registry = REGISTRY[service]
+  const overrideKey = SERVICE_TO_OVERRIDE_KEY[service]
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [savedFlash, setSavedFlash] = useState(false)
@@ -281,6 +294,46 @@ export function ConnectedEntity({
     },
   })
 
+  // N/A override. Shared across all five ConnectedEntity instances on a client
+  // panel via one query key (keyed by client id) so opening the panel makes a
+  // single request, not five. Only meaningful while the field is empty - a
+  // linked service resolves normally and ignores the flag.
+  const overridesQuery = useQuery<{
+    overrides: Partial<Record<ConnectionService, { notApplicable: boolean; note: string | null }>>
+  }>({
+    queryKey: ["connection-overrides", mondayItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/clients/${mondayItemId}/connection-override`)
+      if (!res.ok) throw new Error("Failed to load overrides")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  const isNa = overridesQuery.data?.overrides?.[overrideKey]?.notApplicable === true
+
+  const naMutation = useHubMutation<void, Error, boolean>({
+    invalidates: ["CLIENT_DETAIL"],
+    mutationFn: async (next: boolean) => {
+      const res = await fetch(`/api/clients/${mondayItemId}/connection-override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service: overrideKey, notApplicable: next }),
+      })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(err.error ?? "Failed to update")
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["connection-overrides", mondayItemId] })
+      // Refresh the audit dots + posture count - the server health cache was
+      // busted by the override route, so a refetch now reflects the new state.
+      void queryClient.invalidateQueries({ queryKey: ["clients-connection-health"] })
+      setOpen(false)
+      router.refresh()
+    },
+  })
+
   // Pre-fill the search box with the company name on first-open when there's
   // no existing link, so the AM lands on relevant matches without typing. Done
   // in the onOpenChange callback rather than an effect - opening the picker is
@@ -351,15 +404,20 @@ export function ConnectedEntity({
           )}
         >
           <span className="inline-flex items-center gap-2 truncate text-left">
-            {optimisticValue.length === 0 && (
+            {optimisticValue.length === 0 && isNa && (
+              // Explicitly marked N/A: struck dash + label so it reads as a
+              // deliberate "this client has no {service}", not a forgotten link.
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
+                <span className="font-mono text-muted-foreground/50 line-through">–</span>
+                <span>Not applicable</span>
+              </span>
+            )}
+            {optimisticValue.length === 0 && !isNa && (
               <span className="text-muted-foreground">
                 Link {registry.serviceLabel}…
-                {!registry.required && (
-                  // Soft "this is fine to leave blank" hint. Roy 2026-06-09:
-                  // optional services (Monday, Drive) must never feel like a
-                  // missing-data alarm - empty just means "not used here".
-                  <span className="ml-1.5 text-muted-foreground/50">· optional</span>
-                )}
+                {/* No more "· optional". An empty link now needs a decision:
+                    link it, or mark it N/A in the picker. */}
+                <span className="ml-1.5 text-muted-foreground/50">· needs linking</span>
               </span>
             )}
             {optimisticValue.length > 0 && isResolveLoading && (
@@ -450,6 +508,22 @@ export function ConnectedEntity({
               className="text-left rounded-md px-2.5 py-1.5 text-[12px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
               Clear link
+            </button>
+          )}
+          {optimisticValue.length === 0 && (
+            // Escape hatch for services this client genuinely doesn't have
+            // (own CRM, no content folder). Flips the audit dot from a red
+            // "missing" to a calm struck dash so it stops reading as forgotten.
+            <button
+              type="button"
+              disabled={naMutation.isPending}
+              onClick={() => naMutation.mutate(!isNa)}
+              className="text-left rounded-md px-2.5 py-1.5 text-[12px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {naMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              {isNa
+                ? `Undo "not applicable" — needs linking`
+                : `Mark "no ${registry.serviceLabel} for this client"`}
             </button>
           )}
           <div className="overflow-y-auto flex-1">

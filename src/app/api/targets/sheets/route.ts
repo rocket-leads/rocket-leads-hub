@@ -19,7 +19,7 @@ async function getAuth() {
     .eq("service", "google_drive")
     .single()
 
-  if (!data) throw new Error("Google service account not configured. Go to Settings → API Tokens.")
+  if (!data) throw new Error("Google service account not configured. Go to Settings → Integrations.")
 
   const keyJson = JSON.parse(decrypt(data.token_encrypted))
 

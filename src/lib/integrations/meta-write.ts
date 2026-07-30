@@ -33,11 +33,11 @@ function explainMetaError(message: string, code?: number, subcode?: number): str
   const lc = message.toLowerCase()
   // Specific: Meta itself names the missing scope.
   if (lc.includes("ads_management") || lc.includes("ads_read")) {
-    return `Meta token mist de 'ads_management' scope. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token, en selecteer minimaal 'ads_management' + 'pages_read_engagement'. Plak het nieuwe token in Settings → API Tokens → Meta. Belangrijk: scopes worden vastgezet op het moment van token-generatie — je moet de scopes WEL aangevinkt hebben in het Generate-dialog, niet alleen op de system user. Een token van VOOR je de scopes toevoegde heeft ze niet.`
+    return `Meta token mist de 'ads_management' scope. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token, en selecteer minimaal 'ads_management' + 'pages_read_engagement'. Plak het nieuwe token in Settings → Integrations → Meta. Belangrijk: scopes worden vastgezet op het moment van token-generatie — je moet de scopes WEL aangevinkt hebben in het Generate-dialog, niet alleen op de system user. Een token van VOOR je de scopes toevoegde heeft ze niet.`
   }
   // Token is structurally invalid / expired / revoked — code 190.
   if (code === 190) {
-    return `Meta token is ongeldig of verlopen (code 190): ${message}. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token (selecteer minimaal 'ads_management' + 'pages_read_engagement'). Plak in Settings → API Tokens → Meta.`
+    return `Meta token is ongeldig of verlopen (code 190): ${message}. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token (selecteer minimaal 'ads_management' + 'pages_read_engagement'). Plak in Settings → Integrations → Meta.`
   }
   // Lead Generation Terms of Service — distinct from "permission":
   // even when the Page owner accepted Lead Ads TOS in Meta UI, running
@@ -205,7 +205,7 @@ export async function assertWriteScopes(): Promise<void> {
   const info = await debugMetaToken()
   if (!info.isValid) {
     throw new Error(
-      `Meta token is niet (langer) geldig${info.rawError ? ` — Meta zegt: ${info.rawError}` : ""}. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token (selecteer minimaal 'ads_management' + 'pages_read_engagement'). Plak het in Settings → API Tokens → Meta.`,
+      `Meta token is niet (langer) geldig${info.rawError ? ` — Meta zegt: ${info.rawError}` : ""}. Genereer een nieuw token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token (selecteer minimaal 'ads_management' + 'pages_read_engagement'). Plak het in Settings → Integrations → Meta.`,
     )
   }
   const required = ["ads_management"]
@@ -213,7 +213,7 @@ export async function assertWriteScopes(): Promise<void> {
   if (missing.length > 0) {
     const has = info.scopes.length > 0 ? info.scopes.join(", ") : "(geen scopes)"
     throw new Error(
-      `Meta token mist de scope(s): ${missing.join(", ")}. Het huidige token heeft alleen: ${has}. Belangrijk: scopes worden vastgezet op het moment dat je het token GENEREERT — alleen toevoegen aan de system user is niet genoeg. Genereer een NIEUW token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token en VINK ‘ads_management’ + ‘pages_read_engagement’ aan in het dialog. Plak het nieuwe token in Settings → API Tokens → Meta.`,
+      `Meta token mist de scope(s): ${missing.join(", ")}. Het huidige token heeft alleen: ${has}. Belangrijk: scopes worden vastgezet op het moment dat je het token GENEREERT — alleen toevoegen aan de system user is niet genoeg. Genereer een NIEUW token in Meta Business Manager → Business Settings → System Users → jouw user → Generate New Token en VINK ‘ads_management’ + ‘pages_read_engagement’ aan in het dialog. Plak het nieuwe token in Settings → Integrations → Meta.`,
     )
   }
 }

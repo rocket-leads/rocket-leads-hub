@@ -7,7 +7,7 @@
  * vendor is wiring the actual rendering.
  *
  * Status (2026-05-08): scaffolding only. Heygen API key is configurable
- * via Settings → API Tokens. Implementation of `HeygenProvider` is the
+ * via Settings → Integrations. Implementation of `HeygenProvider` is the
  * next milestone - see PEDRO_VISION.md "AI Avatar Workflow" section
  * for the full architecture spec.
  */

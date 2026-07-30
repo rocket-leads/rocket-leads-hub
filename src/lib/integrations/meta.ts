@@ -5,15 +5,24 @@ import type { ResolvedEntity } from "./resolved-entity"
 
 const META_API_BASE = "https://graph.facebook.com/v20.0"
 
+// In-memory token cache, matching the 5-min pattern used by monday/trengo/
+// fathom. Previously Meta decrypted on every call - a needless DB round-trip +
+// AES op per Graph request. Roy 2026-07-30: aligned for consistency.
+let cachedToken: { value: string; expiresAt: number } | null = null
+
 export async function getToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value
+
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("api_tokens")
     .select("token_encrypted")
     .eq("service", "meta")
     .single()
-  if (!data) throw new Error("Meta token not configured. Go to Settings → API Tokens.")
-  return decrypt(data.token_encrypted)
+  if (!data) throw new Error("Meta token not configured. Go to Settings → Integrations.")
+  const token = decrypt(data.token_encrypted)
+  cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
+  return token
 }
 
 export type MetaCampaign = {

@@ -17,7 +17,7 @@ export async function getToken(): Promise<string> {
     .select("token_encrypted")
     .eq("service", "monday")
     .single()
-  if (!data) throw new Error("Monday token not configured. Go to Settings → API Tokens.")
+  if (!data) throw new Error("Monday token not configured. Go to Settings → Integrations.")
   const token = decrypt(data.token_encrypted)
   cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
   return token

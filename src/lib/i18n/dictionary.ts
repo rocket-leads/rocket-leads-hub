@@ -388,12 +388,17 @@ export const DICTIONARY = {
   "settings.health_link": { nl: "Health →", en: "Health →" },
 
   "settings.tab.me": { nl: "Mijn account", en: "My account" },
+  "settings.tab.team": { nl: "Team", en: "Team" },
+  "settings.tab.integrations": { nl: "Integraties", en: "Integrations" },
+  "settings.tab.monday": { nl: "Monday & Klanten", en: "Monday & Clients" },
+  "settings.tab.notifications": { nl: "Notificaties", en: "Notifications" },
+  "settings.tab.pedro": { nl: "Pedro", en: "Pedro" },
+  // Legacy keys - kept so any stray reference still resolves during the regroup.
   "settings.tab.clients": { nl: "Klanten", en: "Clients" },
   "settings.tab.tokens": { nl: "API Tokens", en: "API Tokens" },
   "settings.tab.board": { nl: "Board Config", en: "Board Config" },
   "settings.tab.users": { nl: "Gebruikers", en: "Users" },
   "settings.tab.automations": { nl: "Automations", en: "Automations" },
-  "settings.tab.pedro": { nl: "Pedro", en: "Pedro" },
   "settings.tab.health": { nl: "Health", en: "Health" },
 
   // ApiHealthBar

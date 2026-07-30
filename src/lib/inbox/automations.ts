@@ -6,6 +6,7 @@ import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { detectClientChannel } from "@/lib/inbox/channel-detect"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 import { mondayStatusToHub } from "@/lib/clients/status"
+import { computeBatchClientHealth, type ClientHealth, type ServiceHealth } from "@/lib/integrations/health"
 import Anthropic from "@anthropic-ai/sdk"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { InvoiceRow } from "@/lib/integrations/stripe"
@@ -50,6 +51,13 @@ export type CreatedItem =
       cancelledTaskIds: string[]
       confidence: number
       reason: string
+    }
+  | {
+      rule: "missing_connection_task"
+      clientName: string
+      assigneeName: string
+      services: string[]
+      action: "created" | "auto_closed"
     }
 
 export type SkippedItem = { reason: string; client?: string; detail?: string }
@@ -718,6 +726,195 @@ async function getClientName(
   return (data?.name as string | undefined) ?? null
 }
 
+// --- Rule 6: missing connection nudge -----------------------------------
+
+/** Turn a ClientHealth into a human list of what's wrong, e.g.
+ *  ["Meta (niet gekoppeld)", "Stripe (werkt niet: Not found)"]. Only lists
+ *  services that actually need action (missing / broken) - ok / warning /
+ *  not_applicable are skipped. */
+function describeConnectionIssues(h: ClientHealth): string[] {
+  const rows: Array<[string, ServiceHealth]> = [
+    ["Meta ad account", h.meta],
+    ["Stripe klant", h.stripe],
+    ["Trengo contact", h.trengo],
+    ["Monday bord", h.monday],
+    ["Google Drive map", h.drive],
+  ]
+  const out: string[] = []
+  for (const [label, s] of rows) {
+    if (s.state === "missing") out.push(`${label} - niet gekoppeld`)
+    else if (s.state === "broken") out.push(`${label} - werkt niet${s.error ? ` (${s.error})` : ""}`)
+  }
+  return out
+}
+
+/**
+ * Rule 6: proactively nudge the AM when a Live or Onboarding client has a
+ * missing or broken connection ID. This is the backstop for the whole
+ * strictness workstream - the Clients audit surfaces the problem, but nobody
+ * checks the audit daily. This puts it in the responsible AM's inbox.
+ *
+ * Guarantees:
+ *  - One OPEN task per client until it's resolved (no daily spam). We check for
+ *    an existing open task before creating.
+ *  - Auto-closes: when a client's connections are all linked or marked N/A, any
+ *    open nudge task is marked done with an audit note - so the loop closes
+ *    itself when the AM fixes it, without a second cron.
+ *  - Respects N/A overrides: a service the AM marked "not applicable" is
+ *    `not_applicable` in the health snapshot and never counts, so the nudge only
+ *    fires for genuinely-forgotten links.
+ *  - Onboarding included: this is where the pain is worst (duplicated blank
+ *    rows), so unlike the payment rule this covers onboarding too.
+ */
+async function ensureMissingConnectionTasks(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  allClients: MondayClient[],
+  supabaseIdByItem: Map<string, string>,
+  authorId: string,
+  opts: RunOptions | undefined,
+  testMode: boolean,
+  skipped: SkippedItem[],
+): Promise<CreatedItem[]> {
+  const created: CreatedItem[] = []
+
+  // Live + onboarding clients with an AM. Churned/on_hold are excluded (a stale
+  // link there isn't actionable); no-AM clients have nobody to nudge.
+  const candidates = allClients.filter((c) => {
+    if (!c.accountManager) return false
+    const hub = mondayStatusToHub(c.campaignStatus, c.boardType)
+    return hub === "live" || hub === "onboarding"
+  })
+  if (candidates.length === 0) return created
+
+  // Batch health (cached 1h, overrides preloaded) so we don't fan out N queries.
+  const healthByItem = await computeBatchClientHealth(candidates)
+  const todayStr = new Date().toISOString().slice(0, 10)
+
+  for (const client of candidates) {
+    const supabaseClientId = supabaseIdByItem.get(client.mondayItemId)
+    if (!supabaseClientId) {
+      skipped.push({ reason: "client_not_synced", client: client.name })
+      continue
+    }
+    const health = healthByItem[client.mondayItemId]
+    if (!health) continue
+
+    const realAssigneeId = await lookupAccountManagerId(supabase, client.accountManager)
+    if (!realAssigneeId && !testMode) {
+      skipped.push({ reason: "no_am_mapping", client: client.name })
+      continue
+    }
+    const assigneeId = testMode ? opts!.testMode!.assigneeUserId : (realAssigneeId as string)
+
+    // Existing open nudge for this client (production only - test runs always
+    // recreate so the admin can preview).
+    let existingOpenId: string | null = null
+    if (!testMode) {
+      const { data: existing } = await supabase
+        .from("inbox_events")
+        .select("id")
+        .eq("source", "automation")
+        .eq("status", "open")
+        .filter("source_ref->>rule", "eq", "missing_connection_task")
+        .filter("source_ref->>mondayItemId", "eq", client.mondayItemId)
+        .filter("source_ref->>testRun", "is", null)
+        .maybeSingle()
+      existingOpenId = existing?.id ?? null
+    }
+
+    // Resolved: auto-close any open nudge and move on.
+    if (health.brokenCount === 0) {
+      if (existingOpenId && !testMode) {
+        const { error } = await supabase
+          .from("inbox_events")
+          .update({
+            status: "done",
+            completed_at: new Date().toISOString(),
+            source_ref: {
+              rule: "missing_connection_task",
+              mondayItemId: client.mondayItemId,
+              auto_closed: true,
+              auto_closed_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", existingOpenId)
+          .eq("status", "open")
+        if (!error) {
+          created.push({
+            rule: "missing_connection_task",
+            clientName: client.name,
+            assigneeName: client.accountManager,
+            services: [],
+            action: "auto_closed",
+          })
+        }
+      }
+      continue
+    }
+
+    const issues = describeConnectionIssues(health)
+    if (issues.length === 0) continue // brokenCount>0 but nothing describable - defensive
+
+    // Dedup: one open nudge per client. Don't recreate while one is open.
+    if (existingOpenId && !testMode) continue
+
+    const titleCore = `Koppel ontbrekende connecties voor ${client.name}`
+    const title = testMode ? `[TEST] ${titleCore}` : titleCore
+    const bodyParts: string[] = []
+    if (testMode) {
+      bodyParts.push(`[TEST RUN] In productie zou dit naar ${client.accountManager || "de AM"} gaan.`, "")
+    }
+    bodyParts.push(
+      `Deze klant heeft connecties die nog niet gekoppeld zijn (of niet meer werken):`,
+      "",
+      ...issues.map((i) => `- ${i}`),
+      "",
+      `Koppel ze in Settings → Monday & Clients (klik de klant open), of markeer een dienst als "niet van toepassing" als deze klant die echt niet heeft.`,
+    )
+    const body = bodyParts.join("\n")
+
+    const { data: inserted, error } = await supabase
+      .from("inbox_events")
+      .insert({
+        kind: "task",
+        client_id: supabaseClientId,
+        author_id: authorId,
+        assignee_id: assigneeId,
+        title,
+        body,
+        status: "open",
+        priority: "high",
+        due_date: todayStr,
+        source: "automation",
+        source_ref: {
+          rule: "missing_connection_task",
+          mondayItemId: client.mondayItemId,
+          services: issues,
+          ...(testMode ? { testRun: true } : {}),
+        },
+      })
+      .select("id")
+      .single()
+
+    if (error) {
+      console.error("Missing connection task insert failed:", error.message)
+      skipped.push({ reason: "missing_connection_insert_failed", client: client.name, detail: error.message })
+      continue
+    }
+    if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
+
+    created.push({
+      rule: "missing_connection_task",
+      clientName: client.name,
+      assigneeName: client.accountManager,
+      services: issues,
+      action: "created",
+    })
+  }
+
+  return created
+}
+
 // --- Rule 2: positive CPL drop signal -----------------------------------
 
 type Period = {
@@ -1057,7 +1254,8 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
     !rules.payment_overdue_task &&
     !rules.positive_client_signal_cpl_drop &&
     !rules.auto_complete_invoice_tasks &&
-    !rules.dedup_overlapping_tasks
+    !rules.dedup_overlapping_tasks &&
+    !rules.missing_connection_task
   ) {
     return {
       ranAt: new Date().toISOString(),
@@ -1246,6 +1444,29 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
           detail: e instanceof Error ? e.message : String(e),
         })
       }
+    }
+  }
+
+  // Missing-connection nudges. Runs after the per-client loop so any tasks it
+  // creates are independent of the payment/positive rules. Self-contained: it
+  // re-filters to Live/Onboarding clients with an AM and batches its own health.
+  if (rules.missing_connection_task) {
+    try {
+      const nudges = await ensureMissingConnectionTasks(
+        supabase,
+        allClients,
+        supabaseIdByItem,
+        authorId,
+        opts,
+        testMode,
+        skipped,
+      )
+      created.push(...nudges)
+    } catch (e) {
+      skipped.push({
+        reason: "missing_connection_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 

@@ -28,6 +28,16 @@ type Props = {
 type ListFilter = ClientStatus | "broken"
 const STATUS_TABS: ClientStatus[] = ["live", "on_hold", "churned"]
 
+/** How many of the 5 services actually resolve to a real entity (ok/warning).
+ *  Zero linked + something missing = "nothing is connected yet", the signature
+ *  of a freshly-duplicated Monday row that arrived with every ID blank. */
+function linkedCount(h?: ClientHealth): number {
+  if (!h) return 0
+  return [h.stripe, h.meta, h.monday, h.trengo, h.drive].filter(
+    (s) => s.state === "ok" || s.state === "warning",
+  ).length
+}
+
 export function ClientsTab({ clients: clientsProp }: Props) {
   const locale = useLocale()
   const [listFilter, setListFilter] = useState<ListFilter>("live")
@@ -65,32 +75,33 @@ export function ClientsTab({ clients: clientsProp }: Props) {
     return out
   }, [withStatus])
 
-  // Connection-health audit. Backs the broken-count badges, the per-row
-  // 5-dot statusbar, and the "Broken connections (N)" filter tab.
+  // Connection-health audit. Backs the needs-linking badges, the per-row
+  // 5-dot statusbar, and the "Needs linking (N)" filter tab.
   //
-  // Only audits LIVE clients - churned clients having broken integrations
-  // is by design (the AM offboarded them), and on_hold clients aren't
-  // running active campaigns, so a stale Meta link there isn't
-  // immediately actionable. This keeps the audit roll-up signal-only.
-  const liveIds = useMemo(
+  // Audits LIVE + ONBOARDING clients. Onboarding is where the missing-codes
+  // pain is worst (AM forgets to paste an ID during setup; a duplicated Monday
+  // row arrives with every ID blank), so it must be in the audit even though it
+  // has its own view. Churned clients are excluded (offboarded by design), and
+  // on_hold aren't running campaigns so a stale link there isn't actionable.
+  const auditIds = useMemo(
     () =>
       withStatus
-        .filter(({ hubStatus }) => hubStatus === "live")
+        .filter(({ hubStatus }) => hubStatus === "live" || hubStatus === "onboarding")
         .map(({ client }) => client.mondayItemId),
     [withStatus],
   )
   const healthQuery = useQuery<{ health: Record<string, ClientHealth> }>({
-    queryKey: ["clients-connection-health", liveIds],
+    queryKey: ["clients-connection-health", auditIds],
     queryFn: async () => {
       const r = await fetch("/api/integrations/health", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mondayItemIds: liveIds }),
+        body: JSON.stringify({ mondayItemIds: auditIds }),
       })
       if (!r.ok) throw new Error("Failed to load connection health")
       return r.json()
     },
-    enabled: liveIds.length > 0,
+    enabled: auditIds.length > 0,
     // Long staleTime - the underlying lib already caches per-client for
     // 1h. The UI just needs to re-render when the user navigates back.
     staleTime: 60 * 60 * 1000,
@@ -106,8 +117,8 @@ export function ClientsTab({ clients: clientsProp }: Props) {
 
   const brokenCount = useMemo(
     () =>
-      liveIds.filter((id) => (healthByClient[id]?.brokenCount ?? 0) > 0).length,
-    [liveIds, healthByClient],
+      auditIds.filter((id) => (healthByClient[id]?.brokenCount ?? 0) > 0).length,
+    [auditIds, healthByClient],
   )
 
   const filtered = useMemo(() => {
@@ -115,11 +126,12 @@ export function ClientsTab({ clients: clientsProp }: Props) {
     return withStatus
       .filter(({ client, hubStatus }) => {
         if (listFilter === "broken") {
-          // Only live clients with ≥1 broken/missing required service.
-          // Health may still be loading for some entries - skip them
-          // until data arrives, the broken-count badge will trigger a
-          // re-render when it does.
-          return hubStatus === "live" && (healthByClient[client.mondayItemId]?.brokenCount ?? 0) > 0
+          // Cross-status "needs linking" lens: live + onboarding clients with
+          // ≥1 broken or missing (empty + not N/A) required service. Health may
+          // still be loading for some entries - skip them until data arrives;
+          // the count badge re-renders when it does.
+          if (hubStatus !== "live" && hubStatus !== "onboarding") return false
+          return (healthByClient[client.mondayItemId]?.brokenCount ?? 0) > 0
         }
         return hubStatus === listFilter
       })
@@ -132,14 +144,13 @@ export function ClientsTab({ clients: clientsProp }: Props) {
         )
       })
       .sort((a, b) => {
-        // Inside the broken filter, surface the worst offenders first -
-        // brokenCount desc, then alpha. Other filters keep the existing
-        // alpha-only sort so admins can scan predictably.
-        if (listFilter === "broken") {
-          const aBroken = healthByClient[a.client.mondayItemId]?.brokenCount ?? 0
-          const bBroken = healthByClient[b.client.mondayItemId]?.brokenCount ?? 0
-          if (aBroken !== bBroken) return bBroken - aBroken
-        }
+        // Needs-linking first everywhere: a client with broken/missing links
+        // floats to the top of whatever list you're in, so nothing rots
+        // unnoticed. Then brokenCount desc (worst first), then alpha.
+        const aBroken = healthByClient[a.client.mondayItemId]?.brokenCount ?? 0
+        const bBroken = healthByClient[b.client.mondayItemId]?.brokenCount ?? 0
+        if (aBroken > 0 !== bBroken > 0) return aBroken > 0 ? -1 : 1
+        if (aBroken !== bBroken) return bBroken - aBroken
         return a.client.name.localeCompare(b.client.name)
       })
   }, [withStatus, listFilter, search, healthByClient])
@@ -200,12 +211,12 @@ export function ClientsTab({ clients: clientsProp }: Props) {
             healthQuery.isLoading
               ? "Auditing connections…"
               : brokenCount === 0
-                ? "No broken connections"
-                : `${brokenCount} live client${brokenCount === 1 ? "" : "s"} with broken or missing required integrations`
+                ? "Every live & onboarding client is linked or marked N/A"
+                : `${brokenCount} live/onboarding client${brokenCount === 1 ? "" : "s"} with a missing or broken connection`
           }
         >
           <AlertTriangle className="h-3 w-3" />
-          Broken connections
+          Needs linking
           {healthQuery.isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           ) : (
@@ -239,11 +250,15 @@ export function ClientsTab({ clients: clientsProp }: Props) {
         {filtered.map(({ client, hubStatus }) => {
           const isOpen = openId === client.mondayItemId
           const tone = statusTone(hubStatus)
-          // Only show the statusbar for clients we audited (live only).
-          // For on_hold/churned the dots would all be "loading skeleton"
-          // forever, which is more visual noise than signal.
-          const showHealth = hubStatus === "live"
+          // Show the statusbar for clients we audited (live + onboarding).
+          // For on_hold/churned the dots would be "loading skeleton" forever,
+          // which is more visual noise than signal.
+          const showHealth = hubStatus === "live" || hubStatus === "onboarding"
           const health = healthByClient[client.mondayItemId]
+          // Nothing linked yet + something missing = likely a freshly-
+          // duplicated row that arrived blank. Flag it so the AM links it
+          // instead of it silently rotting.
+          const isUnlinked = showHealth && !!health && health.brokenCount > 0 && linkedCount(health) === 0
 
           return (
             <div
@@ -272,6 +287,15 @@ export function ClientsTab({ clients: clientsProp }: Props) {
                       loading={!health && healthQuery.isLoading}
                     />
                   )}
+                  {isUnlinked && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive shrink-0"
+                      title="No services linked yet - if this row was duplicated from another client, link its IDs (or mark N/A)."
+                    >
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      Unlinked · possible duplicate
+                    </span>
+                  )}
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -290,7 +314,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
             {listFilter === "broken"
               ? healthQuery.isLoading
                 ? "Auditing connections…"
-                : "All connections healthy - no broken or missing required links."
+                : "Everything is linked or marked N/A - nothing needs attention."
               : t("settings.clients.empty", locale, {
                   status: statusLabelI18n(listFilter, locale).toLowerCase(),
                   searchSuffix: search ? t("settings.clients.empty_search_suffix", locale) : "",

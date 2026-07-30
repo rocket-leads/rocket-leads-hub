@@ -22,7 +22,7 @@ async function getStripe(): Promise<Stripe> {
     .select("token_encrypted")
     .eq("service", "stripe")
     .single()
-  if (!data) throw new Error("Stripe token not configured. Go to Settings → API Tokens.")
+  if (!data) throw new Error("Stripe token not configured. Go to Settings → Integrations.")
   const key = decrypt(data.token_encrypted)
   const client = new Stripe(key)
   stripeCache = { client, at: Date.now() }

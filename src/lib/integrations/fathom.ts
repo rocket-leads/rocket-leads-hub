@@ -14,7 +14,7 @@ export async function getFathomToken(): Promise<string> {
     .select("token_encrypted")
     .eq("service", "fathom")
     .single()
-  if (!data) throw new Error("Fathom token not configured. Go to Settings → API Tokens.")
+  if (!data) throw new Error("Fathom token not configured. Go to Settings → Integrations.")
   const token = decrypt(data.token_encrypted).trim()
   cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
   return token

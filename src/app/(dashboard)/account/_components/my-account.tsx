@@ -422,7 +422,7 @@ function TrengoCard({ connection }: { connection: UserPlatformConnection | null 
       icon={<MessageSquare className="h-4 w-4" />}
       tone="cyan"
       name="Trengo"
-      description="Paste your personal Trengo API token. Find it in Trengo → Settings → API tokens."
+      description="Paste your personal Trengo API token. Find it in Trengo → Settings → Integrations."
       helpUrl="https://app.trengo.com/admin/api-tokens"
       placeholder="Trengo personal access token"
       connection={connection}

@@ -12,6 +12,7 @@ import {
   Loader2,
   MessageSquare,
   Play,
+  Plug,
   Send,
   Sparkles,
   TrendingDown,
@@ -157,6 +158,15 @@ const INBOX_RULES: RuleConfig[] = [
     trigger: "Open finance task + matching Stripe invoice exists",
     effect: "Task status → done · audit note appended · auto_completed flag in source_ref",
     icon: CheckCircle2,
+  },
+  {
+    key: "missing_connection_task",
+    title: "Missing connection → nudge the AM to link it",
+    description:
+      "When a Live or Onboarding client has a missing or broken connection ID (Meta ad account, Stripe customer, Trengo contact, Monday board, Google Drive folder), the daily cron creates a task for that client's Account Manager listing exactly what to link. One open task per client until it's resolved - no daily spam - and it auto-closes when everything is linked or marked N/A. Services an AM explicitly marked \"not applicable\" are never nudged. Catches the classic case of a duplicated Monday row that arrived with every ID blank.",
+    trigger: "Live/Onboarding client with a missing or broken connection ID",
+    effect: "Task created · lists the services to link · assigned to AM · auto-closes when fixed",
+    icon: Plug,
   },
   {
     key: "dedup_overlapping_tasks",
@@ -475,6 +485,22 @@ function CreatedRow({ item, locale }: { item: CreatedItem; locale: Locale }) {
         <span className="text-muted-foreground/60 tabular-nums">
           −{item.cancelledTaskIds.length} ({Math.round(item.confidence * 100)}%)
         </span>
+      </div>
+    )
+  }
+  if (item.rule === "missing_connection_task") {
+    return (
+      <div className="text-[11px] py-0.5 flex items-baseline gap-2">
+        <span className={item.action === "auto_closed" ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
+          {item.action === "auto_closed" ? "Connections resolved" : "Missing connection"}
+        </span>
+        <span className="text-foreground/80">{item.clientName}</span>
+        {item.action === "created" && (
+          <>
+            <span className="text-muted-foreground/60">→ {item.assigneeName}</span>
+            <span className="text-muted-foreground/60 truncate">{item.services.join(", ")}</span>
+          </>
+        )}
       </div>
     )
   }

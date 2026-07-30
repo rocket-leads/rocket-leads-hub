@@ -9,7 +9,7 @@ import type { AvatarProvider, AvatarProviderId } from "@/lib/pedro/avatar/types"
  * changes we extend this resolver - Pedro callers stay unchanged.
  *
  * Returns null when no provider is configured (no API token saved). UI
- * should surface a "configure provider in Settings → API Tokens" hint
+ * should surface a "configure provider in Settings → Integrations" hint
  * instead of erroring.
  */
 export async function getAvatarProvider(): Promise<AvatarProvider | null> {

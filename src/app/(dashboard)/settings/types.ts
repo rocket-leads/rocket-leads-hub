@@ -36,6 +36,10 @@ export type InboxAutomationRules = {
   // Stripe state via a sidebar dot for the finance user instead.
   auto_complete_invoice_tasks: boolean
   dedup_overlapping_tasks: boolean
+  // Nudges the responsible AM when a Live/Onboarding client has a missing or
+  // broken connection ID (Meta/Stripe/Trengo/Monday/Drive). One open task per
+  // client until it's linked or marked N/A; auto-closes when resolved.
+  missing_connection_task: boolean
 }
 
 export const DEFAULT_INBOX_AUTOMATION_RULES: InboxAutomationRules = {
@@ -45,4 +49,5 @@ export const DEFAULT_INBOX_AUTOMATION_RULES: InboxAutomationRules = {
   // Dedup defaults OFF - admin opts in after reviewing what AI would cancel
   // (see Settings → Inbox automations → "Run now (test mode)").
   dedup_overlapping_tasks: false,
+  missing_connection_task: true,
 }

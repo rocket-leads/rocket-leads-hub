@@ -81,7 +81,7 @@ export async function searchPexelsPhotos(
 
   const apiKey = await getApiKey()
   if (!apiKey) {
-    console.error("[pexels] No API key configured (Settings → API Tokens → service=pexels)")
+    console.error("[pexels] No API key configured (Settings → Integrations → service=pexels)")
     return []
   }
 

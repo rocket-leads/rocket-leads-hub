@@ -16,7 +16,7 @@ import { decrypt } from "@/lib/encryption"
  *   - Up to 4K output, single API call.
  *
  * Auth: API key stored encrypted in `api_tokens` table, service
- * `gemini`. Roy provisions via Settings → API Tokens.
+ * `gemini`. Roy provisions via Settings → Integrations.
  *
  * Roy 2026-06-09.
  */
@@ -66,7 +66,7 @@ async function getApiKey(): Promise<string> {
     .eq("service", "gemini")
     .single()
   if (!data) {
-    throw new Error("Gemini API key niet geconfigureerd. Ga naar Settings → API Tokens.")
+    throw new Error("Gemini API key niet geconfigureerd. Ga naar Settings → Integrations.")
   }
   return decrypt(data.token_encrypted)
 }

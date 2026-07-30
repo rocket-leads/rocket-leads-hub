@@ -9,11 +9,12 @@ import { cn } from "@/lib/utils"
  *   ●●●●●  Order: Stripe · Meta · Trengo · Monday · Drive
  *
  * Dot tones:
- *   green   = ok
- *   red     = broken or (required + missing)
- *   amber   = warning (resolved-but-degraded, e.g. Meta Pending review)
- *   muted   = not_used (optional service intentionally blank - Monday or
- *             Drive when the client doesn't use them)
+ *   green        = ok
+ *   red          = broken, or missing (empty + not marked N/A → needs action)
+ *   amber        = warning (resolved-but-degraded, e.g. Meta Pending review)
+ *   struck dash  = not_applicable (empty + explicitly marked N/A for this
+ *                  client). Visually distinct from a red "missing" dot so
+ *                  "forgot to link" reads differently from "doesn't apply".
  *
  * Hover any dot to see the service name + resolved entity (or error reason),
  * so the AM can triage without expanding the row.
@@ -64,12 +65,26 @@ export function ConnectionStatusBar({ health, loading }: Props) {
 }
 
 function Dot({ label, health }: { label: string; health: ServiceHealth }) {
-  const tone = toneFor(health.state)
   const title = buildTooltip(label, health)
+
+  // N/A renders as a struck dash rather than a coloured dot - the whole point
+  // is that "explicitly not applicable" looks different from every dot state.
+  if (health.state === "not_applicable") {
+    return (
+      <span
+        title={title}
+        aria-label={title}
+        className="inline-flex h-1.5 w-2.5 items-center justify-center font-mono text-[10px] leading-none text-muted-foreground/50 line-through"
+      >
+        –
+      </span>
+    )
+  }
+
   return (
     <span
       title={title}
-      className={cn("h-1.5 w-1.5 rounded-full transition-colors", tone)}
+      className={cn("h-1.5 w-1.5 rounded-full transition-colors", toneFor(health.state))}
       aria-label={title}
     />
   )
@@ -84,12 +99,12 @@ function toneFor(state: ServiceHealth["state"]): string {
     case "broken":
       return "bg-destructive"
     case "missing":
-      // Required field with no link. Same red as broken - both are real
-      // problems for the audit roll-up.
+      // Empty + not marked N/A. Needs action (link it or mark N/A) - same red
+      // as broken; both count in the audit roll-up.
       return "bg-destructive"
-    case "not_used":
-      // Optional service intentionally blank - calm muted dot so it reads
-      // as "the AM made a choice", not "something's wrong".
+    default:
+      // not_applicable is handled above; any legacy/cached state falls here as
+      // a calm muted dot until the 1h health cache refreshes.
       return "bg-muted-foreground/30"
   }
 }
@@ -103,8 +118,10 @@ function buildTooltip(label: string, health: ServiceHealth): string {
     case "broken":
       return `${label}: broken${health.error ? ` - ${health.error}` : ""}`
     case "missing":
-      return `${label}: not linked`
-    case "not_used":
-      return `${label}: not used (optional)`
+      return `${label}: not linked - link it or mark N/A`
+    case "not_applicable":
+      return `${label}: not applicable${health.note ? ` - ${health.note}` : ""}`
+    default:
+      return `${label}: unknown`
   }
 }

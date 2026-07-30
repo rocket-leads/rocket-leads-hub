@@ -16,7 +16,7 @@ import { computeBatchClientHealth, type ClientHealth } from "@/lib/integrations/
  *   { health: Record<mondayItemId, ClientHealth> }
  *
  * Each ClientHealth carries per-service state (ok | broken | missing |
- * not_used | warning) + an aggregated `brokenCount` the UI uses for the
+ * not_applicable | warning) + an aggregated `brokenCount` the UI uses for the
  * row badge and the "Broken connections (N)" tab filter.
  *
  * Performance: cached per-client for 1h in `cache_store`. First-time

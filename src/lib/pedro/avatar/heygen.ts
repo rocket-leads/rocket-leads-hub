@@ -20,7 +20,7 @@ import type {
  *     simplicity in MVP)
  *
  * To turn this on:
- *  - Save the Heygen API key in Settings → API Tokens (already wired)
+ *  - Save the Heygen API key in Settings → Integrations (already wired)
  *  - Replace the `throw` calls below with `fetch()` to Heygen's
  *    /v2/video/generate, /v2/video_status.get, /v2/avatars endpoints
  *  - Wire pollStatus into a setTimeout / cron loop that flips

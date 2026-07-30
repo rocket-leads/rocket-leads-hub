@@ -7,8 +7,9 @@ import {
   type InboxAutomationRules,
   type MondayRole,
 } from "./types"
-import { ApiHealthBar } from "./_components/api-health-bar"
+import { SettingsPostureHero } from "./_components/settings-posture-hero"
 import { SetupChecklistBanner } from "./_components/setup-checklist-banner"
+import { getEnvPosture, summarizeEnvPosture } from "@/lib/observability/env-posture"
 import { PageHeader } from "@/components/ui/page-header"
 import { getSlackChannels } from "@/lib/slack"
 import { getAllNotificationConfigs } from "@/lib/slack/notification-config"
@@ -169,11 +170,39 @@ export default async function SettingsPage({
 
   const boardConfig = (settingsRow?.value ?? defaultBoardConfig) as typeof defaultBoardConfig
 
+  // Environment posture (presence-only) - feeds the hero chip + Integrations
+  // System panel. Never contains any secret value.
+  const envPosture = getEnvPosture()
+  const envSummary = summarizeEnvPosture(envPosture)
+
+  // Services connected count for the hero: the 8 core integrations (the
+  // optional apify/heygen/pexels aren't part of "is everything connected").
+  const CORE_SERVICES = ["monday", "meta", "stripe", "trengo", "google_drive", "slack", "fathom", "gemini"]
+  const servicesSummary = {
+    connected: CORE_SERVICES.filter((s) => tokenStatuses[s]?.is_valid).length,
+    total: CORE_SERVICES.length,
+  }
+
+  // Map the incoming ?tab= (incl. legacy aliases) to a canonical section for
+  // the SSR first paint. useUrlState takes over on the client.
+  const LEGACY: Record<string, string> = {
+    tokens: "integrations", "api-tokens": "integrations", health: "integrations",
+    clients: "monday", board: "monday", users: "team", automations: "notifications",
+  }
+  const CANONICAL = ["me", "team", "integrations", "monday", "notifications", "pedro"]
+  const rawTab = params.tab ?? "me"
+  const initialAdminTab = (
+    CANONICAL.includes(rawTab) ? rawTab : LEGACY[rawTab] ?? "me"
+  ) as "me" | "team" | "integrations" | "monday" | "notifications" | "pedro"
+
   return (
     <div>
       <PageHeader title={t("settings.title", locale)} />
 
-      <ApiHealthBar />
+      <SettingsPostureHero
+        services={servicesSummary}
+        env={{ loaded: envSummary.loaded, total: envSummary.total, criticalMissing: envSummary.criticalMissing }}
+      />
 
       <SetupChecklistBanner items={setupChecklist.items} />
 
@@ -215,19 +244,10 @@ export default async function SettingsPage({
         return (
           <SettingsTabs
             isAdmin={true}
-            initialTab={
-              params.tab === "me" ||
-              params.tab === "users" ||
-              params.tab === "tokens" ||
-              params.tab === "automations" ||
-              params.tab === "clients" ||
-              params.tab === "board" ||
-              params.tab === "health"
-                ? params.tab
-                : "me"
-            }
+            initialTab={initialAdminTab}
             meTab={meTab}
             tokenStatuses={tokenStatuses}
+            envPosture={envPosture}
             boardConfig={boardConfig}
             defaultBoardConfig={defaultBoardConfig}
             users={usersWithMapping}

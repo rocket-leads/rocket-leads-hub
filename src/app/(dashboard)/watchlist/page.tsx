@@ -36,7 +36,7 @@ async function WatchListData() {
 
   // Roy 2026-06-12: graceful fallback when Monday token is missing. Was
   // throwing "Monday token not configured" + crashing the whole watchlist
-  // page. Now we surface a clear CTA to Settings → API Tokens so the AM
+  // page. Now we surface a clear CTA to Settings → Integrations so the AM
   // can fix it without seeing a Next.js error overlay.
   let data: { onboarding: MondayClient[]; current: MondayClient[] }
   if (cached) {
@@ -101,7 +101,7 @@ function MissingTokenState({ message }: { message: string }) {
         href="/settings?tab=api-tokens"
         className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
       >
-        Open Settings → API Tokens
+        Open Settings → Integrations
         <ArrowRight className="h-3.5 w-3.5" />
       </Link>
     </div>

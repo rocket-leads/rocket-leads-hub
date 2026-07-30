@@ -29,7 +29,7 @@ export async function getApifyToken(): Promise<string> {
     .eq("service", "apify")
     .single()
   if (!data) {
-    throw new Error("Apify token not configured. Go to Settings → API Tokens.")
+    throw new Error("Apify token not configured. Go to Settings → Integrations.")
   }
   const token = decrypt(data.token_encrypted).trim()
   cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
@@ -270,7 +270,7 @@ export async function runFacebookAdsScraper(args: {
 }
 
 /**
- * Test-token helper - used by the Settings → API Tokens "Test" button.
+ * Test-token helper - used by the Settings → Integrations "Test" button.
  * Hits a cheap endpoint (`/users/me`) that 401s on bad tokens and 200s
  * on good ones, without consuming any compute units.
  */
