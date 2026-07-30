@@ -4,6 +4,7 @@ import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import {
   fetchTrengoChannels,
   fetchTicketMessages,
+  fetchTrengoUsers,
   isEmailChannelType,
   isWhatsAppChannelType,
   type TrengoMessage,
@@ -1701,6 +1702,7 @@ function liveTrengoMsgToChatMessage(
   m: TrengoMessage,
   contactName: string,
   avatarByName: Map<string, string>,
+  trengoUserById?: Map<number, string>,
 ): ChatMessage {
   const type = (m.type ?? "").toUpperCase()
   const inbound = type === "INBOUND" || type === "INBOUND_MESSAGE"
@@ -1721,6 +1723,16 @@ function liveTrengoMsgToChatMessage(
     emailHtml && emailHtml.includes("<") ? emailHtml : rawBody.includes("<") ? rawBody : null
   const teamName = m.agent?.name ?? m.author?.name ?? "Team"
   const authorName = authorKind === "client" ? contactName : teamName
+  // Trengo's structured `mentions` array is authoritative for BOTH who's tagged
+  // and their Done state (seen === 1). Live-fetched notes have no ingested
+  // fan-out row, so this is the only source of their checkbox state. Roy 2026-07-30.
+  const noteMention =
+    isInternal && m.mentions && m.mentions.length > 0
+      ? {
+          names: m.mentions.map((x) => trengoUserById?.get(x.user_id) ?? `#${x.user_id}`),
+          allDone: m.mentions.every((x) => (x.seen ?? 0) === 1),
+        }
+      : null
   return {
     id: `trengo:msg:${m.id}`,
     authorKind,
@@ -1737,7 +1749,7 @@ function liveTrengoMsgToChatMessage(
     status: "read",
     isInternal,
     sourceMsgId: `trengo:msg:${m.id}`,
-    noteMention: null,
+    noteMention,
   }
 }
 
@@ -1763,6 +1775,9 @@ function mergeStoredAndLive(stored: ChatMessage[], live: ChatMessage[]): ChatMes
         bodyHtml: lm.bodyHtml ?? s.bodyHtml,
         emailSubject: lm.emailSubject ?? s.emailSubject,
         emailFromAddress: lm.emailFromAddress ?? s.emailFromAddress,
+        // Live mention state (from Trengo's `mentions` array) is fresher than
+        // the ingested fan-out rows, so prefer it when present. Roy 2026-07-30.
+        noteMention: lm.noteMention ?? s.noteMention,
       })
     } else {
       result.push(lm)
@@ -1816,7 +1831,9 @@ async function attachNoteMentions(
       byNote.set(m[1], e)
     }
     return messages.map((msg) => {
-      if (!msg.isInternal || !msg.sourceMsgId) return msg
+      // Live Trengo data (if the thread was live-merged) already carries the
+      // authoritative mention state — don't clobber it with the ingested rows.
+      if (!msg.isInternal || !msg.sourceMsgId || msg.noteMention) return msg
       const id = msg.sourceMsgId.match(/^trengo:msg:(\d+)$/)?.[1]
       const e = id ? byNote.get(id) : undefined
       if (!e || e.total === 0) return msg
@@ -1906,11 +1923,21 @@ export async function getChatThreadMessages(
         ),
       ).slice(0, 3)
       if (ticketIds.length > 0) {
-        const liveRaw = (await Promise.all(ticketIds.map((id) => fetchTicketMessages(id)))).flat()
+        const [liveRawArr, trengoUsers] = await Promise.all([
+          Promise.all(ticketIds.map((id) => fetchTicketMessages(id))),
+          // Resolve @-mention user ids → names for the note checkbox tooltip.
+          // Best-effort: empty map just yields "#<id>" labels. Roy 2026-07-30.
+          fetchTrengoUsers().catch(() => [] as Awaited<ReturnType<typeof fetchTrengoUsers>>),
+        ])
+        const liveRaw = liveRawArr.flat()
         if (liveRaw.length > 0) {
+          const trengoUserById = new Map<number, string>()
+          for (const u of trengoUsers) if (u.name) trengoUserById.set(u.id, u.name)
           const contactName =
             storedMessages.find((m) => m.authorKind === "client")?.authorName ?? "Contact"
-          const live = liveRaw.map((m) => liveTrengoMsgToChatMessage(m, contactName, avatarByName))
+          const live = liveRaw.map((m) =>
+            liveTrengoMsgToChatMessage(m, contactName, avatarByName, trengoUserById),
+          )
           result = mergeStoredAndLive(storedMessages, live)
         }
       }
