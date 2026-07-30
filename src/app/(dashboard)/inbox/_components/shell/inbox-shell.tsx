@@ -1101,8 +1101,8 @@ export function InboxShell({
 
       {/* Compact status strip — mirrored across both scopes so they launch the
           same way: COMMS·LIVE (external) / WORKSPACE·LIVE (internal). Hidden on
-          locked per-client tabs + the Mentioned view. */}
-      {isExternal && !locked && !mentionedOnly && (
+          locked per-client tabs only; kept on the Mentioned view. Roy 2026-07-30. */}
+      {isExternal && !locked && (
         <InboxHero
           newCount={extCounts.open}
           assignedCount={extCounts.assigned}
