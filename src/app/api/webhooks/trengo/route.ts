@@ -11,7 +11,7 @@ import {
   resolveMentionedHubIds,
 } from "@/lib/inbox/trengo-mentions"
 import { getTrengoChannelLookup } from "@/lib/inbox/fetchers"
-import { fetchTicketMessageHtml } from "@/lib/integrations/trengo"
+import { fetchTicketMessageHtml, trengoLocalToUtcIso } from "@/lib/integrations/trengo"
 import { upsertTrengoContacts, getCanonicalThreadBases } from "@/lib/inbox/trengo-contacts"
 import { broadcastInboxInbound } from "@/lib/realtime/broadcast"
 
@@ -259,7 +259,8 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
     authorKind,
     authorName: message.author?.name ?? contactName ?? "Unknown",
     authorExternal: String(message.author?.id ?? contactId ?? ""),
-    createdAtSrc: message.created_at ?? new Date().toISOString(),
+    // Trengo emits LOCAL (Europe/Amsterdam) time — convert to real UTC.
+    createdAtSrc: message.created_at ? trengoLocalToUtcIso(message.created_at) : new Date().toISOString(),
     attachments:
       message.attachments && message.attachments.length > 0 ? message.attachments : null,
     emailSubject,

@@ -21,6 +21,49 @@ async function getTrengoToken(): Promise<string> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** Timezone Trengo renders its "YYYY-MM-DD HH:mm:ss" message timestamps in.
+ *  Verified 2026-07-30: a message inserted at 12:22 UTC came back from Trengo
+ *  as "14:22:14" (CEST, +2h) — i.e. LOCAL Amsterdam time, NOT UTC. Storing it
+ *  as UTC put every message 1–2h in the future. */
+const TRENGO_TZ = "Europe/Amsterdam"
+
+/** Convert a Trengo timestamp to a real UTC ISO string. Trengo emits naive
+ *  local (Europe/Amsterdam) "YYYY-MM-DD HH:mm:ss"; this shifts it to UTC,
+ *  DST-aware. Strings that already carry a Z/offset are passed through. Values
+ *  that don't parse fall back to the epoch. Roy 2026-07-30. */
+export function trengoLocalToUtcIso(s: string | null | undefined): string {
+  if (!s) return new Date(0).toISOString()
+  const str = s.trim()
+  // Already has a timezone (Z or ±HH:MM) → trust it.
+  if (/(z|[+-]\d{2}:?\d{2})$/i.test(str)) {
+    const t = new Date(str).getTime()
+    return Number.isFinite(t) ? new Date(t).toISOString() : new Date(0).toISOString()
+  }
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) {
+    const t = new Date(str).getTime()
+    return Number.isFinite(t) ? new Date(t).toISOString() : new Date(0).toISOString()
+  }
+  const [, y, mo, d, h, mi, sec] = m
+  // Treat the wall-clock components as if UTC, then measure how far Amsterdam is
+  // from UTC at that instant and subtract it to get the true UTC time.
+  const asUtc = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(sec ?? 0))
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TRENGO_TZ,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(asUtc))
+  const g = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0")
+  const localAsUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second"))
+  const offsetMs = localAsUtc - asUtc
+  return new Date(asUtc - offsetMs).toISOString()
+}
+
 /**
  * POST JSON to a Trengo endpoint with a specific (usually per-user) token,
  * retrying on 429 "Too Many Attempts." with the server's `Retry-After` header

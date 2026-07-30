@@ -14,6 +14,7 @@ import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
   fetchUserTicketMessages,
+  trengoLocalToUtcIso,
   type TrengoConversation,
   type TrengoMessage,
 } from "@/lib/integrations/trengo"
@@ -340,7 +341,9 @@ function eventsFromMessageList(
       authorKind,
       isInternal,
       authorName,
-      createdAtSrc: m.created_at,
+      // Trengo emits LOCAL (Europe/Amsterdam) time — convert to real UTC so the
+      // stored timestamp isn't 1-2h in the future. Roy 2026-07-30.
+      createdAtSrc: trengoLocalToUtcIso(m.created_at),
       mentionedHubUserIds,
       trengoAssigneeUserId,
     })
