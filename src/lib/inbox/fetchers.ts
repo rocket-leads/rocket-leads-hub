@@ -4,6 +4,7 @@ import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import {
   fetchTrengoChannels,
   fetchTicketMessages,
+  fetchTicketMessagesWithToken,
   fetchTrengoUsers,
   isEmailChannelType,
   isWhatsAppChannelType,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
+import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import {
   getTrengoContactNames,
   getTrengoNamesByPhone,
@@ -1854,6 +1856,34 @@ function liveTrengoMsgToChatMessage(
   }
 }
 
+/** Find a personal Trengo token that can READ a given channel — a user who's
+ *  subscribed to it AND has connected their personal token. Needed because the
+ *  workspace token can't read PRIVATE/personal channels, so live-fetching those
+ *  threads (full history + media) needs a channel-owner's token. Scoped to that
+ *  channel's owners, not a scan. Returns null for shared channels with no
+ *  personal owner (the workspace token handles those). Roy 2026-07-30. */
+async function resolvePersonalTokenForChannel(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  channelId: number,
+): Promise<string | null> {
+  const { data: subs } = await supabase
+    .from("users")
+    .select("id")
+    .contains("trengo_channel_ids", [channelId])
+    .limit(25)
+  const ids = ((subs ?? []) as Array<{ id: string }>).map((r) => r.id)
+  if (ids.length === 0) return null
+  const { data: toks } = await supabase
+    .from("user_platform_tokens")
+    .select("user_id")
+    .eq("platform", "trengo")
+    .in("user_id", ids)
+    .limit(1)
+  const ownerId = ((toks ?? []) as Array<{ user_id: string }>)[0]?.user_id
+  if (!ownerId) return null
+  return getUserPlatformToken(ownerId, "trengo")
+}
+
 /** Merge stored + live messages by source_msg_id. Live is the completeness
  *  source (fills gaps + fixes placeholder bodies like "Image"); stored keeps
  *  its Hub enrichment (avatar, internal flag, mention rewrite) for the messages
@@ -2027,8 +2057,33 @@ export async function getChatThreadMessages(
         ),
       ).slice(0, 3)
       if (ticketIds.length > 0) {
+        // A private/personal channel (e.g. "Danny WhatsApp") can't be read by
+        // the workspace token, so live-fetch those tickets with the channel
+        // owner's personal token — otherwise the merge silently no-ops and media
+        // stays as "Image"/"Video" text. Map each ticket → its channel from the
+        // stored rows, resolve a token per channel (cached). Roy 2026-07-30.
+        const ticketChannel = new Map<string, number>()
+        for (const r of rows) {
+          const tid = r.source_thread?.match(/^trengo:ticket:(\d+)/)?.[1]
+          if (tid && r.trengo_channel_id != null && !ticketChannel.has(tid)) {
+            ticketChannel.set(tid, r.trengo_channel_id)
+          }
+        }
+        const channelToken = new Map<number, string | null>()
         const [liveRawArr, trengoUsers] = await Promise.all([
-          Promise.all(ticketIds.map((id) => fetchTicketMessages(id))),
+          Promise.all(
+            ticketIds.map(async (id) => {
+              const ch = ticketChannel.get(id)
+              if (ch != null) {
+                if (!channelToken.has(ch)) {
+                  channelToken.set(ch, await resolvePersonalTokenForChannel(supabase, ch))
+                }
+                const tok = channelToken.get(ch)
+                if (tok) return fetchTicketMessagesWithToken(id, tok)
+              }
+              return fetchTicketMessages(id)
+            }),
+          ),
           // Resolve @-mention user ids → names for the note checkbox tooltip.
           // Best-effort: empty map just yields "#<id>" labels. Roy 2026-07-30.
           fetchTrengoUsers().catch(() => [] as Awaited<ReturnType<typeof fetchTrengoUsers>>),

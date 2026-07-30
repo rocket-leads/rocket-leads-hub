@@ -13,7 +13,7 @@ async function getTrengoToken(): Promise<string> {
     .select("token_encrypted")
     .eq("service", "trengo")
     .single()
-  if (!data) throw new Error("Trengo token not configured. Go to Settings → API Tokens.")
+  if (!data) throw new Error("Trengo token not configured. Go to Settings → Integrations.")
   const token = decrypt(data.token_encrypted)
   cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
   return token
@@ -1300,10 +1300,16 @@ export function isAllowedTrengoMediaUrl(raw: string): boolean {
  *  bucket URLs are fetched as-is. Caller MUST validate the host first via
  *  isAllowedTrengoMediaUrl. Roy 2026-07-30. */
 export async function fetchTrengoMedia(url: string): Promise<Response> {
+  // Most Trengo media URLs are signed/public CDN links that DON'T want an auth
+  // header (adding a Bearer can even 403 an S3 signed URL). Try unauthenticated
+  // first; only if that's rejected AND the URL is on the Trengo API host do we
+  // retry with the workspace token. Roy 2026-07-30.
+  const bare = await fetch(url)
+  if (bare.ok) return bare
+  if (bare.status !== 401 && bare.status !== 403) return bare
   const onApiHost = /(^|\.)trengo\.(com|eu)$/.test(new URL(url).hostname)
-  const headers: Record<string, string> = {}
-  if (onApiHost) headers.Authorization = `Bearer ${await getTrengoToken()}`
-  return fetch(url, { headers })
+  if (!onApiHost) return bare
+  return fetch(url, { headers: { Authorization: `Bearer ${await getTrengoToken()}` } })
 }
 
 export async function fetchTicketMessages(
@@ -1324,6 +1330,38 @@ export async function fetchTicketMessages(
   } catch (e) {
     console.error(
       `[trengo] fetchTicketMessages failed (ticket=${ticketId}):`,
+      e instanceof Error ? e.message : e,
+    )
+    return []
+  }
+  return out
+}
+
+/** Like fetchTicketMessages but with an explicit (usually personal) token —
+ *  the workspace token can't read PRIVATE/personal channels, so live-fetching a
+ *  private-channel thread (full history + media attachments) needs the token of
+ *  a user who owns that channel. Roy 2026-07-30. */
+export async function fetchTicketMessagesWithToken(
+  ticketId: string | number,
+  token: string,
+  maxPages = 4,
+): Promise<TrengoMessage[]> {
+  const out: TrengoMessage[] = []
+  try {
+    for (let page = 1; page <= maxPages; page++) {
+      const res = await fetch(
+        `https://app.trengo.com/api/v2/tickets/${ticketId}/messages?page=${page}`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+      )
+      if (!res.ok) break
+      const data = (await res.json()) as MessagePage
+      const rows = data.data ?? []
+      out.push(...rows)
+      if (rows.length < 20) break
+    }
+  } catch (e) {
+    console.error(
+      `[trengo] fetchTicketMessagesWithToken failed (ticket=${ticketId}):`,
       e instanceof Error ? e.message : e,
     )
     return []
