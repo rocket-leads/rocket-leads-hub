@@ -19,6 +19,7 @@ import {
   X,
   Paperclip,
   FileText,
+  Mic,
   Image as ImageIcon,
   Bold,
   Italic,
@@ -1334,6 +1335,15 @@ function ThreadMessages({
   const [uploadingCount, setUploadingCount] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  // Voice-memo recording state. On stop we wrap the recorded blob as an audio
+  // File and pipe it through the normal attachment upload → send flow, so a
+  // voice note behaves like any other attachment. Roy 2026-07-30.
+  const [recording, setRecording] = useState(false)
+  const [recSeconds, setRecSeconds] = useState(0)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recChunksRef = useRef<Blob[]>([])
+  const recCancelRef = useRef(false)
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Hub user display names → @-mentions in message bodies render blue.
   const mentionNames = useMemo(
     () =>
@@ -1830,6 +1840,59 @@ function ThreadMessages({
   function removeAttachment(id: number) {
     setAttachments((prev) => prev.filter((a) => a.id !== id))
   }
+
+  /** Start recording a voice memo from the mic. */
+  async function startRecording() {
+    if (recording) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      recChunksRef.current = []
+      recCancelRef.current = false
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recChunksRef.current.push(e.data)
+      }
+      mr.onstop = () => {
+        stream.getTracks().forEach((tk) => tk.stop())
+        if (recTimerRef.current) {
+          clearInterval(recTimerRef.current)
+          recTimerRef.current = null
+        }
+        setRecording(false)
+        setRecSeconds(0)
+        if (recCancelRef.current || recChunksRef.current.length === 0) return
+        const mime = mr.mimeType || "audio/webm"
+        const blob = new Blob(recChunksRef.current, { type: mime })
+        const ext = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a" : "webm"
+        const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "-")
+        const file = new File([blob], `voice-memo-${stamp}.${ext}`, { type: mime })
+        uploadFiles([file])
+      }
+      recorderRef.current = mr
+      mr.start()
+      setRecording(true)
+      setRecSeconds(0)
+      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000)
+    } catch {
+      setUploadError("Microfoon niet beschikbaar of geweigerd")
+    }
+  }
+
+  /** Stop recording — `send=true` uploads the memo, `false` discards it. */
+  function stopRecording(send: boolean) {
+    recCancelRef.current = !send
+    recorderRef.current?.stop()
+    recorderRef.current = null
+  }
+
+  // Tear down an in-flight recording if the pane unmounts / thread switches.
+  useEffect(() => {
+    return () => {
+      if (recTimerRef.current) clearInterval(recTimerRef.current)
+      recCancelRef.current = true
+      recorderRef.current?.stop()
+    }
+  }, [])
 
   function onPickFile() {
     fileInputRef.current?.click()
@@ -2524,6 +2587,44 @@ function ThreadMessages({
                     e.target.value = ""
                   }}
                 />
+                {recording ? (
+                  // Live recording control — timer + discard (X) + send (✓).
+                  <div className="flex items-center gap-1 rounded-md bg-red-500/10 px-2 h-9">
+                    <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums text-red-600 dark:text-red-400">
+                      <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                      {fmtRecTime(recSeconds)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stopRecording(false)}
+                      title="Opname annuleren"
+                      aria-label="Opname annuleren"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stopRecording(true)}
+                      title="Spraakbericht versturen"
+                      aria-label="Spraakbericht versturen"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={sending}
+                    title="Spraakbericht opnemen"
+                    aria-label="Spraakbericht opnemen"
+                    className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onPickFile}
@@ -3604,6 +3705,13 @@ function renderMentions(text: string, names: string[]): React.ReactNode {
  *  Trengo token off the client, dodges CORS/CSP + signed-URL expiry). */
 function mediaProxyUrl(url: string): string {
   return `/api/inbox/media?url=${encodeURIComponent(url)}`
+}
+
+/** m:ss for the voice-memo recording timer. */
+function fmtRecTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${s.toString().padStart(2, "0")}`
 }
 
 /** Inline media/file rendering for a chat message — photos, videos, voice
