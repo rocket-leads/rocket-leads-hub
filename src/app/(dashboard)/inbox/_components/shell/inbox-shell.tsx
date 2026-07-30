@@ -503,7 +503,11 @@ export function InboxShell({
   const pendingByChannel = useMemo(() => {
     const m = new Map<number, { whatsapp: number; email: number }>()
     for (const t of threads) {
-      if (t.isArchived) continue // closed tickets don't count
+      // Count NEW (open) tickets only — same definition as the "All" tab, so a
+      // channel's number can never exceed All. Excluding assigned (Opgepakt)
+      // fixes "All 9 but Roy Personal 11": the 2 Opgepakt no longer inflate the
+      // per-channel chip. Closed tickets never count. Roy 2026-07-30.
+      if (t.isArchived || t.isAssigned) continue
       if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
       for (const cid of t.channelIds ?? []) {
         const e = m.get(cid) ?? { whatsapp: 0, email: 0 }

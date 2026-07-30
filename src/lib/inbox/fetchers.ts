@@ -563,10 +563,15 @@ export async function getInboxBadgeCounts(
   // defensively anyway.
   let chatQuery = supabase
     .from("inbox_events")
-    .select("trengo_channel_id")
+    .select("trengo_channel_id, thread_key")
     .not("thread_key", "is", null)
     .eq("scope", "external")
     .eq("status", "unread")
+    // Closed (archived) tickets must NOT ping the badge — you've dealt with
+    // them. Without this the badge counted unread messages in every closed
+    // ticket too, so it read "99+" while the actionable inbox was ~9.
+    // Roy 2026-07-30.
+    .is("archived_at", null)
     .limit(5000)
 
   // Channel subscriptions broaden visibility for every role - CMs included
@@ -649,14 +654,23 @@ export async function getInboxBadgeCounts(
       .not("source_ref->>trengo_mention_in_thread_key", "is", null),
   ])
 
-  const chatRows = (chatsRes.data ?? []) as Array<{ trengo_channel_id: number | null }>
-  const unreadChats = chatRows.length
+  // Count unread THREADS, not message rows — a ticket with 3 unread messages is
+  // one item to act on, so it shouldn't count 3× (another reason the badge ran
+  // far ahead of the ticket list). Dedupe by thread_key. Roy 2026-07-30.
+  const chatRows = (chatsRes.data ?? []) as Array<{
+    trengo_channel_id: number | null
+    thread_key: string | null
+  }>
+  const seenThreads = new Set<string>()
   const unreadByChannel: Record<string, number> = {}
   for (const r of chatRows) {
+    if (!r.thread_key || seenThreads.has(r.thread_key)) continue
+    seenThreads.add(r.thread_key)
     if (r.trengo_channel_id == null) continue
     const key = String(r.trengo_channel_id)
     unreadByChannel[key] = (unreadByChannel[key] ?? 0) + 1
   }
+  const unreadChats = seenThreads.size
   const mentions = mentionsRes.count ?? 0
   // CM gets the Kanalen tab when (a) they have an assigned chat row,
   // OR (b) they've subscribed to any Trengo channels in /account. Roy
