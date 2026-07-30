@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Circle, User, CircleCheck, Search, X } from "lucide-react"
+import { Plus, Circle, User, CircleCheck, Search, X, ChevronDown, ListTodo, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -44,8 +44,13 @@ type Props = {
 }
 
 type InboxScope = "internal" | "external"
+type InternalView = "mine" | "delegated"
 const REFETCH_MS = 5000
 const ALL_TYPES: InternalType[] = ["task", "update"]
+const INTERNAL_VIEWS: Array<{ id: InternalView; label: string }> = [
+  { id: "mine", label: "My items" },
+  { id: "delegated", label: "Delegated" },
+]
 
 function mentionThreadKey(item: InboxItem): string | null {
   const ref = item.sourceRef
@@ -324,10 +329,42 @@ export function InboxShell({
     refetchIntervalInBackground: false,
   })
 
+  // Delegated view ("things I sent to others"). internalView toggles the
+  // internal feed between "mine" (assigned to me — today's behaviour) and
+  // "delegated" (author=me, assignee≠me). The delegated queries are lazy (only
+  // fired when the tab is active) and span a broad status set so the
+  // Open/Assigned/Closed chips + Closed completion are meaningful. Only in the
+  // global inbox; the locked per-client tab is always "mine". Roy 2026-07-30.
+  const [internalView, setInternalView] = useState<InternalView>("mine")
+  const delegatedActive = !locked && internalView === "delegated"
+  const delegatedTasksQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["shell-delegated-tasks"],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=task&owner=created&statuses=open,in_progress,done,cancelled`).then((r) => r.json()),
+    enabled: delegatedActive,
+    staleTime: REFETCH_MS,
+    refetchInterval: REFETCH_MS,
+    refetchIntervalInBackground: false,
+  })
+  const delegatedUpdatesQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["shell-delegated-updates"],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=update&owner=created&statuses=unread,read`).then((r) => r.json()),
+    enabled: delegatedActive,
+    staleTime: REFETCH_MS,
+    refetchInterval: REFETCH_MS,
+    refetchIntervalInBackground: false,
+  })
+
   const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items])
   const updates = useMemo(() => updatesQuery.data?.items ?? [], [updatesQuery.data?.items])
+  const delegatedTasks = useMemo(() => delegatedTasksQuery.data?.items ?? [], [delegatedTasksQuery.data?.items])
+  const delegatedUpdates = useMemo(() => delegatedUpdatesQuery.data?.items ?? [], [delegatedUpdatesQuery.data?.items])
+  // The set the internal feed actually renders, switched by internalView.
+  const activeTasks = delegatedActive ? delegatedTasks : tasks
+  const activeUpdates = delegatedActive ? delegatedUpdates : updates
   const mentionItems = useMemo(() => mentionsQuery.data?.items ?? [], [mentionsQuery.data?.items])
-  const items = useMemo(() => [...tasks, ...updates], [tasks, updates])
+  const items = useMemo(() => [...activeTasks, ...activeUpdates], [activeTasks, activeUpdates])
   const threads = useMemo(() => {
     const all = threadsQuery.data?.threads ?? []
     return locked ? all.filter((t) => t.clientId === locked.id) : all
@@ -337,6 +374,8 @@ export function InboxShell({
     queryClient.invalidateQueries({ queryKey: ["shell-tasks", locked?.id ?? "me"] })
     queryClient.invalidateQueries({ queryKey: ["shell-updates", locked?.id ?? "me"] })
     queryClient.invalidateQueries({ queryKey: ["shell-mentions", locked?.id ?? "me"] })
+    queryClient.invalidateQueries({ queryKey: ["shell-delegated-tasks"] })
+    queryClient.invalidateQueries({ queryKey: ["shell-delegated-updates"] })
   }, [queryClient, locked?.id])
 
   // --- Internal scope --------------------------------------------------------
@@ -344,10 +383,10 @@ export function InboxShell({
   const [deadline, setDeadline] = useState<DeadlineFilter>("all")
   const internalCounts = useMemo(() => {
     const c: Record<InternalType, number> = { task: 0, update: 0 }
-    for (const it of tasks) if (it.status === "open") c.task += 1
-    for (const it of updates) if (it.status === "unread") c.update += 1
+    for (const it of activeTasks) if (it.status === "open") c.task += 1
+    for (const it of activeUpdates) if (it.status === "unread") c.update += 1
     return c
-  }, [tasks, updates])
+  }, [activeTasks, activeUpdates])
   const toggleType = useCallback((t: InternalType) => {
     setInternalTypes((prev) => {
       const next = new Set(prev)
@@ -382,10 +421,10 @@ export function InboxShell({
   // per-channel breakdown): total items + how many still need attention.
   const internalTypeStats = useMemo(
     () => [
-      { label: "Tasks", threads: tasks.length, unread: internalCounts.task },
-      { label: "Updates", threads: updates.length, unread: internalCounts.update },
+      { label: "Tasks", threads: activeTasks.length, unread: internalCounts.task },
+      { label: "Updates", threads: activeUpdates.length, unread: internalCounts.update },
     ],
-    [tasks.length, updates.length, internalCounts],
+    [activeTasks.length, activeUpdates.length, internalCounts],
   )
   const intSearching = intSearch.trim().length > 0
   const visibleInternalRows = useMemo(() => {
@@ -1125,10 +1164,56 @@ export function InboxShell({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         }).then(refreshItems)
-      if (action === "done") return void patch({ status: "done" })
-      if (action === "reopen") return void patch({ status: "open" })
-      if (action === "read") return void patch({ status: "read" })
-      if (action === "unread") return void patch({ status: "unread" })
+
+      // Optimistic status flip (external-inbox parity, chat-pane.tsx:301-373):
+      // patch every internal cache that might hold this row so it moves tab /
+      // clears instantly; reconcile with a real refetch on success, restore
+      // server truth on failure. Also auto-advance selection to the next
+      // visible row when the acted-on row is the one open in the detail pane
+      // (chat-pane.tsx:346-358) so triage never lands on a stale item.
+      const INTERNAL_KEYS: unknown[][] = [
+        ["shell-tasks", locked?.id ?? "me"],
+        ["shell-updates", locked?.id ?? "me"],
+        ["shell-mentions", locked?.id ?? "me"],
+        ["shell-delegated-tasks"],
+        ["shell-delegated-updates"],
+      ]
+      const optimisticStatus = (nextStatus: string) => {
+        for (const key of INTERNAL_KEYS) {
+          queryClient.setQueryData<{ items: InboxItem[] }>(key, (old) =>
+            old?.items
+              ? { ...old, items: old.items.map((it) => (it.id === id ? { ...it, status: nextStatus as InboxItem["status"] } : it)) }
+              : old,
+          )
+        }
+      }
+      const advanceFrom = () => {
+        if (openRow?.id !== id) return
+        const idx = activeVisibleRows.findIndex((r) => r.id === id)
+        const next = idx >= 0 ? activeVisibleRows[idx + 1] ?? activeVisibleRows[idx - 1] ?? null : null
+        setOpenRow(next && next.id !== id ? next : null)
+      }
+      const statusPatch = async (nextStatus: string) => {
+        advanceFrom()
+        optimisticStatus(nextStatus)
+        try {
+          const res = await fetch(`/api/inbox/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: nextStatus }),
+          })
+          if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+        } catch {
+          // fall through to refreshItems, which re-fetches server truth and
+          // undoes the optimistic flip.
+        }
+        refreshItems()
+      }
+
+      if (action === "done") return void statusPatch("done")
+      if (action === "reopen") return void statusPatch("open")
+      if (action === "read") return void statusPatch("read")
+      if (action === "unread") return void statusPatch("unread")
       if (action === "unsnooze") return void patch({ snoozedUntil: null })
       if (action === "make_task")
         return openComposerFromChat({ clientId: row.item.clientId, title: row.item.title, body: row.item.body ?? undefined })
@@ -1143,12 +1228,14 @@ export function InboxShell({
         if (action.type === "rename") return void patch({ title: action.title })
       }
     },
-    [refreshItems, openComposerFromChat, openRow?.id],
+    [refreshItems, openComposerFromChat, openRow?.id, queryClient, locked?.id, activeVisibleRows],
   )
 
   // --- Render ----------------------------------------------------------------
   const externalLoading = canViewComms && threadsQuery.isLoading
-  const internalLoading = tasksQuery.isLoading || updatesQuery.isLoading
+  const internalLoading = delegatedActive
+    ? delegatedTasksQuery.isLoading || delegatedUpdatesQuery.isLoading
+    : tasksQuery.isLoading || updatesQuery.isLoading
   const containerH = locked
     ? "h-[calc(100vh*var(--ui-unzoom)_-_320px)] min-h-[440px]"
     : "h-[calc(100vh*var(--ui-unzoom)_-_208px)] min-h-[520px]"
@@ -1201,7 +1288,11 @@ export function InboxShell({
             : t("inbox.shell.empty.view_channel", locale)
     : intSearching
       ? t("inbox.shell.empty.search", locale)
-      : null
+      : delegatedActive
+        ? "Nothing delegated — everything you created is assigned to you."
+        : deadline !== "all" || internalTypes.size < 2
+          ? "Nothing matches these filters. Widen the type or deadline, or check the Delegated tab."
+          : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -1232,16 +1323,17 @@ export function InboxShell({
         )}
         {/* "New" sits right next to the Internal/External toggle. Its meaning
             follows the scope: External composes a new message on a channel;
-            Internal creates a new task/update. Roy 2026-07-30. */}
+            Internal offers a Task / Update choice via a dropdown so both kinds
+            are one click away (not just the task default). Roy 2026-07-30. */}
         {!locked && (
-          <Button
-            size="sm"
-            className="ml-1"
-            onClick={() => (isExternal ? setNewMessageOpen(true) : openComposer("task"))}
-          >
-            <Plus className="h-4 w-4" />
-            {isExternal ? "New message" : "New"}
-          </Button>
+          isExternal ? (
+            <Button size="sm" className="ml-1" onClick={() => setNewMessageOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New message
+            </Button>
+          ) : (
+            <NewItemButton onPick={openComposer} />
+          )
         )}
       </div>
 
@@ -1377,6 +1469,31 @@ export function InboxShell({
               locked ? "lg:w-[360px]" : "lg:w-[360px] xl:w-[400px]",
             )}
           >
+            {/* My items vs Delegated. "My items" = assigned to me (a to-do
+                list). "Delegated" = things I created for someone else (the
+                internal "Sent items"), so I can see they went out and got
+                picked up. Global inbox only — the locked per-client tab is
+                always my-items. Roy 2026-07-30. */}
+            {!locked && (
+              <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Ownership">
+                {INTERNAL_VIEWS.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setInternalView(v.id)}
+                    aria-pressed={internalView === v.id}
+                    className={cn(
+                      "chip h-8",
+                      internalView === v.id
+                        ? "bg-muted border-foreground/60 font-semibold text-foreground ring-2 ring-inset ring-foreground/45"
+                        : "text-foreground/70",
+                    )}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="search-pill w-full shrink-0">
               <Search />
               <input
@@ -1412,6 +1529,7 @@ export function InboxShell({
                 onAction={handleRowAction}
                 users={users}
                 emptyHint={emptyHint}
+                currentUserId={currentUser.id}
               />
             </div>
           </div>
@@ -1523,6 +1641,70 @@ export function InboxShell({
           >
             <X className="h-3.5 w-3.5" />
             {t("inbox.shell.bulk.clear", locale)}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** "+ New" split button for the internal scope: a Task / Update chooser.
+ *  Same lightweight outside-click + Esc popover pattern as the row-level
+ *  Snooze/Reassign menus (no new primitive). Each choice calls back into the
+ *  shell's `openComposer(kind)`. Roy 2026-07-30. */
+function NewItemButton({ onPick }: { onPick: (kind: InboxKind) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  function pick(kind: InboxKind) {
+    setOpen(false)
+    onPick(kind)
+  }
+
+  return (
+    <div className="relative ml-1" ref={ref}>
+      <Button size="sm" onClick={() => setOpen((s) => !s)} aria-expanded={open} aria-haspopup="menu">
+        <Plus className="h-4 w-4" />
+        New
+        <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-full z-30 mt-1 w-40 rounded-md border border-border bg-popover py-1 text-sm shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => pick("task")}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/60"
+          >
+            <ListTodo className="h-4 w-4 opacity-70" />
+            Task
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => pick("update")}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/60"
+          >
+            <MessageSquare className="h-4 w-4 opacity-70" />
+            Update
           </button>
         </div>
       )}

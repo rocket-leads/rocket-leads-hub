@@ -50,6 +50,9 @@ type Props<T extends string> = {
   onToggleSelectAll?: () => void
   users?: InboxUser[]
   emptyHint?: React.ReactNode
+  /** Signed-in user id, forwarded to task/update rows so delegated items
+   *  (author = me, assignee ≠ me) can show the delivery signal. */
+  currentUserId?: string
 }
 
 export function UnifiedFeed<T extends string>({
@@ -72,6 +75,7 @@ export function UnifiedFeed<T extends string>({
   onToggleSelectAll,
   users,
   emptyHint,
+  currentUserId,
 }: Props<T>) {
   const locale = useLocale()
   return (
@@ -133,6 +137,7 @@ export function UnifiedFeed<T extends string>({
               selected={selectedOf ? selectedOf(row) : undefined}
               onToggleSelect={onToggleSelect ? (e) => onToggleSelect(row, e) : undefined}
               users={users}
+              currentUserId={currentUserId}
             />
           ))
         )}

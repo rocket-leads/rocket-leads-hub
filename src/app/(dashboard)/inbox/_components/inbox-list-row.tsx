@@ -64,6 +64,20 @@ function fmtDate(iso: string): string {
   })
 }
 
+/** Compact delivery stamp: time-of-day when it happened today, otherwise a
+ *  short date. Keeps the "Seen 14:20" / "Delivered 9 Jul" meta terse. */
+function fmtDeliveryStamp(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  return sameDay
+    ? d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    : fmtDate(iso)
+}
+
 function fmtDueDate(iso: string): { text: string; overdue: boolean } {
   const due = new Date(iso + "T00:00:00")
   const today = new Date()
@@ -99,6 +113,7 @@ export function InboxListRow({
   onToggleSelect,
   users,
   keyboardFocused,
+  currentUserId,
 }: {
   item: InboxItem
   showClient: boolean
@@ -116,8 +131,18 @@ export function InboxListRow({
   /** True when this row is the current keyboard-navigation target. Renders
    *  a subtle ring + auto-scrolls into view (handled by the parent). */
   keyboardFocused?: boolean
+  /** Signed-in user id. When this item was authored by me FOR SOMEONE ELSE
+   *  (a delegated item), the meta row gains a delivery signal
+   *  (Sending… → Delivered → Seen) so I can confirm it went out and was
+   *  picked up. Self-describing: works in the Delegated and All views. */
+  currentUserId?: string
 }) {
   const isUpdate = item.kind === "update"
+  // Delegated = I sent this to someone else. Drives the delivery chip below.
+  const isDelegated =
+    !!currentUserId &&
+    item.authorId === currentUserId &&
+    item.assigneeId !== currentUserId
   const isUnread = isUpdate && item.status === "unread"
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
@@ -295,6 +320,30 @@ export function InboxListRow({
               channelKind={item.channelKind}
             />
             {taskStatus && <span className={`st-label ${taskStatus.tone}`}>{taskStatus.label}</span>}
+            {isDelegated && (() => {
+              // Delivery signal for things I delegated. Reuses the .st-label
+              // dot+mono chrome the task statuses use so it sits naturally in
+              // the meta row. Seen > Delivered > Sending in priority.
+              if (item.seenAt) {
+                return (
+                  <span className="st-label live" title={`Seen ${new Date(item.seenAt).toLocaleString("en-GB")}`}>
+                    Seen {fmtDeliveryStamp(item.seenAt)}
+                  </span>
+                )
+              }
+              if (item.notifiedAt) {
+                return (
+                  <span className="st-label idle" title={`Delivered ${new Date(item.notifiedAt).toLocaleString("en-GB")}`}>
+                    Delivered {fmtDeliveryStamp(item.notifiedAt)}
+                  </span>
+                )
+              }
+              return (
+                <span className="st-label warn" title="Not delivered to the assignee yet">
+                  Not delivered
+                </span>
+              )
+            })()}
             {!showClient && isHighPriority && (
               <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
             )}

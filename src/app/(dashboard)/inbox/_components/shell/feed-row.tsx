@@ -40,6 +40,9 @@ type Props = {
   selected?: boolean
   onToggleSelect?: (e: React.MouseEvent) => void
   users?: InboxUser[]
+  /** Signed-in user id. Lets task/update rows detect delegated items
+   *  (author = me, assignee ≠ me) and show the delivery signal. */
+  currentUserId?: string
 }
 
 /** Drop leading forwarded/quote boilerplate so a no-subject email's fallback
@@ -56,7 +59,7 @@ function cleanEmailPreview(text: string | null): string | null {
   return cleaned || text.trim()
 }
 
-export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", selectable, selected, onToggleSelect, users }: Props) {
+export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, closed, checkboxKind = "ticket", selectable, selected, onToggleSelect, users, currentUserId }: Props) {
   const locale = useLocale()
   if (row.kind !== "chat" && row.item) {
     return (
@@ -67,6 +70,7 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
         onAction={onAction}
         users={users}
         keyboardFocused={active}
+        currentUserId={currentUserId}
       />
     )
   }
