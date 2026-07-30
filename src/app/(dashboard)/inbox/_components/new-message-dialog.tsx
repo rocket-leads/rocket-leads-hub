@@ -52,6 +52,33 @@ function countTemplateVariables(message: string): number {
   return max
 }
 
+/** Live template preview — substitutes each {{n}} with the typed variable so
+ *  the AM sees the final WhatsApp message as they fill it in. Filled values are
+ *  highlighted; still-empty placeholders stay muted. Roy 2026-07-30. */
+function TemplatePreview({ message, params }: { message: string; params: string[] }) {
+  const nodes: React.ReactNode[] = []
+  const re = /\{\{(\d+)\}\}/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(message)) !== null) {
+    if (m.index > last) nodes.push(message.slice(last, m.index))
+    const val = params[parseInt(m[1], 10) - 1]?.trim()
+    nodes.push(
+      val ? (
+        <span key={key++} className="font-semibold text-foreground">
+          {val}
+        </span>
+      ) : (
+        <span key={key++} className="text-muted-foreground/50">{`{{${m[1]}}}`}</span>
+      ),
+    )
+    last = m.index + m[0].length
+  }
+  if (last < message.length) nodes.push(message.slice(last))
+  return <>{nodes}</>
+}
+
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
   useEffect(() => {
@@ -555,8 +582,13 @@ export function NewMessageDialog({
                 />
               </div>
               {selectedTemplate && (
-                <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-xs leading-relaxed text-foreground/80">
-                  {selectedTemplate.message}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                    Voorbeeld
+                  </span>
+                  <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-sm leading-relaxed text-foreground/80">
+                    <TemplatePreview message={selectedTemplate.message} params={params} />
+                  </div>
                 </div>
               )}
               {Array.from({ length: varCount }).map((_, i) => (
