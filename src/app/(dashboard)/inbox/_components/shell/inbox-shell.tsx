@@ -1187,7 +1187,14 @@ export function InboxShell({
                 type="button"
                 onClick={() => setScope(it.id)}
                 aria-pressed={scope === it.id}
-                className={cn("chip h-9", scope === it.id && "active")}
+                // Same selected treatment as the channel tabs: neutral grey +
+                // dark inset ring + bold, never purple. Roy 2026-07-30.
+                className={cn(
+                  "chip h-9",
+                  scope === it.id
+                    ? "bg-muted border-foreground/60 font-semibold text-foreground ring-2 ring-inset ring-foreground/45"
+                    : "text-foreground/70",
+                )}
               >
                 {it.label}
               </button>
