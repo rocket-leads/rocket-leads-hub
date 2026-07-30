@@ -3735,30 +3735,44 @@ function MessageAttachments({
     return () => document.removeEventListener("keydown", onKey)
   }, [lightbox])
   if (!attachments || attachments.length === 0) return null
+  // Group images so 2+ photos tile as a compact square grid instead of stacking
+  // as huge full-width images; everything else stacks below. Roy 2026-07-30.
+  const images = attachments.filter((a) => a.kind === "image")
+  const rest = attachments.filter((a) => a.kind !== "image")
+  const multiImage = images.length > 1
   return (
     <div className="mt-1.5 flex flex-col gap-1.5">
-      {attachments.map((a, i) => {
+      {images.length > 0 && (
+        <div className={cn(multiImage && "grid max-w-[320px] grid-cols-2 gap-1")}>
+          {images.map((a, i) => {
+            const src = mediaProxyUrl(a.url)
+            const label = a.name?.trim() || "Afbeelding"
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setLightbox(src)}
+                className="block cursor-zoom-in"
+                title={label}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt={label}
+                  loading="lazy"
+                  className={cn(
+                    "rounded-lg border border-border/60 object-cover",
+                    multiImage ? "aspect-square h-full w-full" : "max-h-72 max-w-full",
+                  )}
+                />
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {rest.map((a, i) => {
         const src = mediaProxyUrl(a.url)
         const label = a.name?.trim() || "Bestand"
-        if (a.kind === "image") {
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setLightbox(src)}
-              className="block cursor-zoom-in"
-              title={label}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt={label}
-                loading="lazy"
-                className="max-h-72 max-w-full rounded-lg border border-border/60 object-cover"
-              />
-            </button>
-          )
-        }
         if (a.kind === "video") {
           return (
             <video
