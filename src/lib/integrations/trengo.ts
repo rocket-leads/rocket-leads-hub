@@ -1007,6 +1007,27 @@ export async function searchTrengoContacts(
   return contacts.slice(0, cap).map(toResolvedTrengoContact)
 }
 
+/** Like searchTrengoContacts but returns the raw phone/email fields split out
+ *  (not flattened into a subline) — the New-message composer needs the actual
+ *  phone for a WhatsApp send and the email for a mail send. Roy 2026-07-30. */
+export async function searchTrengoContactsFull(
+  query: string,
+  limit = 12,
+): Promise<Array<{ id: number; name: string; phone: string | null; email: string | null }>> {
+  const trimmed = query.trim()
+  const cap = Math.min(Math.max(limit, 1), 25)
+  const path = trimmed.length === 0 ? `/contacts` : `/contacts?term=${encodeURIComponent(trimmed)}`
+  type Page = { data?: TrengoContact[] } & { [key: string]: unknown }
+  const raw = await trengoFetch<Page | TrengoContact[]>(path)
+  const contacts = Array.isArray(raw) ? raw : (raw.data ?? [])
+  return contacts.slice(0, cap).map((c) => ({
+    id: c.id,
+    name: c.full_name ?? c.name ?? c.email ?? c.phone ?? String(c.id),
+    phone: c.phone ?? null,
+    email: c.email ?? null,
+  }))
+}
+
 /**
  * Resolve a single Trengo contact ID to its ResolvedEntity. Used by the
  * always-on verification on the picker trigger - without this, a typo'd
