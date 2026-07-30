@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
-import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
+import { fetchBothBoards, fetchMondayUsers, type MondayClient } from "@/lib/integrations/monday"
 import {
   fetchTrengoChannels,
   fetchTicketMessages,
@@ -164,20 +164,52 @@ async function getMondayClientMap(): Promise<Map<string, MondayClient>> {
   return map
 }
 
+/**
+ * Monday user id (string) → display name. The Monday webhook stores the poster
+ * name in author_name_cached, but falls back to a generic "Monday user" when
+ * the webhook payload omits it. We keep the poster's numeric Monday id in
+ * author_external, so this map lets us resolve the real name at read time.
+ * Best-effort + cached 15min inside fetchMondayUsers - empty on failure.
+ */
+async function getMondayUserNameMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  try {
+    for (const u of await fetchMondayUsers()) {
+      if (u.name?.trim()) map.set(String(u.id), u.name.trim())
+    }
+  } catch {
+    // Monday unreachable / token missing - leave empty, names fall back to the
+    // cached placeholder rather than crashing the whole inbox list.
+  }
+  return map
+}
+
+/** Author names the webhook stores when it couldn't resolve the real poster. */
+const WEAK_AUTHOR_NAMES = new Set(["", "monday user", "unknown"])
+
 function rowToItem(
   row: RawInboxRow,
   clientMap: Map<string, MondayClient>,
   channelLookup: Map<number, { kind: ChatChannelKind; name: string }>,
+  mondayUserMap: Map<string, string>,
 ): InboxItem {
   // Prefer author_name_cached when set - webhook ingesters store the real
   // Trengo contact / Monday user / Slack user there because the FK author_id
   // is forced to the system HQ account. Manual creates leave it null and
   // fall through to the joined Hub user, which is correct for those rows.
-  const authorName =
+  let authorName =
     row.author_name_cached?.trim() ||
     row.author?.name ||
     row.author?.email ||
     "Unknown"
+  // "Monday user" bug: the webhook stores that generic placeholder when Monday
+  // didn't hand us the poster's name. author_external keeps their numeric Monday
+  // id, so resolve the real name from the Monday users map. Only overrides the
+  // weak placeholder - never a name we already resolved. Roy 2026-07-30.
+  if (row.source === "monday" && row.author_external && WEAK_AUTHOR_NAMES.has(authorName.toLowerCase())) {
+    const real = mondayUserMap.get(row.author_external)
+    if (real) authorName = real
+  }
 
   // Trengo events whose contact id isn't on any client.trengo_contact_ids[]
   // land with client_id="". Surface this so the UI can render "Unlinked"
@@ -389,12 +421,13 @@ export async function listInboxItems(
   const { data, error } = await query
   if (error) throw new Error(`Failed to list inbox items: ${error.message}`)
 
-  const [clientMap, channelLookup] = await Promise.all([
+  const [clientMap, channelLookup, mondayUserMap] = await Promise.all([
     getMondayClientMap(),
     getTrengoChannelLookup(),
+    getMondayUserNameMap(),
   ])
   return ((data ?? []) as unknown as RawInboxRow[]).map((r) =>
-    rowToItem(r, clientMap, channelLookup),
+    rowToItem(r, clientMap, channelLookup, mondayUserMap),
   )
 }
 
@@ -434,11 +467,12 @@ export async function getInboxItem(
     }
   }
 
-  const [clientMap, channelLookup] = await Promise.all([
+  const [clientMap, channelLookup, mondayUserMap] = await Promise.all([
     getMondayClientMap(),
     getTrengoChannelLookup(),
+    getMondayUserNameMap(),
   ])
-  return rowToItem(row, clientMap, channelLookup)
+  return rowToItem(row, clientMap, channelLookup, mondayUserMap)
 }
 
 export async function listInboxComments(itemId: string): Promise<InboxComment[]> {
