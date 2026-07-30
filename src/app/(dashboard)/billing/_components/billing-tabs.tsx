@@ -7,6 +7,8 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { BillingOverview, type BillingGroup } from "./billing-overview"
 import { PastInvoicesView } from "./past-invoices-view"
 import type { PastInvoice } from "@/lib/integrations/stripe"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /** Past-invoice row enriched with the client name + Monday id so the table
  *  can render a clickable client cell + show "Unknown customer" when the
@@ -17,11 +19,6 @@ export type PastInvoiceRow = PastInvoice & {
 }
 
 type Tab = "future" | "past"
-
-const TABS: TopTab<Tab>[] = [
-  { id: "future", label: "Future invoices", icon: CalendarClock },
-  { id: "past", label: "Past invoices", icon: FileText },
-]
 
 /**
  * Tabs wrapper for the Billing page - splits the original "what's coming up"
@@ -41,7 +38,12 @@ export function BillingTabs({
    *  knows about. */
   adminOptions: string[]
 }) {
+  const locale = useLocale()
   const [tab, setTab] = useState<Tab>("future")
+  const TABS: TopTab<Tab>[] = [
+    { id: "future", label: t("billing.tabs.future", locale), icon: CalendarClock },
+    { id: "past", label: t("billing.tabs.past", locale), icon: FileText },
+  ]
   // Tab badges count "what needs action now":
   //   Future = invoices due this week (overdue + today + through Sunday) -
   //     same window as the BillingOverview "Due this week" headline.

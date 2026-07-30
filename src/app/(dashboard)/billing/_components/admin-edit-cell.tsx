@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Check, X } from "lucide-react"
 import { viewAdministration, type AdministrationTone } from "@/lib/clients/administration"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 // Map the Administration domain tone → 187N .st-label tone (dot + mono
 // uppercase, no fill). Local to billing so the shared lib stays untouched.
@@ -38,6 +40,7 @@ type Props = {
  */
 export function AdminEditCell({ mondayItemId, value, options }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [optimisticValue, setOptimisticValue] = useState(value)
 
@@ -54,7 +57,7 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(err.error ?? "Failed to update admin status")
+        throw new Error(err.error ?? t("billing.admin.update_failed", locale))
       }
     },
     onError: () => setOptimisticValue(value),
@@ -69,7 +72,7 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
         className={`st-label ${ADMIN_ST_TONE[view.tone]}`}
         title={
           view.originalLabel && view.originalLabel.toLowerCase() !== view.label.toLowerCase()
-            ? `Monday: ${view.originalLabel}`
+            ? t("billing.admin.monday_original", locale, { label: view.originalLabel })
             : undefined
         }
       >
@@ -127,7 +130,7 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
               className="w-full flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
               <X className="h-3 w-3" />
-              Clear
+              {t("common.clear", locale)}
             </button>
           </>
         )}

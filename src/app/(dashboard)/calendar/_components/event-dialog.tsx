@@ -27,6 +27,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
+import type { Locale } from "@/lib/i18n/types"
 import type {
   CalendarAttendee,
   CalendarEvent,
@@ -93,6 +96,7 @@ function ViewMode({
   calendarId: string
   onClose: () => void
 }) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -108,7 +112,7 @@ function ViewMode({
       const res = await fetch(url, { credentials: "include" })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error?.message ?? "Failed to load event")
+        throw new Error(body?.error?.message ?? t("calendar.event.load_failed", locale))
       }
       return res.json()
     },
@@ -124,7 +128,7 @@ function ViewMode({
       const res = await fetch(url, { method: "DELETE", credentials: "include" })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error?.message ?? "Failed to delete event")
+        throw new Error(body?.error?.message ?? t("calendar.event.delete_failed", locale))
       }
     },
     onSuccess: () => {
@@ -143,13 +147,13 @@ function ViewMode({
   if (detailQuery.error || !detailQuery.data) {
     return (
       <div className="space-y-3">
-        <DialogTitle>Couldn&apos;t load event</DialogTitle>
+        <DialogTitle>{t("calendar.event.couldnt_load", locale)}</DialogTitle>
         <p className="text-sm text-muted-foreground">
-          {(detailQuery.error as Error)?.message ?? "Unknown error"}
+          {(detailQuery.error as Error)?.message ?? t("calendar.event.unknown_error", locale)}
         </p>
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Close
+            {t("common.close", locale)}
           </Button>
         </div>
       </div>
@@ -182,14 +186,14 @@ function ViewMode({
           </DialogTitle>
           <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
             <CalendarDays className="size-3.5" />
-            <span className="tabular-nums">{formatRange(event)}</span>
+            <span className="tabular-nums">{formatRange(event, locale)}</span>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Edit"
+            aria-label={t("common.edit", locale)}
             onClick={() => setEditing(true)}
           >
             <Pencil className="size-4" />
@@ -197,7 +201,7 @@ function ViewMode({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Delete"
+            aria-label={t("common.delete", locale)}
             onClick={() => setConfirmingDelete(true)}
           >
             <Trash2 className="size-4" />
@@ -205,7 +209,7 @@ function ViewMode({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Close"
+            aria-label={t("common.close", locale)}
             onClick={onClose}
           >
             <X className="size-4" />
@@ -222,7 +226,7 @@ function ViewMode({
         >
           <Video className="size-4 text-[#1a73e8]" />
           <span className="flex-1 min-w-0 truncate">
-            <span className="font-medium">Join with Google Meet</span>
+            <span className="font-medium">{t("calendar.event.join_meet", locale)}</span>
             <span className="ml-2 text-xs text-muted-foreground truncate">
               {event.hangoutLink.replace(/^https?:\/\//, "")}
             </span>
@@ -261,7 +265,7 @@ function ViewMode({
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            Open in Google Calendar
+            {t("calendar.event.open_in_gcal", locale)}
             <ExternalLink className="size-3" />
           </a>
         </div>
@@ -269,9 +273,9 @@ function ViewMode({
 
       {confirmingDelete && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-          <p className="font-medium text-foreground">Delete this event?</p>
+          <p className="font-medium text-foreground">{t("calendar.event.delete_confirm_title", locale)}</p>
           <p className="mt-1 text-muted-foreground">
-            Attendees will be notified. This can&apos;t be undone.
+            {t("calendar.event.delete_confirm_body", locale)}
           </p>
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button
@@ -280,7 +284,7 @@ function ViewMode({
               onClick={() => setConfirmingDelete(false)}
               disabled={deleteMut.isPending}
             >
-              Cancel
+              {t("common.cancel", locale)}
             </Button>
             <Button
               variant="destructive"
@@ -291,7 +295,7 @@ function ViewMode({
               {deleteMut.isPending && (
                 <Loader2 className="size-3.5 animate-spin" />
               )}
-              Delete
+              {t("common.delete", locale)}
             </Button>
           </div>
           {deleteMut.error && (
@@ -321,6 +325,7 @@ function Row({
 }
 
 function AttendeeRow({ attendee }: { attendee: CalendarAttendee }) {
+  const locale = useLocale()
   const initial = (attendee.displayName ?? attendee.email)[0]?.toUpperCase()
   return (
     <li className="flex items-center gap-2">
@@ -331,11 +336,11 @@ function AttendeeRow({ attendee }: { attendee: CalendarAttendee }) {
         {attendee.displayName ?? attendee.email}
         {attendee.organizer && (
           <span className="ml-1.5 text-xs text-muted-foreground">
-            (organizer)
+            {t("calendar.event.attendee.organizer", locale)}
           </span>
         )}
         {attendee.self && (
-          <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>
+          <span className="ml-1.5 text-xs text-muted-foreground">{t("calendar.event.attendee.you", locale)}</span>
         )}
       </span>
       <ResponsePill status={attendee.responseStatus} />
@@ -348,11 +353,12 @@ function ResponsePill({
 }: {
   status: CalendarAttendee["responseStatus"]
 }) {
+  const locale = useLocale()
   const map = {
-    accepted: { label: "Yes", className: "bg-emerald-500/15 text-emerald-700" },
-    declined: { label: "No", className: "bg-red-500/15 text-red-700" },
-    tentative: { label: "Maybe", className: "bg-amber-500/15 text-amber-700" },
-    needsAction: { label: "Awaiting", className: "bg-muted text-muted-foreground" },
+    accepted: { label: t("calendar.event.response.yes", locale), className: "bg-emerald-500/15 text-emerald-700" },
+    declined: { label: t("calendar.event.response.no", locale), className: "bg-red-500/15 text-red-700" },
+    tentative: { label: t("calendar.event.response.maybe", locale), className: "bg-amber-500/15 text-amber-700" },
+    needsAction: { label: t("calendar.event.response.awaiting", locale), className: "bg-muted text-muted-foreground" },
   } as const
   const m = map[status]
   return (
@@ -456,6 +462,7 @@ function EditForm({
   onCancel: () => void
   onSaved: () => void
 }) {
+  const locale = useLocale()
   const [state, setState] = useState<FormState>(() => eventToForm(event))
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -470,7 +477,7 @@ function EditForm({
       )
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error?.message ?? "Failed to save event")
+        throw new Error(body?.error?.message ?? t("calendar.event.save_failed", locale))
       }
     },
     onSuccess: onSaved,
@@ -478,14 +485,14 @@ function EditForm({
 
   return (
     <FormBody
-      title="Edit event"
+      title={t("calendar.event.edit_title", locale)}
       state={state}
       setState={setState}
       onCancel={onCancel}
       onSubmit={() => saveMut.mutate()}
       submitting={saveMut.isPending}
       error={saveMut.error ? (saveMut.error as Error).message : null}
-      submitLabel="Save changes"
+      submitLabel={t("calendar.event.save_changes", locale)}
       showMeetToggle={false}
     />
   )
@@ -498,6 +505,7 @@ function CreateMode({
   initialStart?: Date
   onClose: () => void
 }) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const [state, setState] = useState<FormState>(() => emptyForm(initialStart))
   const createMut = useMutation({
@@ -510,7 +518,7 @@ function CreateMode({
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error?.message ?? "Failed to create event")
+        throw new Error(body?.error?.message ?? t("calendar.event.create_failed", locale))
       }
     },
     onSuccess: () => {
@@ -521,14 +529,14 @@ function CreateMode({
 
   return (
     <FormBody
-      title="New event"
+      title={t("calendar.event.new_title", locale)}
       state={state}
       setState={setState}
       onCancel={onClose}
       onSubmit={() => createMut.mutate()}
       submitting={createMut.isPending}
       error={createMut.error ? (createMut.error as Error).message : null}
-      submitLabel="Create"
+      submitLabel={t("calendar.event.create", locale)}
       showMeetToggle
     />
   )
@@ -555,6 +563,7 @@ function FormBody({
   submitLabel: string
   showMeetToggle: boolean
 }) {
+  const locale = useLocale()
   const [attendeeInput, setAttendeeInput] = useState("")
 
   const addAttendee = () => {
@@ -583,19 +592,19 @@ function FormBody({
       <DialogTitle>{title}</DialogTitle>
 
       <div className="space-y-1.5">
-        <Label htmlFor="evt-title">Title</Label>
+        <Label htmlFor="evt-title">{t("calendar.event.field.title", locale)}</Label>
         <Input
           id="evt-title"
           value={state.title}
           onChange={(e) => setState((s) => ({ ...s, title: e.target.value }))}
-          placeholder="Add a title"
+          placeholder={t("calendar.event.field.title_placeholder", locale)}
           autoFocus
         />
       </div>
 
       <div className="grid grid-cols-[auto_1fr_auto_1fr] gap-2 items-end">
         <div className="space-y-1.5 col-span-2">
-          <Label className="text-xs">Start</Label>
+          <Label className="text-xs">{t("calendar.event.field.start", locale)}</Label>
           <div className="flex gap-2">
             <Input
               type="date"
@@ -616,7 +625,7 @@ function FormBody({
           </div>
         </div>
         <div className="space-y-1.5 col-span-2">
-          <Label className="text-xs">End</Label>
+          <Label className="text-xs">{t("calendar.event.field.end", locale)}</Label>
           <div className="flex gap-2">
             <Input
               type="date"
@@ -647,12 +656,12 @@ function FormBody({
           }
           className="size-3.5 rounded border-border accent-[#8967F3]"
         />
-        All day
+        {t("calendar.event.field.all_day", locale)}
       </label>
 
       <div className="space-y-1.5">
         <Label htmlFor="evt-location" className="flex items-center gap-1.5">
-          <MapPin className="size-3.5" /> Location
+          <MapPin className="size-3.5" /> {t("calendar.event.field.location", locale)}
         </Label>
         <Input
           id="evt-location"
@@ -660,13 +669,13 @@ function FormBody({
           onChange={(e) =>
             setState((s) => ({ ...s, location: e.target.value }))
           }
-          placeholder="Address, room, or video link"
+          placeholder={t("calendar.event.field.location_placeholder", locale)}
         />
       </div>
 
       <div className="space-y-1.5">
         <Label className="flex items-center gap-1.5">
-          <Users className="size-3.5" /> Guests
+          <Users className="size-3.5" /> {t("calendar.event.field.guests", locale)}
         </Label>
         <div className="flex gap-2">
           <Input
@@ -679,7 +688,7 @@ function FormBody({
                 addAttendee()
               }
             }}
-            placeholder="email@example.com"
+            placeholder={t("calendar.event.field.email_placeholder", locale)}
           />
           <Button
             type="button"
@@ -689,7 +698,7 @@ function FormBody({
             disabled={!attendeeInput.includes("@")}
           >
             <Plus className="size-4" />
-            Add
+            {t("common.add", locale)}
           </Button>
         </div>
         {state.attendees.length > 0 && (
@@ -704,7 +713,7 @@ function FormBody({
                   type="button"
                   className="text-muted-foreground hover:text-foreground"
                   onClick={() => removeAttendee(email)}
-                  aria-label={`Remove ${email}`}
+                  aria-label={t("calendar.event.remove_attendee", locale, { email })}
                 >
                   <X className="size-3" />
                 </button>
@@ -716,7 +725,7 @@ function FormBody({
 
       <div className="space-y-1.5">
         <Label htmlFor="evt-desc" className="flex items-center gap-1.5">
-          <Clock className="size-3.5" /> Description
+          <Clock className="size-3.5" /> {t("calendar.event.field.description", locale)}
         </Label>
         <AutoTextarea
           id="evt-desc"
@@ -726,7 +735,7 @@ function FormBody({
           onChange={(e) =>
             setState((s) => ({ ...s, description: e.target.value }))
           }
-          placeholder="Notes, agenda, links…"
+          placeholder={t("calendar.event.field.description_placeholder", locale)}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
       </div>
@@ -742,7 +751,7 @@ function FormBody({
             className="size-3.5 rounded border-border accent-[#8967F3]"
           />
           <Video className="size-4 text-[#1a73e8]" />
-          Add Google Meet video call
+          {t("calendar.event.add_meet", locale)}
         </label>
       )}
 
@@ -758,7 +767,7 @@ function FormBody({
           onClick={onCancel}
           disabled={submitting}
         >
-          Cancel
+          {t("common.cancel", locale)}
         </Button>
         <Button
           type="submit"
@@ -778,10 +787,10 @@ function FormBody({
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
 
-function formatRange(event: CalendarEvent): string {
+function formatRange(event: CalendarEvent, locale: Locale): string {
   if (event.allDay) {
     const start = new Date(event.start)
-    return format(start, "EEEE, d MMM yyyy") + " · all day"
+    return format(start, "EEEE, d MMM yyyy") + " · " + t("calendar.event.all_day_suffix", locale)
   }
   const start = parseISO(event.start)
   const end = parseISO(event.end)

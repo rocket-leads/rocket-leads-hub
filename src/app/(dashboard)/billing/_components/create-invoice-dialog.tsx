@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { addMonthsIso } from "@/lib/clients/billing-cycle"
 import type { InvoiceDraftPreview } from "@/lib/integrations/stripe"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
+import type { Locale } from "@/lib/i18n/types"
 
 type InvoiceMode = "monthly" | "oneoff"
 
@@ -214,6 +217,7 @@ export function CreateInvoiceDialog({
   onClose,
 }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [items, setItems] = useState<LineItemDraft[]>(() =>
     buildInitialItems(serviceFee, followUpFee, adBudget, siblingCampaigns),
   )
@@ -312,7 +316,7 @@ export function CreateInvoiceDialog({
       })
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !data.ok) {
-        setRecipientError(data.error ?? "Failed to update recipient")
+        setRecipientError(data.error ?? t("billing.invoice.update_recipient_failed", locale))
         setSavingRecipient(false)
         return
       }
@@ -335,7 +339,7 @@ export function CreateInvoiceDialog({
       setEditingRecipient(false)
       setSavingRecipient(false)
     } catch (e) {
-      setRecipientError(e instanceof Error ? e.message : "Failed to update recipient")
+      setRecipientError(e instanceof Error ? e.message : t("billing.invoice.update_recipient_failed", locale))
       setSavingRecipient(false)
     }
   }
@@ -379,12 +383,12 @@ export function CreateInvoiceDialog({
       }))
       .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro !== 0)
     if (cleaned.length === 0) {
-      setError("Add at least one line item with a description and amount.")
+      setError(t("billing.invoice.err_at_least_one", locale))
       return
     }
     const days = Number(daysUntilDue)
     if (!Number.isFinite(days) || days < 0 || days > 90) {
-      setError("Due date must be between 0 and 90 days from today.")
+      setError(t("billing.invoice.err_due_range", locale))
       return
     }
 
@@ -399,7 +403,7 @@ export function CreateInvoiceDialog({
         | (InvoiceDraftPreview & { ok: true })
         | { ok?: false; error?: string }
       if (!res.ok || !("ok" in data) || data.ok !== true) {
-        const errMsg = "error" in data && data.error ? data.error : "Failed to build invoice preview"
+        const errMsg = "error" in data && data.error ? data.error : t("billing.invoice.err_preview_failed", locale)
         setError(errMsg)
         setStep("edit")
         return
@@ -409,7 +413,7 @@ export function CreateInvoiceDialog({
       setPreview(previewData as InvoiceDraftPreview)
       setStep("preview")
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to build invoice preview")
+      setError(e instanceof Error ? e.message : t("billing.invoice.err_preview_failed", locale))
       setStep("edit")
     }
   }
@@ -432,19 +436,19 @@ export function CreateInvoiceDialog({
       }))
       .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro !== 0)
     if (cleaned.length === 0) {
-      setError("Add at least one line item with a description and amount.")
+      setError(t("billing.invoice.err_at_least_one", locale))
       return
     }
     const days = Number(daysUntilDue)
     if (!Number.isFinite(days) || days < 0 || days > 90) {
-      setError("Due date must be between 0 and 90 days from today.")
+      setError(t("billing.invoice.err_due_range", locale))
       return
     }
 
     // For a monthly send, a next payment date is required so the cycle can
     // advance. One-off invoices never touch the cycle, so the field is skipped.
     if (mode === "monthly" && nextPaymentDate && !/^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate)) {
-      setError("Enter a valid next payment date (or clear it to leave the cycle unchanged).")
+      setError(t("billing.invoice.err_next_payment", locale))
       return
     }
 
@@ -470,7 +474,7 @@ export function CreateInvoiceDialog({
         error?: string
       }
       if (!res.ok || !data.ok) {
-        setError(data.error ?? "Failed to send invoice")
+        setError(data.error ?? t("billing.invoice.err_send_failed", locale))
         setStep("preview")
         return
       }
@@ -484,7 +488,7 @@ export function CreateInvoiceDialog({
       setStep("success")
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send invoice")
+      setError(e instanceof Error ? e.message : t("billing.invoice.err_send_failed", locale))
       setStep("preview")
     }
   }
@@ -497,10 +501,10 @@ export function CreateInvoiceDialog({
         <DialogHeader>
           <DialogTitle>
             {step === "preview" || step === "sending"
-              ? `Review invoice - ${clientName}`
+              ? t("billing.invoice.review_title", locale, { name: clientName })
               : step === "success"
-                ? `Invoice sent - ${clientName}`
-                : `Create invoice - ${clientName}`}
+                ? t("billing.invoice.sent_title", locale, { name: clientName })
+                : t("billing.invoice.create_title", locale, { name: clientName })}
           </DialogTitle>
         </DialogHeader>
 
@@ -508,7 +512,7 @@ export function CreateInvoiceDialog({
           <div className="space-y-3 py-2">
             <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-600 inline-flex items-center gap-2">
               <Check className="h-4 w-4" />
-              Invoice {success.number ?? "draft"} sent to the customer.
+              {t("billing.invoice.sent_to_customer", locale, { number: success.number ?? t("billing.invoice.draft", locale) })}
             </div>
 
             {/* Cycle outcome - so finance sees exactly where the payment date
@@ -516,12 +520,12 @@ export function CreateInvoiceDialog({
             {success.mode === "oneoff" ? (
               <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
                 <CalendarClock className="h-3.5 w-3.5" />
-                One-off charge - the payment cycle was left unchanged.
+                {t("billing.invoice.oneoff_cycle_unchanged", locale)}
               </p>
             ) : success.newCycleStartDate ? (
               <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
                 <CalendarClock className="h-3.5 w-3.5" />
-                Next payment date set to <span className="font-medium text-foreground">{fmtDateLong(success.newCycleStartDate)}</span>. You can still adjust it on the Billing page.
+                {t("billing.invoice.next_payment_set", locale, { date: fmtDateLong(success.newCycleStartDate) })}
               </p>
             ) : null}
 
@@ -534,7 +538,7 @@ export function CreateInvoiceDialog({
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 space-y-1">
                 <p className="font-medium inline-flex items-center gap-1.5">
                   <AlertCircle className="h-3.5 w-3.5" />
-                  Stripe send went through, but Monday didn't fully sync:
+                  {t("billing.invoice.monday_not_synced", locale)}
                 </p>
                 <ul className="list-disc pl-5 space-y-0.5">
                   {success.warnings.map((w, idx) => (
@@ -552,11 +556,11 @@ export function CreateInvoiceDialog({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  View in Stripe
+                  {t("billing.invoice.view_in_stripe", locale)}
                   <ExternalLink className="h-3 w-3 opacity-50" />
                 </a>
               )}
-              <Button size="sm" onClick={onClose}>Close</Button>
+              <Button size="sm" onClick={onClose}>{t("common.close", locale)}</Button>
             </div>
           </div>
         ) : step === "preview" || step === "sending" ? (
@@ -570,7 +574,7 @@ export function CreateInvoiceDialog({
                 Stripe and re-runs the preview so the BTW recalculates. */}
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 text-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">Recipient</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("billing.invoice.recipient", locale)}</p>
                 {step === "preview" && !editingRecipient && (
                   <button
                     type="button"
@@ -578,7 +582,7 @@ export function CreateInvoiceDialog({
                     className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Pencil className="h-3 w-3" />
-                    Edit
+                    {t("common.edit", locale)}
                   </button>
                 )}
               </div>
@@ -586,31 +590,31 @@ export function CreateInvoiceDialog({
               {editingRecipient ? (
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
-                    <RecipientInput label="Company name" value={recipientForm.name} onChange={(v) => setRecipientForm((f) => ({ ...f, name: v }))} disabled={savingRecipient} />
-                    <RecipientInput label="Email" value={recipientForm.email} onChange={(v) => setRecipientForm((f) => ({ ...f, email: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.company_name", locale)} value={recipientForm.name} onChange={(v) => setRecipientForm((f) => ({ ...f, name: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.email", locale)} value={recipientForm.email} onChange={(v) => setRecipientForm((f) => ({ ...f, email: v }))} disabled={savingRecipient} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <RecipientInput label="Address line 1" value={recipientForm.line1} onChange={(v) => setRecipientForm((f) => ({ ...f, line1: v }))} disabled={savingRecipient} />
-                    <RecipientInput label="Address line 2" value={recipientForm.line2} onChange={(v) => setRecipientForm((f) => ({ ...f, line2: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.address_line1", locale)} value={recipientForm.line1} onChange={(v) => setRecipientForm((f) => ({ ...f, line1: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.address_line2", locale)} value={recipientForm.line2} onChange={(v) => setRecipientForm((f) => ({ ...f, line2: v }))} disabled={savingRecipient} />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <RecipientInput label="Postal code" value={recipientForm.postalCode} onChange={(v) => setRecipientForm((f) => ({ ...f, postalCode: v }))} disabled={savingRecipient} />
-                    <RecipientInput label="City" value={recipientForm.city} onChange={(v) => setRecipientForm((f) => ({ ...f, city: v }))} disabled={savingRecipient} />
-                    <RecipientInput label="Country" value={recipientForm.country} onChange={(v) => setRecipientForm((f) => ({ ...f, country: v.toUpperCase() }))} disabled={savingRecipient} placeholder="NL" />
+                    <RecipientInput label={t("billing.invoice.postal_code", locale)} value={recipientForm.postalCode} onChange={(v) => setRecipientForm((f) => ({ ...f, postalCode: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.city", locale)} value={recipientForm.city} onChange={(v) => setRecipientForm((f) => ({ ...f, city: v }))} disabled={savingRecipient} />
+                    <RecipientInput label={t("billing.invoice.country", locale)} value={recipientForm.country} onChange={(v) => setRecipientForm((f) => ({ ...f, country: v.toUpperCase() }))} disabled={savingRecipient} placeholder="NL" />
                   </div>
-                  <RecipientInput label="VAT / BTW number" value={recipientForm.vatId} onChange={(v) => setRecipientForm((f) => ({ ...f, vatId: v }))} disabled={savingRecipient} placeholder="NL123456789B01" />
+                  <RecipientInput label={t("billing.invoice.vat_number", locale)} value={recipientForm.vatId} onChange={(v) => setRecipientForm((f) => ({ ...f, vatId: v }))} disabled={savingRecipient} placeholder="NL123456789B01" />
                   {recipientError && <p className="text-[11px] text-destructive">{recipientError}</p>}
                   <div className="flex items-center justify-end gap-2 pt-0.5">
-                    <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(false)} disabled={savingRecipient}>Cancel</Button>
+                    <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(false)} disabled={savingRecipient}>{t("common.cancel", locale)}</Button>
                     <Button size="xs" onClick={saveRecipient} disabled={savingRecipient}>
                       {savingRecipient ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                      Save to Stripe
+                      {t("billing.invoice.save_to_stripe", locale)}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <>
-                  <p className="font-medium text-sm text-foreground">{preview?.customer.name ?? "(no name)"}</p>
+                  <p className="font-medium text-sm text-foreground">{preview?.customer.name ?? t("billing.invoice.no_name", locale)}</p>
                   {preview?.customer.email && (
                     <p className="text-muted-foreground">{preview.customer.email}</p>
                   )}
@@ -638,7 +642,7 @@ export function CreateInvoiceDialog({
                     // tax ID → BG origin default rate). This is just a heads-up
                     // for Finance so the BTW row below isn't a surprise.
                     <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
-                      No tax ID on file - Stripe will charge 20% BG VAT.
+                      {t("billing.invoice.no_tax_id", locale)}
                     </p>
                   )}
                 </>
@@ -648,7 +652,7 @@ export function CreateInvoiceDialog({
             {/* Line items as Stripe will render them */}
             <div className="rounded-md border border-border/60">
               <div className="px-3 py-2 border-b border-border/60 bg-muted/20">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">Line items</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">{t("billing.invoice.line_items", locale)}</p>
               </div>
               <div className="divide-y divide-border/40">
                 {preview?.lineItems.map((line, idx) => (
@@ -675,15 +679,15 @@ export function CreateInvoiceDialog({
                   return (
                     <>
                       <div className="flex items-center justify-between text-muted-foreground">
-                        <span>Subtotal (excl. BTW)</span>
+                        <span>{t("billing.invoice.subtotal_excl_btw", locale)}</span>
                         <span className="tabular-nums">{fmtEuro(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
-                        <span>BTW ({rateLabel})</span>
+                        <span>{t("billing.invoice.btw_rate", locale, { rate: rateLabel })}</span>
                         <span className="tabular-nums">{fmtEuro(tax)}</span>
                       </div>
                       <div className="flex items-center justify-between font-semibold pt-1 border-t border-border/40">
-                        <span>Total</span>
+                        <span>{t("billing.invoice.total", locale)}</span>
                         <span className="tabular-nums">{fmtEuro(total)}</span>
                       </div>
                       {/* BTW interpretation - explains the rate Finance sees so
@@ -697,18 +701,18 @@ export function CreateInvoiceDialog({
                           fallback in case the local mirror ever diverges. */}
                       {tax === 0 && hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
-                          Reverse charge - klant heeft een geldig BTW-nummer, geen BTW gerekend.
+                          {t("billing.invoice.reverse_charge", locale)}
                         </p>
                       )}
                       {tax > 0 && !hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
-                          20% BG VAT - Stripe rekent dit automatisch op de factuur (geen losse regel, wel zichtbaar als BTW-totaal).
+                          {t("billing.invoice.btw_20", locale)}
                         </p>
                       )}
                       {tax === 0 && !hasTaxId && (
                         <p className="text-[11px] text-amber-600 pt-1.5 inline-flex items-start gap-1">
                           <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                          <span>Preview-mismatch: Stripe past 20% BG VAT toe op send. Controleer de definitieve factuur na verzenden.</span>
+                          <span>{t("billing.invoice.btw_mismatch", locale)}</span>
                         </p>
                       )}
                     </>
@@ -716,7 +720,7 @@ export function CreateInvoiceDialog({
                 })()}
                 {preview?.daysUntilDue != null && (
                   <p className="text-[11px] text-muted-foreground/70 pt-1">
-                    Due in {preview.daysUntilDue} day{preview.daysUntilDue === 1 ? "" : "s"} from today.
+                    {t("billing.invoice.due_in_days", locale, { count: preview.daysUntilDue, plural: preview.daysUntilDue === 1 ? "" : "s" })}
                   </p>
                 )}
               </div>
@@ -731,11 +735,11 @@ export function CreateInvoiceDialog({
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" size="sm" onClick={backToEdit} disabled={inFlight}>
                 <ChevronLeft className="h-3.5 w-3.5" />
-                Back to edit
+                {t("billing.invoice.back_to_edit", locale)}
               </Button>
               <Button size="sm" onClick={sendInvoice} disabled={inFlight}>
                 {step === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Confirm &amp; send
+                {t("billing.invoice.confirm_send", locale)}
               </Button>
             </div>
           </div>
@@ -746,8 +750,8 @@ export function CreateInvoiceDialog({
             {/* Mode selector - 187N .chip toggles (active = purple wash). */}
             <div className="flex items-center gap-2">
               {([
-                { key: "monthly" as const, label: "Monthly invoice" },
-                { key: "oneoff" as const, label: "One-off invoice" },
+                { key: "monthly" as const, label: t("billing.invoice.mode_monthly", locale) },
+                { key: "oneoff" as const, label: t("billing.invoice.mode_oneoff", locale) },
               ]).map((opt) => (
                 <button
                   key={opt.key}
@@ -763,24 +767,24 @@ export function CreateInvoiceDialog({
 
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
               <p>
-                <span className="font-medium text-foreground">Stripe customer:</span>{" "}
+                <span className="font-medium text-foreground">{t("billing.invoice.stripe_customer", locale)}</span>{" "}
                 <span className="font-mono">{stripeCustomerId}</span>
               </p>
               <p>
                 {mode === "monthly"
-                  ? "Recurring invoice - advances the client's payment date on send."
-                  : "One-off charge - won't change the payment cycle, MRR or admin status."}
+                  ? t("billing.invoice.mode_monthly_hint", locale)
+                  : t("billing.invoice.mode_oneoff_hint", locale)}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-[12px] text-muted-foreground">Line items</Label>
+              <Label className="text-[12px] text-muted-foreground">{t("billing.invoice.line_items", locale)}</Label>
               {items.map((item, idx) => (
                 <div key={item.id} className="grid grid-cols-[1fr_120px_auto] gap-2 items-center">
                   <Input
                     value={item.description}
                     onChange={(e) => patchItem(item.id, { description: e.target.value })}
-                    placeholder="Description"
+                    placeholder={t("billing.invoice.description_placeholder", locale)}
                     disabled={inFlight}
                     className="h-8 text-sm"
                   />
@@ -810,26 +814,26 @@ export function CreateInvoiceDialog({
                     variant="ghost"
                     onClick={() => removeItem(item.id)}
                     disabled={inFlight || items.length === 1}
-                    title={items.length === 1 ? "At least one line item is required" : "Remove line"}
+                    title={items.length === 1 ? t("billing.invoice.at_least_one_required", locale) : t("billing.invoice.remove_line", locale)}
                     className="text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    <span className="sr-only">Remove line {idx + 1}</span>
+                    <span className="sr-only">{t("billing.invoice.remove_line_n", locale, { n: idx + 1 })}</span>
                   </Button>
                 </div>
               ))}
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={addItem} disabled={inFlight}>
                   <Plus className="h-3.5 w-3.5" />
-                  Add line
+                  {t("billing.invoice.add_line", locale)}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={addDiscount} disabled={inFlight} className="text-muted-foreground">
                   <Plus className="h-3.5 w-3.5" />
-                  Add discount
+                  {t("billing.invoice.add_discount", locale)}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowProration((v) => !v)} disabled={inFlight} className="text-muted-foreground">
                   <Plus className="h-3.5 w-3.5" />
-                  Pro-rata
+                  {t("billing.invoice.prorata", locale)}
                 </Button>
               </div>
 
@@ -837,14 +841,14 @@ export function CreateInvoiceDialog({
                   line for the days left until the payment date. */}
               {showProration && (
                 <div className="rounded-md border border-border/60 px-3 py-2.5 space-y-2">
-                  <p className="text-[12px] font-medium text-foreground">Prorated charge</p>
+                  <p className="text-[12px] font-medium text-foreground">{t("billing.invoice.prorated_charge", locale)}</p>
                   {!cycleStartDate ? (
-                    <p className="text-[11px] text-muted-foreground">Set a payment date first to prorate against it.</p>
+                    <p className="text-[11px] text-muted-foreground">{t("billing.invoice.prorata_set_date_first", locale)}</p>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Package monthly price</Label>
+                          <Label className="text-[11px] text-muted-foreground">{t("billing.invoice.package_monthly_price", locale)}</Label>
                           <div className="relative">
                             <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-xs text-muted-foreground">€</span>
                             <Input
@@ -861,11 +865,11 @@ export function CreateInvoiceDialog({
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Description</Label>
+                          <Label className="text-[11px] text-muted-foreground">{t("billing.invoice.description", locale)}</Label>
                           <Input
                             value={prorationLabel}
                             onChange={(e) => setProrationLabel(e.target.value)}
-                            placeholder="e.g. Google Ads"
+                            placeholder={t("billing.invoice.prorata_desc_placeholder", locale)}
                             disabled={inFlight}
                             className="h-8 text-sm"
                           />
@@ -873,19 +877,22 @@ export function CreateInvoiceDialog({
                       </div>
                       {prorationPreview && prorationPreview.amount > 0 ? (
                         <p className="text-[11px] text-muted-foreground">
-                          {prorationPreview.daysRemaining} of {prorationPreview.daysInPeriod} days →{" "}
-                          <span className="font-medium text-foreground">{fmtEuro(prorationPreview.amount)}</span> until{" "}
-                          {fmtDateLong(prorationPreview.to)}
+                          {t("billing.invoice.prorata_preview", locale, {
+                            remaining: prorationPreview.daysRemaining,
+                            total: prorationPreview.daysInPeriod,
+                            amount: fmtEuro(prorationPreview.amount),
+                            date: fmtDateLong(prorationPreview.to),
+                          })}
                         </p>
                       ) : prorationMonthly.trim() ? (
                         <p className="text-[11px] text-amber-600">
-                          Payment date is today or past - no partial period to prorate. Add the full amount as a normal line instead.
+                          {t("billing.invoice.prorata_past", locale)}
                         </p>
                       ) : null}
                       <div className="flex items-center justify-end gap-2">
-                        <Button size="xs" variant="ghost" onClick={() => setShowProration(false)} disabled={inFlight}>Cancel</Button>
+                        <Button size="xs" variant="ghost" onClick={() => setShowProration(false)} disabled={inFlight}>{t("common.cancel", locale)}</Button>
                         <Button size="xs" onClick={addProrationLine} disabled={inFlight || !prorationPreview || prorationPreview.amount <= 0}>
-                          Add line
+                          {t("billing.invoice.add_line", locale)}
                         </Button>
                       </div>
                     </>
@@ -902,7 +909,7 @@ export function CreateInvoiceDialog({
               <div className="rounded-md border border-border/60 px-3 py-2.5 space-y-1.5">
                 <Label className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
                   <CalendarClock className="h-3.5 w-3.5" />
-                  Next payment date
+                  {t("billing.invoice.next_payment_date", locale)}
                 </Label>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Input
@@ -914,19 +921,19 @@ export function CreateInvoiceDialog({
                   />
                   {cycleStartDate && (
                     <span className="text-[11px] text-muted-foreground/70">
-                      after this invoice · currently {fmtDateLong(cycleStartDate)}
+                      {t("billing.invoice.next_payment_after", locale, { date: fmtDateLong(cycleStartDate) })}
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-muted-foreground/60">
-                  Defaults to +1 month. Set +2 or +3 months for quarterly clients. Invoice goes out 7 days before this date.
+                  {t("billing.invoice.next_payment_hint", locale)}
                 </p>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3 items-end">
               <div className="space-y-1.5">
-                <Label className="text-[12px] text-muted-foreground">Due in (days)</Label>
+                <Label className="text-[12px] text-muted-foreground">{t("billing.invoice.due_in_days_label", locale)}</Label>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -939,7 +946,7 @@ export function CreateInvoiceDialog({
                 />
               </div>
               <div className="text-right">
-                <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">Subtotal</p>
+                <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">{t("billing.invoice.subtotal", locale)}</p>
                 <p className="text-xl font-semibold tabular-nums">{fmtEuro(total)}</p>
               </div>
             </div>
@@ -952,11 +959,11 @@ export function CreateInvoiceDialog({
 
             <div className="flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={onClose} disabled={inFlight}>
-                Cancel
+                {t("common.cancel", locale)}
               </Button>
               <Button size="sm" onClick={fetchPreview} disabled={inFlight}>
                 {step === "previewing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Preview
+                {t("billing.invoice.preview", locale)}
               </Button>
             </div>
           </div>

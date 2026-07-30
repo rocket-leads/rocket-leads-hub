@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /**
  * Inline-editable euro cell used on the Billing page for the "fee" and
@@ -46,6 +48,7 @@ export function AgreementAmountCell({
   className,
 }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [editing, setEditing] = useState(false)
   const [optimistic, setOptimistic] = useState(value)
   const [error, setError] = useState<string | null>(null)
@@ -72,11 +75,11 @@ export function AgreementAmountCell({
         body: JSON.stringify({ field, value: next }),
       })
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
-      if (!res.ok || !data.ok) throw new Error(data.error ?? "Update failed")
+      if (!res.ok || !data.ok) throw new Error(data.error ?? t("billing.amount.update_failed", locale))
     },
     onError: (e) => {
       setOptimistic(value)
-      setError(e instanceof Error ? e.message : "Update failed")
+      setError(e instanceof Error ? e.message : t("billing.amount.update_failed", locale))
     },
     onSuccess: () => {
       setError(null)
@@ -88,7 +91,7 @@ export function AgreementAmountCell({
     setEditing(false)
     if (next === optimistic) return
     if (!Number.isFinite(next) || next < 0) {
-      setError("Enter a non-negative number")
+      setError(t("billing.amount.non_negative", locale))
       return
     }
     setOptimistic(next)
@@ -138,7 +141,7 @@ export function AgreementAmountCell({
             "hover:bg-muted hover:text-foreground",
             className,
           )}
-          title="Click to edit"
+          title={t("billing.amount.click_to_edit", locale)}
         >
           {optimistic > 0 ? (
             fmtEuro(optimistic)

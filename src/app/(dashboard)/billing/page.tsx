@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
+import { t } from "@/lib/i18n/t"
+import { getUserLocale } from "@/lib/i18n/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { PageHeader } from "@/components/ui/page-header"
@@ -39,6 +41,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 export default async function BillingPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
+
+  const locale = await getUserLocale(session.user.id)
 
   // Block pure campaign managers - billing is for AM / Finance / Admin only.
   // Roy 2026-06-11.
@@ -276,7 +280,7 @@ export default async function BillingPage() {
   return (
     <div>
       <PageHeader
-        title="Billing"
+        title={t("billing.title", locale)}
         actions={
           <div className="flex items-center gap-3">
             <GlobalCreateInvoice />

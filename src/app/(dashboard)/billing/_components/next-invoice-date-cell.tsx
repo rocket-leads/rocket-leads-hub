@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
 import { Calendar, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /**
  * Inline-editable date cell used by the Billing page for the cycle-start
@@ -27,7 +29,7 @@ type Props = {
    *  for backwards compatibility; pass `cycle_start_date` for the New cycle
    *  column on the Billing page. */
   fieldKey?: "next_invoice_date" | "cycle_start_date"
-  /** Empty-state label. Defaults to "Set date". */
+  /** Empty-state label. Defaults to the localized "Set date". */
   placeholder?: string
 }
 
@@ -41,9 +43,11 @@ export function NextInvoiceDateCell({
   mondayItemId,
   value,
   fieldKey = "next_invoice_date",
-  placeholder = "Set date",
+  placeholder,
 }: Props) {
   const router = useRouter()
+  const locale = useLocale()
+  const placeholderLabel = placeholder ?? t("billing.date.set_date", locale)
   const [editing, setEditing] = useState(false)
   const [optimistic, setOptimistic] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -73,7 +77,7 @@ export function NextInvoiceDateCell({
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(err.error ?? "Failed to update date")
+        throw new Error(err.error ?? t("billing.date.update_failed", locale))
       }
     },
     onError: () => setOptimistic(value),
@@ -116,10 +120,10 @@ export function NextInvoiceDateCell({
             "inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 -mx-1.5 -my-1 text-xs tabular-nums transition-colors",
             "hover:bg-muted hover:text-foreground",
           )}
-          title="Click to edit"
+          title={t("billing.date.click_to_edit", locale)}
         >
           <Calendar className="h-3 w-3 text-muted-foreground/60" />
-          {optimistic ? fmt(optimistic) : <span className="text-muted-foreground/60">{placeholder}</span>}
+          {optimistic ? fmt(optimistic) : <span className="text-muted-foreground/60">{placeholderLabel}</span>}
         </button>
       )}
       {mutation.isPending && (

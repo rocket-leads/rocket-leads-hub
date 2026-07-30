@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
 import { Pause, Loader2, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 type Props = {
   mondayItemId: string
@@ -25,6 +27,7 @@ type Props = {
  */
 export function BillingHoldToggle({ mondayItemId, held, reason }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [optimisticHeld, setOptimisticHeld] = useState(held)
 
   const mutation = useMutation({
@@ -36,7 +39,7 @@ export function BillingHoldToggle({ mondayItemId, held, reason }: Props) {
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(err.error ?? "Failed to update hold")
+        throw new Error(err.error ?? t("billing.hold.update_failed", locale))
       }
     },
     onError: () => setOptimisticHeld(held),
@@ -53,9 +56,9 @@ export function BillingHoldToggle({ mondayItemId, held, reason }: Props) {
 
   const title = optimisticHeld
     ? reason
-      ? `On hold: ${reason} - click to release`
-      : "On hold - click to release"
-    : "Hold this client (skip invoicing this cycle)"
+      ? t("billing.hold.on_hold_reason", locale, { reason })
+      : t("billing.hold.on_hold", locale)
+    : t("billing.hold.hold_client", locale)
 
   return (
     <Button
@@ -65,7 +68,7 @@ export function BillingHoldToggle({ mondayItemId, held, reason }: Props) {
       onClick={toggle}
       disabled={mutation.isPending}
       title={title}
-      aria-label={optimisticHeld ? "Release billing hold" : "Hold this client"}
+      aria-label={optimisticHeld ? t("billing.hold.release_aria", locale) : t("billing.hold.hold_aria", locale)}
       className={
         optimisticHeld
           ? "text-violet-500 hover:text-violet-600"

@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { CalendarDays, Video } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /**
  * Segmented control that sits at the top of the Calendar AND the
@@ -16,19 +18,20 @@ export function CalendarTabs({
 }: {
   active: "calendar" | "recordings"
 }) {
+  const locale = useLocale()
   return (
     <div className="mb-6 inline-flex items-center rounded-lg border border-border bg-muted/30 p-0.5">
       <Tab
         href="/calendar"
         active={active === "calendar"}
         icon={<CalendarDays className="size-4" />}
-        label="Calendar"
+        label={t("calendar.tab.calendar", locale)}
       />
       <Tab
         href="/meetings"
         active={active === "recordings"}
         icon={<Video className="size-4" />}
-        label="Recordings"
+        label={t("calendar.tab.recordings", locale)}
       />
     </div>
   )

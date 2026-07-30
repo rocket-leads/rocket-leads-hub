@@ -22,6 +22,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /** Hub-side invoice status (mirrors stripe.ts InvoiceRow["status"]). */
 export type InvoiceStatus = "paid" | "open" | "overdue" | "void" | "draft"
@@ -43,11 +45,11 @@ function fmtEuro(n: number): string {
   return `€${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-const CREDIT_REASONS: Array<{ value: string; label: string }> = [
-  { value: "order_change", label: "Order change" },
-  { value: "product_unsatisfactory", label: "Product unsatisfactory" },
-  { value: "duplicate", label: "Duplicate" },
-  { value: "fraudulent", label: "Fraudulent" },
+const CREDIT_REASONS: Array<{ value: string; labelKey: Parameters<typeof t>[0] }> = [
+  { value: "order_change", labelKey: "billing.action.reason.order_change" },
+  { value: "product_unsatisfactory", labelKey: "billing.action.reason.product_unsatisfactory" },
+  { value: "duplicate", labelKey: "billing.action.reason.duplicate" },
+  { value: "fraudulent", labelKey: "billing.action.reason.fraudulent" },
 ]
 
 export function InvoiceActionMenu({
@@ -58,6 +60,7 @@ export function InvoiceActionMenu({
   mondayItemId,
   onDone,
 }: Props) {
+  const locale = useLocale()
   // The action awaiting confirmation (null = menu closed / nothing pending).
   const [pending, setPending] = useState<ApiAction | null>(null)
   const [busy, setBusy] = useState(false)
@@ -96,7 +99,7 @@ export function InvoiceActionMenu({
     if (pending === "credit_note") {
       const amt = Number(creditAmount)
       if (!Number.isFinite(amt) || amt <= 0) {
-        setError("Enter a credit amount greater than 0.")
+        setError(t("billing.action.err_credit_amount", locale))
         setBusy(false)
         return
       }
@@ -113,7 +116,7 @@ export function InvoiceActionMenu({
       })
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !data.ok) {
-        setError(data.error ?? "Action failed")
+        setError(data.error ?? t("billing.action.err_action_failed", locale))
         setBusy(false)
         return
       }
@@ -121,7 +124,7 @@ export function InvoiceActionMenu({
       setBusy(false)
       onDone?.()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed")
+      setError(e instanceof Error ? e.message : t("billing.action.err_action_failed", locale))
       setBusy(false)
     }
   }
@@ -130,45 +133,45 @@ export function InvoiceActionMenu({
     return <span className="text-muted-foreground/30 text-xs">–</span>
   }
 
-  const label = invoiceNumber ?? "this invoice"
+  const label = invoiceNumber ?? t("billing.action.this_invoice", locale)
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none disabled:opacity-50">
           <MoreHorizontal className="h-4 w-4" />
-          <span className="sr-only">Invoice actions</span>
+          <span className="sr-only">{t("billing.action.aria", locale)}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           {isOpen && (
             <>
               <DropdownMenuItem onClick={() => openAction("resend")}>
                 <Bell className="h-3.5 w-3.5" />
-                Resend reminder
+                {t("billing.action.resend_reminder", locale)}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => openAction("pay_offline")}>
                 <Banknote className="h-3.5 w-3.5" />
-                Mark paid (bank transfer)
+                {t("billing.action.mark_paid_bank", locale)}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => openAction("credit_note")}>
                 <FileMinus2 className="h-3.5 w-3.5" />
-                Credit note…
+                {t("billing.action.credit_note_dots", locale)}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => openAction("void")} className="text-red-600">
                 <Ban className="h-3.5 w-3.5" />
-                Void invoice
+                {t("billing.action.void_invoice", locale)}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => openAction("uncollectible")}>
                 <FileX2 className="h-3.5 w-3.5" />
-                Mark uncollectible
+                {t("billing.action.mark_uncollectible", locale)}
               </DropdownMenuItem>
             </>
           )}
           {isPaid && (
             <DropdownMenuItem onClick={() => openAction("credit_note")}>
               <FileMinus2 className="h-3.5 w-3.5" />
-              Credit note / refund…
+              {t("billing.action.credit_note_refund_dots", locale)}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -178,55 +181,51 @@ export function InvoiceActionMenu({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {pending === "resend" && `Resend reminder – ${label}`}
-              {pending === "pay_offline" && `Mark paid – ${label}`}
-              {pending === "void" && `Void invoice – ${label}`}
-              {pending === "uncollectible" && `Mark uncollectible – ${label}`}
-              {pending === "credit_note" && `Credit note – ${label}`}
+              {pending === "resend" && t("billing.action.title.resend", locale, { label })}
+              {pending === "pay_offline" && t("billing.action.title.pay_offline", locale, { label })}
+              {pending === "void" && t("billing.action.title.void", locale, { label })}
+              {pending === "uncollectible" && t("billing.action.title.uncollectible", locale, { label })}
+              {pending === "credit_note" && t("billing.action.title.credit_note", locale, { label })}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-1">
             {pending === "resend" && (
               <p className="text-sm text-muted-foreground">
-                Re-send the invoice email to the customer as a payment reminder. No amounts change.
+                {t("billing.action.desc.resend", locale)}
               </p>
             )}
             {pending === "pay_offline" && (
               <p className="text-sm text-muted-foreground">
-                Record this invoice as paid outside Stripe (e.g. bank transfer). Stripe marks it paid,
-                so the payment status flips to <span className="font-medium text-foreground">Paid</span>.
-                Only do this once the money has actually landed.
+                {t("billing.action.desc.pay_offline_pre", locale)}<span className="font-medium text-foreground">{t("billing.past.status.paid", locale)}</span>{t("billing.action.desc.pay_offline_post", locale)}
               </p>
             )}
             {pending === "void" && (
               <div className="text-sm text-muted-foreground space-y-2">
                 <p>
-                  Voiding cancels the invoice – the customer owes nothing and it can&apos;t be reopened.
-                  Use this for an invoice sent in error.
+                  {t("billing.action.desc.void_1", locale)}
                 </p>
                 <p className="inline-flex items-start gap-1.5 text-amber-600">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  This cannot be undone.
+                  {t("billing.action.desc.void_warning", locale)}
                 </p>
               </div>
             )}
             {pending === "uncollectible" && (
               <p className="text-sm text-muted-foreground">
-                Mark this invoice as uncollectible (written-off bad debt). It stays on the books but
-                stops counting as expected income.
+                {t("billing.action.desc.uncollectible", locale)}
               </p>
             )}
             {pending === "credit_note" && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
                   {isPaid
-                    ? "Issue a credit note against this paid invoice. Refund the money to the customer, or credit their Stripe balance for next time."
-                    : "Issue a credit note to reduce what the customer owes on this invoice."}
+                    ? t("billing.action.desc.credit_note_paid", locale)
+                    : t("billing.action.desc.credit_note_open", locale)}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-[12px] text-muted-foreground">Credit amount</Label>
+                    <Label className="text-[12px] text-muted-foreground">{t("billing.action.credit_amount", locale)}</Label>
                     <div className="relative">
                       <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-xs text-muted-foreground">€</span>
                       <Input
@@ -242,7 +241,7 @@ export function InvoiceActionMenu({
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[12px] text-muted-foreground">Reason</Label>
+                    <Label className="text-[12px] text-muted-foreground">{t("billing.action.reason_label", locale)}</Label>
                     <select
                       value={creditReason}
                       onChange={(e) => setCreditReason(e.target.value)}
@@ -250,7 +249,7 @@ export function InvoiceActionMenu({
                       className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     >
                       {CREDIT_REASONS.map((r) => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
+                        <option key={r.value} value={r.value}>{t(r.labelKey, locale)}</option>
                       ))}
                     </select>
                   </div>
@@ -264,11 +263,11 @@ export function InvoiceActionMenu({
                       disabled={busy}
                       className="h-4 w-4 rounded border-border"
                     />
-                    Refund the money to the customer (otherwise credit their Stripe balance)
+                    {t("billing.action.refund_checkbox", locale)}
                   </label>
                 )}
                 <p className="text-[11px] text-muted-foreground/60">
-                  Invoice total: {fmtEuro(amountDue)}
+                  {t("billing.action.invoice_total", locale, { amount: fmtEuro(amountDue) })}
                 </p>
               </div>
             )}
@@ -281,7 +280,7 @@ export function InvoiceActionMenu({
 
             <div className="flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setPending(null)} disabled={busy}>
-                Cancel
+                {t("common.cancel", locale)}
               </Button>
               <Button
                 size="sm"
@@ -290,11 +289,11 @@ export function InvoiceActionMenu({
                 disabled={busy}
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                {pending === "resend" && "Resend"}
-                {pending === "pay_offline" && "Mark paid"}
-                {pending === "void" && "Void invoice"}
-                {pending === "uncollectible" && "Mark uncollectible"}
-                {pending === "credit_note" && "Issue credit note"}
+                {pending === "resend" && t("billing.action.btn.resend", locale)}
+                {pending === "pay_offline" && t("billing.action.btn.pay_offline", locale)}
+                {pending === "void" && t("billing.action.btn.void", locale)}
+                {pending === "uncollectible" && t("billing.action.btn.uncollectible", locale)}
+                {pending === "credit_note" && t("billing.action.btn.credit_note", locale)}
               </Button>
             </div>
           </div>

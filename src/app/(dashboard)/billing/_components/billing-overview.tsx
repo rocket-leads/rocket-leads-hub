@@ -26,6 +26,9 @@ import { AgreementAmountCell } from "./agreement-amount-cell"
 import { BillingHoldToggle } from "./billing-hold-toggle"
 import { AdminEditCell } from "./admin-edit-cell"
 import { combinedClientName } from "@/lib/billing/sibling-name"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
+import type { Locale } from "@/lib/i18n/types"
 
 /**
  * A billable group - one or more Monday rows that share a Stripe customer.
@@ -147,7 +150,7 @@ function fmtDate(iso: string): string {
  * we compute everything from `new Date()` on the client. The `primary` row
  * carries the bucketing date (siblings agree post-sync).
  */
-function bucketGroups(groups: BillingGroup[]): Bucket[] {
+function bucketGroups(groups: BillingGroup[], locale: Locale): Bucket[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const todayMs = today.getTime()
@@ -216,12 +219,12 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
     // Needs attention sits at the top - Live clients without a cycle start
     // date set. Nothing else can run (invoice date can't derive, auto-
     // advance after send has no anchor) until finance fills it in.
-    { key: "needs_attention", label: "Needs attention", hint: "Live client · no cycle start date set", tone: "text-red-500", groups: buckets.needs_attention },
-    { key: "hold", label: "On hold", hint: "Manually parked by finance", tone: "text-violet-500", groups: buckets.hold },
-    { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", groups: buckets.overdue },
-    { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", groups: buckets.today },
-    { key: "this_week", label: "This week", hint: "Through Sunday", tone: "text-foreground", groups: buckets.this_week },
-    { key: "next_week", label: "Next week", hint: "On the radar", tone: "text-muted-foreground", groups: buckets.next_week },
+    { key: "needs_attention", label: t("billing.bucket.needs_attention", locale), hint: t("billing.bucket.needs_attention_hint", locale), tone: "text-red-500", groups: buckets.needs_attention },
+    { key: "hold", label: t("billing.bucket.hold", locale), hint: t("billing.bucket.hold_hint", locale), tone: "text-violet-500", groups: buckets.hold },
+    { key: "overdue", label: t("billing.bucket.overdue", locale), hint: t("billing.bucket.overdue_hint", locale), tone: "text-red-500", groups: buckets.overdue },
+    { key: "today", label: t("billing.bucket.today", locale), hint: t("billing.bucket.today_hint", locale), tone: "text-amber-500", groups: buckets.today },
+    { key: "this_week", label: t("billing.bucket.this_week", locale), hint: t("billing.bucket.this_week_hint", locale), tone: "text-foreground", groups: buckets.this_week },
+    { key: "next_week", label: t("billing.bucket.next_week", locale), hint: t("billing.bucket.next_week_hint", locale), tone: "text-muted-foreground", groups: buckets.next_week },
   ]
   return all.filter((b) => b.groups.length > 0)
 }
@@ -234,15 +237,16 @@ export function BillingOverview({
   /** Distinct labels finance can pick from in the inline Admin cell. */
   adminOptions: string[]
 }) {
-  const buckets = bucketGroups(groups)
+  const locale = useLocale()
+  const buckets = bucketGroups(groups, locale)
 
   if (buckets.length === 0) {
     return (
       <Panel className="p-8">
         <div className="text-center text-sm text-muted-foreground">
-          <p>No upcoming invoices scheduled.</p>
+          <p>{t("billing.overview.empty_title", locale)}</p>
           <p className="mt-1 text-xs text-muted-foreground/60">
-            Set a next-invoice date on a client&apos;s Billing tab to see it here.
+            {t("billing.overview.empty_hint", locale)}
           </p>
         </div>
       </Panel>
@@ -265,13 +269,13 @@ export function BillingOverview({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryStat label="Scheduled clients" value={String(groups.length)} />
-        <SummaryStat label="Due this week" value={String(dueThisWeek)} tone={dueThisWeek > 0 ? "amber" : undefined} />
-        <SummaryStat label="Total fee" value={fmtEuro(totalFee)} hint="Sum of service fees across scheduled clients" />
+        <SummaryStat label={t("billing.overview.stat.scheduled", locale)} value={String(groups.length)} />
+        <SummaryStat label={t("billing.overview.stat.due_this_week", locale)} value={String(dueThisWeek)} tone={dueThisWeek > 0 ? "amber" : undefined} />
+        <SummaryStat label={t("billing.overview.stat.total_fee", locale)} value={fmtEuro(totalFee)} hint={t("billing.overview.stat.total_fee_hint", locale)} />
         <SummaryStat
-          label="Outstanding (Stripe)"
+          label={t("billing.overview.stat.outstanding", locale)}
           value={fmtEuro(totalOutstanding)}
-          hint={overdueCount > 0 ? `${overdueCount} overdue` : "Across all scheduled clients"}
+          hint={overdueCount > 0 ? t("billing.overview.stat.outstanding_overdue", locale, { count: overdueCount }) : t("billing.overview.stat.outstanding_all", locale)}
           tone={overdueCount > 0 ? "red" : totalOutstanding > 0 ? "amber" : undefined}
         />
       </div>
@@ -284,7 +288,9 @@ export function BillingOverview({
               <p className="text-[11px] text-muted-foreground/60 mt-1">{bucket.hint}</p>
             </div>
             <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">
-              {bucket.groups.length} {bucket.groups.length === 1 ? "client" : "clients"}
+              {bucket.groups.length === 1
+                ? t("billing.bucket.count_client", locale, { count: bucket.groups.length })
+                : t("billing.bucket.count_clients", locale, { count: bucket.groups.length })}
             </span>
           </div>
           <div className="px-3 pb-1.5">
@@ -294,18 +300,18 @@ export function BillingOverview({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
-                <TableHead className="w-[210px]">Client</TableHead>
-                <TableHead className="w-[150px]">Action</TableHead>
-                <TableHead className="w-[140px]">Status</TableHead>
-                <TableHead className="w-[160px]">Admin</TableHead>
-                <TableHead className="w-[140px]">AM</TableHead>
-                <TableHead className="w-[160px]">Payment date</TableHead>
-                <TableHead className="w-[140px]">Invoice out</TableHead>
-                <TableHead className="w-[100px]">Fee</TableHead>
-                <TableHead className="w-[110px]">Ad budget</TableHead>
-                <TableHead className="w-[160px]">Payment (Stripe)</TableHead>
-                <TableHead className="w-[180px]">AI check</TableHead>
-                <TableHead className="w-[100px]">Stripe</TableHead>
+                <TableHead className="w-[210px]">{t("billing.col.client", locale)}</TableHead>
+                <TableHead className="w-[150px]">{t("billing.col.action", locale)}</TableHead>
+                <TableHead className="w-[140px]">{t("billing.col.status", locale)}</TableHead>
+                <TableHead className="w-[160px]">{t("billing.col.admin", locale)}</TableHead>
+                <TableHead className="w-[140px]">{t("billing.col.am", locale)}</TableHead>
+                <TableHead className="w-[160px]">{t("billing.col.payment_date", locale)}</TableHead>
+                <TableHead className="w-[140px]">{t("billing.col.invoice_out", locale)}</TableHead>
+                <TableHead className="w-[100px]">{t("billing.col.fee", locale)}</TableHead>
+                <TableHead className="w-[110px]">{t("billing.col.ad_budget", locale)}</TableHead>
+                <TableHead className="w-[160px]">{t("billing.col.payment_stripe", locale)}</TableHead>
+                <TableHead className="w-[180px]">{t("billing.col.ai_check", locale)}</TableHead>
+                <TableHead className="w-[100px]">{t("billing.col.stripe", locale)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -331,6 +337,7 @@ export function BillingOverview({
  * reveal a child sub-table with each campaign's own row data.
  */
 function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOptions: string[] }) {
+  const locale = useLocale()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const isMulti = group.siblings.length > 1
@@ -353,8 +360,8 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
                 className="shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
-                aria-label={expanded ? "Collapse campaigns" : "Expand campaigns"}
-                title={expanded ? "Hide campaigns" : "Show campaigns"}
+                aria-label={expanded ? t("billing.row.collapse_campaigns", locale) : t("billing.row.expand_campaigns", locale)}
+                title={expanded ? t("billing.row.hide_campaigns", locale) : t("billing.row.show_campaigns", locale)}
               >
                 <ChevronRight
                   className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-90" : ""}`}
@@ -374,7 +381,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               )}
               {isMulti && (
                 <span className="text-[11px] text-muted-foreground/70 inline-flex items-center">
-                  {group.siblings.length} campaigns
+                  {t("billing.row.campaigns_count", locale, { count: group.siblings.length })}
                 </span>
               )}
             </div>
@@ -390,13 +397,13 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               title={
                 primary.stripeCustomerId
                   ? isMulti
-                    ? `Create one Stripe invoice covering all ${group.siblings.length} campaigns`
-                    : "Create + send a Stripe invoice"
-                  : "No Stripe customer linked"
+                    ? t("billing.row.create_invoice_multi", locale, { count: group.siblings.length })
+                    : t("billing.row.create_invoice_single", locale)
+                  : t("billing.row.no_stripe_customer", locale)
               }
             >
               <FilePlus className="h-3.5 w-3.5" />
-              Create invoice
+              {t("billing.row.create_invoice", locale)}
             </Button>
             <BillingHoldToggle
               mondayItemId={primary.mondayItemId}
@@ -435,7 +442,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               mondayItemId={primary.mondayItemId}
               value={primary.cycleStartDate}
               fieldKey="cycle_start_date"
-              placeholder="Set payment date"
+              placeholder={t("billing.row.set_payment_date", locale)}
             />
             {isMulti && (
               <ApplyDateToSiblingsButton
@@ -525,11 +532,11 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 className="h-3 w-3 object-contain"
                 unoptimized
               />
-              Open
+              {t("billing.row.stripe_open", locale)}
               <ExternalLink className="h-3 w-3 opacity-50" />
             </a>
           ) : (
-            <span className="text-[11px] text-muted-foreground/50">No Stripe</span>
+            <span className="text-[11px] text-muted-foreground/50">{t("billing.row.no_stripe", locale)}</span>
           )}
         </TableCell>
       </TableRow>
@@ -573,7 +580,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 mondayItemId={sib.mondayItemId}
                 value={sib.cycleStartDate}
                 fieldKey="cycle_start_date"
-                placeholder="Set payment date"
+                placeholder={t("billing.row.set_payment_date", locale)}
               />
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/70">
@@ -641,6 +648,7 @@ function PaymentStatusCell({
   outstanding: number
   hasStripe: boolean
 }) {
+  const locale = useLocale()
   if (!hasStripe || status === null) {
     return <span className="text-[11px] text-muted-foreground/40">-</span>
   }
@@ -648,7 +656,7 @@ function PaymentStatusCell({
     return (
       <span className="st-label live">
         <span className="sd" />
-        Paid up
+        {t("billing.payment.paid_up", locale)}
       </span>
     )
   }
@@ -658,7 +666,7 @@ function PaymentStatusCell({
     <span className="inline-flex items-center gap-2">
       <span className={`st-label ${tone}`}>
         <span className="sd" />
-        {status === "overdue" ? "Overdue" : "Open"}
+        {status === "overdue" ? t("billing.payment.overdue", locale) : t("billing.payment.open", locale)}
       </span>
       <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{fmtEuro(outstanding)}</span>
     </span>
@@ -682,6 +690,7 @@ function ApplyDateToSiblingsButton({
   count: number
 }) {
   const router = useRouter()
+  const locale = useLocale()
   const [busy, setBusy] = useState(false)
 
   async function apply() {
@@ -703,13 +712,13 @@ function ApplyDateToSiblingsButton({
       disabled={disabled || busy}
       title={
         disabled
-          ? "Set a payment date first"
-          : `Apply this payment date to all ${count} campaigns of this client`
+          ? t("billing.row.align_dates_disabled", locale)
+          : t("billing.row.align_dates_title", locale, { count })
       }
       className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40 whitespace-nowrap"
     >
       {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Link2 className="h-2.5 w-2.5" />}
-      Align dates
+      {t("billing.row.align_dates", locale)}
     </button>
   )
 }

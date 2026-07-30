@@ -26,6 +26,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/ui/user-avatar"
 import { resizeImageToSquareJpeg } from "@/lib/image-resize"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
+import type { Locale } from "@/lib/i18n/types"
 import type { UserPlatformConnection, Platform } from "@/lib/inbox/user-platform-tokens"
 import type { GoogleCalendarConnection } from "@/app/(dashboard)/settings/_components/me-tab"
 
@@ -53,10 +56,11 @@ export function MyAccount({
   slackError,
   googleCalendar,
 }: Props) {
+  const locale = useLocale()
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="rounded-md border border-border/60 bg-card px-4 py-3">
-        <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60 font-medium">Signed in as</p>
+        <p className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/60 font-medium">{t("account.signed_in_as", locale)}</p>
         <div className="mt-2 flex items-center gap-4">
           <AvatarEditor userName={userName} avatarUrl={avatarUrl} />
           <div className="min-w-0">
@@ -67,7 +71,7 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="section-title mb-4">Platform connections</h2>
+        <h2 className="section-title mb-4">{t("account.platform_connections", locale)}</h2>
         <div className="space-y-3">
           <GoogleCalendarCard
             connection={googleCalendar}
@@ -80,12 +84,12 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="section-title mb-4">Browser notifications</h2>
+        <h2 className="section-title mb-4">{t("account.browser_notifications", locale)}</h2>
         <BrowserNotificationsCard />
       </div>
 
       <div>
-        <h2 className="section-title mb-4">Inbox subscriptions</h2>
+        <h2 className="section-title mb-4">{t("account.inbox_subscriptions", locale)}</h2>
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
       </div>
     </div>
@@ -101,6 +105,7 @@ function AvatarEditor({
   userName: string
   avatarUrl: string | null
 }) {
+  const locale = useLocale()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -127,11 +132,11 @@ function AvatarEditor({
           router.refresh()
         } catch (err) {
           setPreview(avatarUrl)
-          setError(err instanceof Error ? err.message : "Upload failed")
+          setError(err instanceof Error ? err.message : t("account.avatar.upload_failed", locale))
         }
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't read that image")
+      setError(err instanceof Error ? err.message : t("account.avatar.read_failed", locale))
     }
   }
 
@@ -144,7 +149,7 @@ function AvatarEditor({
         router.refresh()
       } catch (err) {
         setPreview(avatarUrl)
-        setError(err instanceof Error ? err.message : "Remove failed")
+        setError(err instanceof Error ? err.message : t("account.avatar.remove_failed", locale))
       }
     })
   }
@@ -175,12 +180,12 @@ function AvatarEditor({
             disabled={pending}
           >
             <Camera className="size-3.5" />
-            {preview ? "Change photo" : "Upload photo"}
+            {preview ? t("account.avatar.change_photo", locale) : t("account.avatar.upload_photo", locale)}
           </Button>
           {preview && (
             <Button variant="ghost" size="sm" onClick={onRemove} disabled={pending}>
               <Trash2 className="size-3.5" />
-              Remove
+              {t("common.remove", locale)}
             </Button>
           )}
         </div>
@@ -188,7 +193,7 @@ function AvatarEditor({
           <p className="text-[11px] text-destructive">{error}</p>
         ) : (
           <p className="text-[11px] text-muted-foreground/60">
-            PNG, JPEG or WebP. Shown next to your updates, tasks and messages.
+            {t("account.avatar.hint", locale)}
           </p>
         )}
       </div>
@@ -198,21 +203,25 @@ function AvatarEditor({
 
 // --- Google Calendar (custom OAuth, separate from sign-in) ---
 
-const GOOGLE_CAL_ERROR_MESSAGES: Record<string, string> = {
-  oauth_not_configured: "Google OAuth isn't configured for this deployment yet.",
-  access_denied: "You cancelled the Google authorization.",
-  missing_code_or_state: "Google returned without a code. Try connecting again.",
-  missing_state_cookie:
-    "Your browser blocked the OAuth state cookie. Try again in a non-incognito window.",
-  state_mismatch: "OAuth state mismatch — possible CSRF or expired flow. Try again.",
-  session_mismatch:
-    "Your sign-in session changed during the OAuth flow. Sign in again, then retry.",
-  exchange_failed: "Google rejected the OAuth code exchange. Try again.",
-  no_refresh_token:
-    "Google didn't return a refresh token. Sign out of the account at google.com first and try again.",
-  userinfo_failed: "Connected but Google didn't return the picked email — try again.",
-  store_failed: "Couldn't save the calendar tokens. Try again or contact an admin.",
-  oauth_failed: "Google reported an OAuth failure. Try again.",
+const GOOGLE_CAL_ERROR_KEYS: Record<string, Parameters<typeof t>[0]> = {
+  oauth_not_configured: "account.gcal.err.oauth_not_configured",
+  access_denied: "account.gcal.err.access_denied",
+  missing_code_or_state: "account.gcal.err.missing_code_or_state",
+  missing_state_cookie: "account.gcal.err.missing_state_cookie",
+  state_mismatch: "account.gcal.err.state_mismatch",
+  session_mismatch: "account.gcal.err.session_mismatch",
+  exchange_failed: "account.gcal.err.exchange_failed",
+  no_refresh_token: "account.gcal.err.no_refresh_token",
+  userinfo_failed: "account.gcal.err.userinfo_failed",
+  store_failed: "account.gcal.err.store_failed",
+  oauth_failed: "account.gcal.err.oauth_failed",
+}
+
+/** Resolve a Google Calendar OAuth error code to a localized message. */
+function gcalErrorMessage(code: string | null | undefined, locale: Locale): string | null {
+  if (!code) return null
+  const key = GOOGLE_CAL_ERROR_KEYS[code]
+  return key ? t(key, locale) : t("account.gcal.connect_failed", locale, { code })
 }
 
 function GoogleCalendarCard({
@@ -222,12 +231,10 @@ function GoogleCalendarCard({
   connection: GoogleCalendarConnection
   signInEmail: string
 }) {
+  const locale = useLocale()
   const [pending, setPending] = useState<"disconnecting" | null>(null)
   const [error, setError] = useState<string | null>(
-    connection.error
-      ? GOOGLE_CAL_ERROR_MESSAGES[connection.error] ??
-          `Google Calendar connect failed (${connection.error}).`
-      : null,
+    gcalErrorMessage(connection.error, locale),
   )
   const [, startTransition] = useTransition()
 
@@ -240,11 +247,11 @@ function GoogleCalendarCard({
           method: "POST",
           credentials: "include",
         })
-        if (!res.ok) throw new Error("Failed to disconnect")
+        if (!res.ok) throw new Error(t("account.gcal.disconnect_failed", locale))
         // Soft refresh so the server-rendered card re-reads from the DB.
         window.location.reload()
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to disconnect")
+        setError(e instanceof Error ? e.message : t("account.gcal.disconnect_failed", locale))
         setPending(null)
       }
     })
@@ -258,14 +265,14 @@ function GoogleCalendarCard({
   // not "is it connected?". Description + button copy are written
   // around that distinction.
   const description = usingSignIn
-    ? "Your Calendar page reads from the same Google account you signed in with. Use a different Google account if your work calendar lives elsewhere (e.g. a shared team account)."
-    : "Your Calendar page reads from this account instead of the one you signed in with. Switch back any time."
+    ? t("account.gcal.desc_signin", locale)
+    : t("account.gcal.desc_other", locale)
 
   return (
     <PlatformCard
       icon={<CalendarIcon className="h-4 w-4" />}
       tone="cyan"
-      name="Connect different Google Calendar"
+      name={t("account.gcal.connect_different", locale)}
       description={description}
       connected={connected}
       meta={null}
@@ -277,7 +284,7 @@ function GoogleCalendarCard({
       {connected && (
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mb-3">
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-medium">
-            Currently using
+            {t("account.gcal.currently_using", locale)}
           </p>
           <div className="mt-0.5 flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{accountLabel}</span>
@@ -288,7 +295,7 @@ function GoogleCalendarCard({
                   : "bg-cyan-500/15 text-cyan-700"
               }`}
             >
-              {usingSignIn ? "Sign-in account" : "Different account"}
+              {usingSignIn ? t("account.gcal.signin_account", locale) : t("account.gcal.different_account", locale)}
             </span>
           </div>
         </div>
@@ -296,7 +303,7 @@ function GoogleCalendarCard({
 
       {connection.justConnected && (
         <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 mb-3 text-xs">
-          Switched to <span className="font-medium">{connection.justConnected}</span>
+          {t("account.gcal.switched_to", locale)} <span className="font-medium">{connection.justConnected}</span>
         </div>
       )}
       {error && (
@@ -311,8 +318,8 @@ function GoogleCalendarCard({
           className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/40 transition-colors"
         >
           {connected
-            ? "Switch to a different Google Calendar account"
-            : "Connect a Google Calendar account"}
+            ? t("account.gcal.switch", locale)
+            : t("account.gcal.connect", locale)}
         </a>
         {connected && !usingSignIn && (
           <Button
@@ -324,7 +331,7 @@ function GoogleCalendarCard({
             {pending === "disconnecting" && (
               <Loader2 className="size-3.5 animate-spin" />
             )}
-            Use my sign-in account instead
+            {t("account.gcal.use_signin", locale)}
           </Button>
         )}
       </div>
@@ -334,17 +341,23 @@ function GoogleCalendarCard({
 
 // --- Slack (OAuth - coming in C.4) ---
 
-const SLACK_ERROR_MESSAGES: Record<string, string> = {
-  oauth_not_configured:
-    "Slack OAuth isn't set up on this deployment yet. An admin needs to create a Slack app and add SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and SLACK_SIGNING_SECRET to the environment.",
-  start_failed: "Couldn't start the Slack connect flow. Please try again or contact an admin.",
-  missing_code_or_state: "Slack returned without a code. Try connecting again.",
-  missing_state_cookie: "Your browser blocked the OAuth state cookie. Try again in a non-incognito window.",
-  state_mismatch: "OAuth state mismatch - possible CSRF or expired flow. Try again.",
-  exchange_failed: "Slack rejected the OAuth code exchange. Try again.",
-  oauth_failed: "Slack reported an OAuth failure. Try again.",
-  store_failed: "Couldn't save your Slack token. Try again or contact an admin.",
-  access_denied: "You cancelled the Slack authorization.",
+const SLACK_ERROR_KEYS: Record<string, Parameters<typeof t>[0]> = {
+  oauth_not_configured: "account.slack.err.oauth_not_configured",
+  start_failed: "account.slack.err.start_failed",
+  missing_code_or_state: "account.slack.err.missing_code_or_state",
+  missing_state_cookie: "account.slack.err.missing_state_cookie",
+  state_mismatch: "account.slack.err.state_mismatch",
+  exchange_failed: "account.slack.err.exchange_failed",
+  oauth_failed: "account.slack.err.oauth_failed",
+  store_failed: "account.slack.err.store_failed",
+  access_denied: "account.slack.err.access_denied",
+}
+
+/** Resolve a Slack OAuth error code to a localized message. */
+function slackErrorMessage(code: string | null | undefined, locale: Locale): string | null {
+  if (!code) return null
+  const key = SLACK_ERROR_KEYS[code]
+  return key ? t(key, locale) : t("account.slack.connect_failed", locale, { code })
 }
 
 function SlackCard({
@@ -354,9 +367,10 @@ function SlackCard({
   connection: UserPlatformConnection | null
   initialError: string | null
 }) {
+  const locale = useLocale()
   const [pending, setPending] = useState<"disconnecting" | null>(null)
   const [error, setError] = useState<string | null>(
-    initialError ? SLACK_ERROR_MESSAGES[initialError] ?? `Slack connect failed (${initialError}).` : null,
+    slackErrorMessage(initialError, locale),
   )
   const [, startTransition] = useTransition()
 
@@ -367,7 +381,7 @@ function SlackCard({
       try {
         await disconnectMyPlatform("slack")
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to disconnect")
+        setError(e instanceof Error ? e.message : t("account.slack.disconnect_failed", locale))
       } finally {
         setPending(null)
       }
@@ -379,7 +393,7 @@ function SlackCard({
       icon={<Hash className="h-4 w-4" />}
       tone="purple"
       name="Slack"
-      description="Connect via OAuth so replies post in Slack as you, in the right channel or DM."
+      description={t("account.slack.desc", locale)}
       connected={!!connection}
       meta={connection?.meta}
       connectedAt={connection?.connectedAt}
@@ -392,7 +406,7 @@ function SlackCard({
           disabled={pending !== null}
         >
           {pending === "disconnecting" ? <Loader2 className="animate-spin" /> : <X />}
-          Disconnect
+          {t("common.disconnect", locale)}
         </Button>
       ) : (
         // Server-side redirect to Slack OAuth - using a plain <a> (not next/link)
@@ -405,7 +419,7 @@ function SlackCard({
           }
         >
           <ExternalLink />
-          Connect Slack
+          {t("account.slack.connect", locale)}
         </Button>
       )}
       {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
@@ -416,15 +430,16 @@ function SlackCard({
 // --- Trengo (personal API token) ---
 
 function TrengoCard({ connection }: { connection: UserPlatformConnection | null }) {
+  const locale = useLocale()
   return (
     <TokenInputCard
       platform="trengo"
       icon={<MessageSquare className="h-4 w-4" />}
       tone="cyan"
       name="Trengo"
-      description="Paste your personal Trengo API token. Find it in Trengo → Settings → Integrations."
+      description={t("account.trengo.desc", locale)}
       helpUrl="https://app.trengo.com/admin/api-tokens"
-      placeholder="Trengo personal access token"
+      placeholder={t("account.trengo.placeholder", locale)}
       connection={connection}
     />
   )
@@ -433,15 +448,16 @@ function TrengoCard({ connection }: { connection: UserPlatformConnection | null 
 // --- Monday (personal API token) ---
 
 function MondayCard({ connection }: { connection: UserPlatformConnection | null }) {
+  const locale = useLocale()
   return (
     <TokenInputCard
       platform="monday"
       icon={<LayoutGrid className="h-4 w-4" />}
       tone="orange"
       name="Monday"
-      description="Paste your personal Monday API token. Find it in Monday → avatar (top-right) → Developers → Personal API token."
+      description={t("account.monday.desc", locale)}
       helpUrl="https://rocketleads-team.monday.com/apps/manage/tokens"
-      placeholder="Monday personal API token"
+      placeholder={t("account.monday.placeholder", locale)}
       connection={connection}
     />
   )
@@ -468,6 +484,7 @@ function TokenInputCard({
   placeholder: string
   connection: UserPlatformConnection | null
 }) {
+  const locale = useLocale()
   const [token, setToken] = useState("")
   const [pending, setPending] = useState<"connecting" | "disconnecting" | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -482,7 +499,7 @@ function TokenInputCard({
         await connectMyPlatform(platform, token.trim())
         setToken("")
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to connect")
+        setError(e instanceof Error ? e.message : t("account.token.connect_failed", locale))
       } finally {
         setPending(null)
       }
@@ -496,7 +513,7 @@ function TokenInputCard({
       try {
         await disconnectMyPlatform(platform)
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to disconnect")
+        setError(e instanceof Error ? e.message : t("account.token.disconnect_failed", locale))
       } finally {
         setPending(null)
       }
@@ -522,7 +539,7 @@ function TokenInputCard({
             disabled={pending !== null}
           >
             {pending === "disconnecting" ? <Loader2 className="animate-spin" /> : <X />}
-            Disconnect
+            {t("common.disconnect", locale)}
           </Button>
           <a
             href={helpUrl}
@@ -531,7 +548,7 @@ function TokenInputCard({
             className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            Where to find your token
+            {t("account.token.where_to_find", locale)}
           </a>
         </div>
       ) : (
@@ -559,7 +576,7 @@ function TokenInputCard({
               ) : (
                 <Check className="h-3.5 w-3.5" />
               )}
-              Connect
+              {t("common.connect", locale)}
             </Button>
           </div>
           <a
@@ -569,7 +586,7 @@ function TokenInputCard({
             className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            Where to find your token
+            {t("account.token.where_to_find", locale)}
           </a>
         </div>
       )}
@@ -594,6 +611,7 @@ type TrengoChannelOption = {
 }
 
 function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) {
+  const locale = useLocale()
   const [channels, setChannels] = useState<TrengoChannelOption[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set(initialSelected))
@@ -606,7 +624,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
     fetch("/api/integrations/trengo/channels")
       .then(async (r) => {
         const json = await r.json()
-        if (!r.ok) throw new Error(json.error ?? "Failed to load channels")
+        if (!r.ok) throw new Error(json.error ?? t("account.channels.load_failed", locale))
         return json
       })
       .then((data: { channels: TrengoChannelOption[] }) => {
@@ -615,11 +633,12 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
       })
       .catch((e) => {
         if (cancelled) return
-        setLoadError(e instanceof Error ? e.message : "Failed to load channels")
+        setLoadError(e instanceof Error ? e.message : t("account.channels.load_failed", locale))
       })
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function persist(next: Set<number>) {
@@ -629,7 +648,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
         await saveMyTrengoChannels(Array.from(next))
         setSavedAt(Date.now())
       } catch (e) {
-        setSaveError(e instanceof Error ? e.message : "Failed to save")
+        setSaveError(e instanceof Error ? e.message : t("account.channels.save_failed", locale))
       }
     })
   }
@@ -674,24 +693,24 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-            <p className="text-sm font-semibold">Trengo channels</p>
+            <p className="text-sm font-semibold">{t("account.channels.title", locale)}</p>
             <div className="flex items-center gap-3 text-[11px]">
               {pending && (
                 <span className="inline-flex items-center gap-1 text-muted-foreground/60">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Saving…
+                  {t("account.channels.saving", locale)}
                 </span>
               )}
               {!pending && savedAt && (
-                <span className="text-emerald-500">Saved</span>
+                <span className="text-emerald-500">{t("account.channels.saved", locale)}</span>
               )}
               <span className="text-muted-foreground/60 tabular-nums">
-                {selected.size} selected
+                {t("account.channels.selected", locale, { count: selected.size })}
               </span>
             </div>
           </div>
           <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">
-            Tickets from selected channels appear in your Client Inbox even when the contact isn&apos;t linked to a client.
+            {t("account.channels.desc", locale)}
           </p>
 
           {loadError && (
@@ -701,7 +720,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
           {!channels && !loadError && (
             <div className="text-[11px] text-muted-foreground/60 inline-flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Loading channels…
+              {t("account.channels.loading", locale)}
             </div>
           )}
 
@@ -714,7 +733,7 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                   disabled={pending || channels.length === 0}
                   className="text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
-                  Select all
+                  {t("account.channels.select_all", locale)}
                 </button>
                 <span className="text-muted-foreground/30">·</span>
                 <button
@@ -723,12 +742,12 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                   disabled={pending || selected.size === 0}
                   className="text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
-                  Clear
+                  {t("account.channels.clear", locale)}
                 </button>
               </div>
               {channels.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground/60">
-                  No channels found in this Trengo workspace.
+                  {t("account.channels.none_found", locale)}
                 </p>
               ) : (
                 <div className="space-y-4">
@@ -775,14 +794,14 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                               {silentSubscribed ? (
                                 <span
                                   className="text-[10px] tabular-nums shrink-0 text-amber-600 font-medium"
-                                  title="Subscribed but no events ingested in the last 7 days - webhook may not be delivering for this channel"
+                                  title={t("account.channels.silent_title", locale)}
                                 >
                                   0/7d
                                 </span>
                               ) : (
                                 <span
                                   className="text-[10px] tabular-nums shrink-0 text-muted-foreground/40"
-                                  title={`${events} events ingested in last 7 days`}
+                                  title={t("account.channels.events_title", locale, { count: events })}
                                 >
                                   {events}/7d
                                 </span>
@@ -834,11 +853,12 @@ function PlatformCard({
   connectedAt: string | undefined
   children: React.ReactNode
 }) {
-  const t = TONE_CLASSES[tone]
+  const locale = useLocale()
+  const toneClass = TONE_CLASSES[tone]
   return (
     <div className={`rounded-md border ${connected ? "border-border" : "border-border/40"} bg-card px-4 py-4`}>
       <div className="flex items-start gap-4">
-        <div className={`h-9 w-9 rounded-lg ${t.bg} ${t.text} flex items-center justify-center shrink-0`}>
+        <div className={`h-9 w-9 rounded-lg ${toneClass.bg} ${toneClass.text} flex items-center justify-center shrink-0`}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -847,7 +867,7 @@ function PlatformCard({
             {connected ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Connected
+                {t("account.card.connected", locale)}
                 {connectedAt && (
                   <span className="text-muted-foreground/50 font-normal ml-1">
                     · {new Date(connectedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -855,7 +875,7 @@ function PlatformCard({
                 )}
               </span>
             ) : (
-              <span className="text-[11px] text-muted-foreground/60">Not connected</span>
+              <span className="text-[11px] text-muted-foreground/60">{t("account.card.not_connected", locale)}</span>
             )}
           </div>
           <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">{description}</p>
@@ -888,6 +908,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 function BrowserNotificationsCard() {
+  const locale = useLocale()
   const [supported, setSupported] = useState<boolean | null>(null)
   const [permission, setPermission] = useState<NotificationPermission>("default")
   const [subscribed, setSubscribed] = useState<boolean>(false)
@@ -914,7 +935,7 @@ function BrowserNotificationsCard() {
   async function enable() {
     if (!supported) return
     if (!vapidKey) {
-      setError("Server-side push is nog niet geconfigureerd (VAPID keys ontbreken).")
+      setError(t("account.notif.push_not_configured", locale))
       return
     }
     setBusy(true)
@@ -944,11 +965,11 @@ function BrowserNotificationsCard() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? "Server kon de subscription niet opslaan.")
+        throw new Error(data.error ?? t("account.notif.save_failed", locale))
       }
       setSubscribed(true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kon notificaties niet inschakelen.")
+      setError(e instanceof Error ? e.message : t("account.notif.enable_failed", locale))
     } finally {
       setBusy(false)
     }
@@ -970,7 +991,7 @@ function BrowserNotificationsCard() {
       }
       setSubscribed(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kon notificaties niet uitschakelen.")
+      setError(e instanceof Error ? e.message : t("account.notif.disable_failed", locale))
     } finally {
       setBusy(false)
     }
@@ -996,7 +1017,7 @@ function BrowserNotificationsCard() {
         }>
       }
       if (!res.ok) {
-        setError(data.error ?? "Test failed")
+        setError(data.error ?? t("account.notif.test_failed", locale))
         return
       }
       // Surface enough state to debug end-to-end without DevTools spelunking.
@@ -1012,14 +1033,14 @@ function BrowserNotificationsCard() {
       if (data.cleanedUp) lines.push(`Cleaned up dead: ${data.cleanedUp}`)
       setTestInfo(lines.join("\n"))
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Test failed")
+      setError(e instanceof Error ? e.message : t("account.notif.test_failed", locale))
     }
   }
 
   if (supported === null) {
     return (
       <div className="rounded-md border border-border/60 bg-card px-4 py-4">
-        <div className="text-xs text-muted-foreground/60">Loading…</div>
+        <div className="text-xs text-muted-foreground/60">{t("account.notif.loading", locale)}</div>
       </div>
     )
   }
@@ -1027,7 +1048,7 @@ function BrowserNotificationsCard() {
   if (!supported) {
     return (
       <div className="rounded-md border border-border/40 bg-muted/20 px-4 py-4 text-xs text-muted-foreground">
-        Deze browser ondersteunt geen push notificaties (Safari op iOS pas vanaf 16.4).
+        {t("account.notif.unsupported", locale)}
       </div>
     )
   }
@@ -1045,25 +1066,25 @@ function BrowserNotificationsCard() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-3 mb-1">
             <p className="text-sm font-semibold">
-              {subscribed ? "Notificaties staan aan" : "Notificaties zijn uit"}
+              {subscribed ? t("account.notif.on_title", locale) : t("account.notif.off_title", locale)}
             </p>
             {subscribed ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Actief
+                {t("account.notif.active", locale)}
               </span>
             ) : (
               <span className="text-[11px] text-muted-foreground/60">
-                {permission === "denied" ? "Geblokkeerd door browser" : "Uit"}
+                {permission === "denied" ? t("account.notif.blocked", locale) : t("account.notif.off", locale)}
               </span>
             )}
           </div>
           <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">
             {subscribed
-              ? "Je krijgt nu desktop/mobiele meldingen voor nieuwe taken. Werkt op deze browser; herhaal op andere apparaten als je daar ook gepingd wilt worden."
+              ? t("account.notif.desc_on", locale)
               : permission === "denied"
-                ? "Je hebt eerder de toestemming geweigerd. Open je browser-instellingen en sta meldingen toe voor deze site om opnieuw te proberen."
-                : "Eén klik om aan te zetten - je browser vraagt toestemming."}
+                ? t("account.notif.desc_denied", locale)
+                : t("account.notif.desc_default", locale)}
           </p>
           {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
           {testInfo && (
@@ -1081,11 +1102,11 @@ function BrowserNotificationsCard() {
                   disabled={busy}
                 >
                   {busy ? <Loader2 className="animate-spin" /> : <X />}
-                  Uitschakelen
+                  {t("account.notif.disable", locale)}
                 </Button>
                 <Button variant="outline" size="sm" onClick={sendTestPush}>
                   <Bell />
-                  Stuur test
+                  {t("account.notif.send_test", locale)}
                 </Button>
               </>
             ) : (
@@ -1096,7 +1117,7 @@ function BrowserNotificationsCard() {
                 disabled={busy || permission === "denied"}
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
-                Inschakelen
+                {t("account.notif.enable", locale)}
               </Button>
             )}
           </div>

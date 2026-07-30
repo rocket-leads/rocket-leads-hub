@@ -21,27 +21,24 @@ import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-rang
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { PastInvoiceRow } from "./billing-tabs"
 import { InvoiceActionMenu } from "./invoice-action-menu"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 type StatusFilter = "all" | "paid" | "open" | "overdue" | "void"
 type SortKey = "date" | "client" | "amount" | "status" | "number"
 type SortDir = "asc" | "desc"
 
-const STATUS_FILTER_TABS: TopTab<StatusFilter>[] = [
-  { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "overdue", label: "Overdue" },
-  { id: "paid", label: "Paid" },
-  { id: "void", label: "Void" },
-]
-
 // 187N status tones (bare .st-label dot + mono uppercase, no fill).
-const STATUS_PILL: Record<PastInvoiceRow["status"], { label: string; tone: string }> = {
-  paid: { label: "Paid", tone: "live" },
-  open: { label: "Open", tone: "warn" },
-  overdue: { label: "Overdue", tone: "error" },
-  draft: { label: "Draft", tone: "idle" },
-  void: { label: "Void", tone: "idle" },
+// Label is localized at render via `STATUS_PILL_KEYS`.
+const STATUS_PILL: Record<PastInvoiceRow["status"], { labelKey: DictionaryKeyStr; tone: string }> = {
+  paid: { labelKey: "billing.past.status.paid", tone: "live" },
+  open: { labelKey: "billing.past.status.open", tone: "warn" },
+  overdue: { labelKey: "billing.past.status.overdue", tone: "error" },
+  draft: { labelKey: "billing.past.status.draft", tone: "idle" },
+  void: { labelKey: "billing.past.status.void", tone: "idle" },
 }
+
+type DictionaryKeyStr = Parameters<typeof t>[0]
 
 function fmtEuro(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -66,6 +63,14 @@ function fmtDate(unix: number): string {
  */
 export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
   const router = useRouter()
+  const locale = useLocale()
+  const STATUS_FILTER_TABS: TopTab<StatusFilter>[] = [
+    { id: "all", label: t("billing.past.filter.all", locale) },
+    { id: "open", label: t("billing.past.filter.open", locale) },
+    { id: "overdue", label: t("billing.past.filter.overdue", locale) },
+    { id: "paid", label: t("billing.past.filter.paid", locale) },
+    { id: "void", label: t("billing.past.filter.void", locale) },
+  ]
   const { range, setRange, presets, applyPreset } = useDateRange()
   const [status, setStatus] = useState<StatusFilter>("all")
   const [sortKey, setSortKey] = useState<SortKey>("date")
@@ -148,15 +153,15 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
     <div className="space-y-5">
       {/* Stat strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Invoices in view" value={String(filtered.length)} />
-        <Stat label="Total invoiced" value={fmtEuro(totals.invoiced)} />
+        <Stat label={t("billing.past.stat.invoices_in_view", locale)} value={String(filtered.length)} />
+        <Stat label={t("billing.past.stat.total_invoiced", locale)} value={fmtEuro(totals.invoiced)} />
         <Stat
-          label="Outstanding"
+          label={t("billing.past.stat.outstanding", locale)}
           value={fmtEuro(totals.outstanding)}
           tone={totals.overdueCount > 0 ? "red" : totals.outstanding > 0 ? "amber" : undefined}
-          hint={totals.overdueCount > 0 ? `${totals.overdueCount} overdue` : undefined}
+          hint={totals.overdueCount > 0 ? t("billing.past.stat.outstanding_overdue", locale, { count: totals.overdueCount }) : undefined}
         />
-        <Stat label="Paid" value={String(totals.paidCount)} tone="emerald" />
+        <Stat label={t("billing.past.stat.paid", locale)} value={String(totals.paidCount)} tone="emerald" />
       </div>
 
       {/* Filters - same DateRangePicker + preset chips combo as the Clients
@@ -191,26 +196,27 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
           // rather than the generic "no matches" line which implies the data
           // exists but doesn't fit the filter.
           <div className="px-5 py-10 text-center text-sm text-muted-foreground space-y-1">
-            <p>Past invoices haven&apos;t been loaded yet.</p>
+            <p>{t("billing.past.empty_not_loaded_title", locale)}</p>
             <p className="text-xs text-muted-foreground/70">
-              Hit <span className="font-medium text-foreground/80">Refresh</span> at the top to
-              pull them from Stripe - runs hourly otherwise.
+              {t("billing.past.empty_not_loaded_hint_pre", locale)}
+              <span className="font-medium text-foreground/80">{t("billing.past.empty_not_loaded_hint_refresh", locale)}</span>
+              {t("billing.past.empty_not_loaded_hint_post", locale)}
             </p>
           </div>
         ) : sorted.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-            No invoices match these filters.
+            {t("billing.past.empty_no_match", locale)}
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
-                <SortableHead label="Number" k="number" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[140px]" />
-                <SortableHead label="Client" k="client" current={sortKey} dir={sortDir} onSort={toggleSort} />
-                <SortableHead label="Date" k="date" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[130px]" />
-                <SortableHead label="Amount" k="amount" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
-                <SortableHead label="Status" k="status" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
-                <TableHead className="w-[130px]">Link</TableHead>
+                <SortableHead label={t("billing.past.col.number", locale)} k="number" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[140px]" />
+                <SortableHead label={t("billing.past.col.client", locale)} k="client" current={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortableHead label={t("billing.past.col.date", locale)} k="date" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[130px]" />
+                <SortableHead label={t("billing.past.col.amount", locale)} k="amount" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
+                <SortableHead label={t("billing.past.col.status", locale)} k="status" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
+                <TableHead className="w-[130px]">{t("billing.past.col.link", locale)}</TableHead>
                 <TableHead className="w-[48px]" />
               </TableRow>
             </TableHeader>
@@ -236,7 +242,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                         )
                       ) : (
                         <span className="text-xs text-muted-foreground/60 font-mono" title={inv.customerId}>
-                          Unknown · {inv.customerId.slice(0, 14)}…
+                          {t("billing.past.unknown_customer", locale, { id: inv.customerId.slice(0, 14) })}
                         </span>
                       )}
                     </TableCell>
@@ -247,7 +253,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                     <TableCell className="py-2.5">
                       <span className={`st-label ${pill.tone}`}>
                         <span className="sd" />
-                        {pill.label}
+                        {t(pill.labelKey, locale)}
                       </span>
                     </TableCell>
                     <TableCell className="py-2.5">
@@ -318,6 +324,7 @@ function InvoiceLinkCell({
   hostedUrl: string | null
   invoicePdf: string | null
 }) {
+  const locale = useLocale()
   const [copied, setCopied] = useState(false)
   const copyTarget = hostedUrl ?? invoicePdf
 
@@ -342,7 +349,7 @@ function InvoiceLinkCell({
       <button
         type="button"
         onClick={copy}
-        title="Copy invoice link"
+        title={t("billing.past.copy_link", locale)}
         className={cn(
           "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs transition-colors",
           copied
@@ -353,12 +360,12 @@ function InvoiceLinkCell({
         {copied ? (
           <>
             <Check className="h-3.5 w-3.5" strokeWidth={3} />
-            Copied
+            {t("billing.past.copied", locale)}
           </>
         ) : (
           <>
             <Copy className="h-3 w-3 opacity-60" />
-            Copy link
+            {t("billing.past.copy_link_label", locale)}
           </>
         )}
       </button>
@@ -367,7 +374,7 @@ function InvoiceLinkCell({
           href={hostedUrl}
           target="_blank"
           rel="noopener noreferrer"
-          title="Open invoice page"
+          title={t("billing.past.open_invoice_page", locale)}
           className="inline-flex items-center text-muted-foreground/60 hover:text-foreground transition-colors"
         >
           <ExternalLink className="h-3 w-3" />

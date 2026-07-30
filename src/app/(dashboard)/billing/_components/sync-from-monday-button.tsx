@@ -4,6 +4,8 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, RefreshCw, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /**
  * Admin-only "Sync from Monday" button. Hits POST /api/admin/sync-next-invoice-dates
@@ -13,6 +15,7 @@ import { Button } from "@/components/ui/button"
  */
 export function SyncFromMondayButton() {
   const router = useRouter()
+  const locale = useLocale()
   const [state, setState] = useState<"idle" | "running" | "ok" | "err">("idle")
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -29,11 +32,16 @@ export function SyncFromMondayButton() {
       }
       if (!res.ok || !data.ok) {
         setState("err")
-        setMsg(data.error ?? "Sync failed")
+        setMsg(data.error ?? t("billing.sync.failed", locale))
         return
       }
       setState("ok")
-      setMsg(`Synced ${data.written ?? 0} clients${data.failed ? ` (${data.failed} failed)` : ""}`)
+      setMsg(
+        t("billing.sync.done", locale, {
+          count: data.written ?? 0,
+          failed: data.failed ? t("billing.sync.failed_suffix", locale, { count: data.failed }) : "",
+        }),
+      )
       router.refresh()
       setTimeout(() => {
         setState("idle")
@@ -41,7 +49,7 @@ export function SyncFromMondayButton() {
       }, 4000)
     } catch (e) {
       setState("err")
-      setMsg(e instanceof Error ? e.message : "Sync failed")
+      setMsg(e instanceof Error ? e.message : t("billing.sync.failed", locale))
     }
   }
 
@@ -66,7 +74,7 @@ export function SyncFromMondayButton() {
         ) : (
           <RefreshCw className="h-3.5 w-3.5" />
         )}
-        Sync from Monday
+        {t("billing.sync.button", locale)}
       </Button>
     </div>
   )

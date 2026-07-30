@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 import type { InboxItem } from "@/types/inbox"
 
 /**
@@ -54,6 +56,7 @@ export function TaskDialog({ taskId, open, onOpenChange }: Props) {
 }
 
 function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const [confirmReopen, setConfirmReopen] = useState(false)
 
@@ -65,7 +68,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error ?? "Failed to load task")
+        throw new Error(body?.error ?? t("calendar.task.load_failed", locale))
       }
       return res.json()
     },
@@ -81,7 +84,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error ?? "Failed to update task")
+        throw new Error(body?.error ?? t("calendar.task.update_failed", locale))
       }
     },
     onSuccess: () => {
@@ -100,13 +103,13 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   if (detailQuery.error || !detailQuery.data) {
     return (
       <div className="space-y-3">
-        <DialogTitle>Couldn&apos;t load task</DialogTitle>
+        <DialogTitle>{t("calendar.task.couldnt_load", locale)}</DialogTitle>
         <p className="text-sm text-muted-foreground">
-          {(detailQuery.error as Error)?.message ?? "Unknown error"}
+          {(detailQuery.error as Error)?.message ?? t("calendar.task.unknown_error", locale)}
         </p>
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Close
+            {t("common.close", locale)}
           </Button>
         </div>
       </div>
@@ -149,7 +152,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Close"
+          aria-label={t("common.close", locale)}
           onClick={onClose}
         >
           <X className="size-4" />
@@ -163,17 +166,17 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
       )}
 
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <Field label="Client" value={item.clientName || "—"} />
-        <Field label="Assignee" value={item.assigneeName || "—"} />
-        <Field label="Author" value={item.authorName || "—"} />
-        <Field label="Source" value={item.source} />
+        <Field label={t("calendar.task.field.client", locale)} value={item.clientName || "—"} />
+        <Field label={t("calendar.task.field.assignee", locale)} value={item.assigneeName || "—"} />
+        <Field label={t("calendar.task.field.author", locale)} value={item.authorName || "—"} />
+        <Field label={t("calendar.task.field.source", locale)} value={item.source} />
       </div>
 
       {confirmReopen && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <p className="font-medium text-foreground">Reopen this task?</p>
+          <p className="font-medium text-foreground">{t("calendar.task.reopen_confirm_title", locale)}</p>
           <p className="mt-1 text-muted-foreground">
-            It will move back into your open tasks queue.
+            {t("calendar.task.reopen_confirm_body", locale)}
           </p>
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button
@@ -182,7 +185,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
               onClick={() => setConfirmReopen(false)}
               disabled={statusMut.isPending}
             >
-              Cancel
+              {t("common.cancel", locale)}
             </Button>
             <Button
               size="sm"
@@ -196,7 +199,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
                 <Loader2 className="size-3.5 animate-spin" />
               )}
               <RotateCcw className="size-3.5" />
-              Reopen
+              {t("calendar.task.reopen", locale)}
             </Button>
           </div>
         </div>
@@ -213,7 +216,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
           href={`/inbox?item=${encodeURIComponent(item.id)}`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          Open in Inbox
+          {t("calendar.task.open_in_inbox", locale)}
           <ExternalLink className="size-3" />
         </Link>
         <Button
@@ -231,7 +234,7 @@ function Body({ taskId, onClose }: { taskId: string; onClose: () => void }) {
             ) : (
               <Check className="size-3.5" />
             ))}
-          {isDone ? "Reopen" : "Mark done"}
+          {isDone ? t("calendar.task.reopen", locale) : t("calendar.task.mark_done", locale)}
         </Button>
       </div>
     </div>
@@ -252,21 +255,22 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function StatusPill({ status }: { status: string }) {
+  const locale = useLocale()
   const map: Record<string, { label: string; className: string; icon?: React.ReactNode }> = {
-    open: { label: "Open", className: "bg-muted text-muted-foreground" },
+    open: { label: t("calendar.task.status.open", locale), className: "bg-muted text-muted-foreground" },
     in_progress: {
-      label: "In progress",
+      label: t("calendar.task.status.in_progress", locale),
       className: "bg-blue-500/15 text-blue-700",
       icon: <Clock className="size-3" />,
     },
     done: {
-      label: "Done",
+      label: t("calendar.task.status.done", locale),
       className: "bg-emerald-500/15 text-emerald-700",
       icon: <CircleCheck className="size-3" />,
     },
-    cancelled: { label: "Cancelled", className: "bg-muted text-muted-foreground" },
-    unread: { label: "Unread", className: "bg-blue-500/15 text-blue-700" },
-    read: { label: "Read", className: "bg-muted text-muted-foreground" },
+    cancelled: { label: t("calendar.task.status.cancelled", locale), className: "bg-muted text-muted-foreground" },
+    unread: { label: t("calendar.task.status.unread", locale), className: "bg-blue-500/15 text-blue-700" },
+    read: { label: t("calendar.task.status.read", locale), className: "bg-muted text-muted-foreground" },
   }
   const m = map[status] ?? { label: status, className: "bg-muted text-muted-foreground" }
   return (
@@ -283,13 +287,14 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function PriorityPill({ priority }: { priority: string }) {
+  const locale = useLocale()
   const map: Record<string, { label: string; className: string }> = {
     high: {
-      label: "High",
+      label: t("calendar.task.priority.high", locale),
       className: "bg-red-500/15 text-red-700",
     },
-    normal: { label: "Normal", className: "bg-muted text-muted-foreground" },
-    low: { label: "Low", className: "bg-muted text-muted-foreground" },
+    normal: { label: t("calendar.task.priority.normal", locale), className: "bg-muted text-muted-foreground" },
+    low: { label: t("calendar.task.priority.low", locale), className: "bg-muted text-muted-foreground" },
   }
   const m = map[priority] ?? { label: priority, className: "bg-muted text-muted-foreground" }
   return (

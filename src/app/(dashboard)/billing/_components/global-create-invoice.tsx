@@ -6,6 +6,8 @@ import { FilePlus, Search, Loader2, X } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 
 /**
  * Global "New invoice" entry point (top-right on the Billing page). Lets
@@ -27,6 +29,7 @@ type Seed = {
 }
 
 export function GlobalCreateInvoice() {
+  const locale = useLocale()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -37,7 +40,7 @@ export function GlobalCreateInvoice() {
     queryKey: ["client-search-all"],
     queryFn: async () => {
       const r = await fetch("/api/clients/search")
-      if (!r.ok) throw new Error("Client search failed")
+      if (!r.ok) throw new Error(t("billing.global.search_failed", locale))
       return r.json()
     },
     enabled: pickerOpen,
@@ -57,13 +60,13 @@ export function GlobalCreateInvoice() {
       const r = await fetch(`/api/clients/${mondayItemId}/invoice-seed`)
       const data = (await r.json().catch(() => ({}))) as { ok?: boolean; seed?: Seed; error?: string }
       if (!r.ok || !data.ok || !data.seed) {
-        setError(data.error ?? "Failed to load client")
+        setError(data.error ?? t("billing.global.load_failed", locale))
         setLoadingId(null)
         return
       }
       const s = data.seed
       if (!s.stripeCustomerId) {
-        setError(`${s.name} has no Stripe customer linked. Link one on the client's Billing tab first.`)
+        setError(t("billing.global.no_stripe_customer", locale, { name: s.name }))
         setLoadingId(null)
         return
       }
@@ -72,7 +75,7 @@ export function GlobalCreateInvoice() {
       setQuery("")
       setLoadingId(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load client")
+      setError(e instanceof Error ? e.message : t("billing.global.load_failed", locale))
       setLoadingId(null)
     }
   }
@@ -81,20 +84,20 @@ export function GlobalCreateInvoice() {
     <>
       <Button size="sm" onClick={() => { setError(null); setPickerOpen(true) }}>
         <FilePlus className="h-3.5 w-3.5" />
-        New invoice
+        {t("billing.global.new_invoice", locale)}
       </Button>
 
       <Dialog open={pickerOpen} onOpenChange={(o) => { if (!o) { setPickerOpen(false); setQuery("") } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New invoice - pick a client</DialogTitle>
+            <DialogTitle>{t("billing.global.pick_client_title", locale)}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             <div className="search-pill w-full">
               <Search />
               <input
                 autoFocus
-                placeholder="Search clients…"
+                placeholder={t("billing.global.search_placeholder", locale)}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -103,7 +106,7 @@ export function GlobalCreateInvoice() {
                   type="button"
                   onClick={() => setQuery("")}
                   className="text-muted-foreground/60 hover:text-foreground"
-                  aria-label="Clear search"
+                  aria-label={t("billing.global.clear_search", locale)}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -119,10 +122,10 @@ export function GlobalCreateInvoice() {
             <div className="max-h-72 overflow-y-auto rounded-md border border-border/60 divide-y divide-border/40">
               {clientsQuery.isLoading ? (
                 <div className="px-3 py-6 text-center text-sm text-muted-foreground inline-flex items-center gap-2 w-full justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading clients…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t("billing.global.loading_clients", locale)}
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">No clients match.</div>
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t("billing.global.no_match", locale)}</div>
               ) : (
                 filtered.map((c) => (
                   <button

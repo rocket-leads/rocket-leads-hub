@@ -22,6 +22,8 @@ import { Check, ChevronLeft, ChevronDown, ChevronRight, MapPin, Plus, Video } fr
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n/t"
+import { useLocale } from "@/lib/i18n/client"
 import type { CalendarEventsResponse } from "@/app/api/calendar/events/route"
 import type { CalendarsResponse } from "@/app/api/calendar/calendars/route"
 import { EventDialog, type EventDialogMode } from "./event-dialog"
@@ -59,6 +61,7 @@ type Props = {
 }
 
 export function CalendarView({ initialConnected }: Props) {
+  const locale = useLocale()
   // Anchor is "any day in the week we're viewing". The week range is
   // derived (Mon-Sun) so users always see a full work-week regardless
   // of which day they click into.
@@ -188,7 +191,7 @@ export function CalendarView({ initialConnected }: Props) {
       url.searchParams.set("timeMin", timeMinIso)
       url.searchParams.set("timeMax", timeMaxIso)
       const res = await fetch(url, { credentials: "include" })
-      if (!res.ok) throw new Error("Failed to load calendar")
+      if (!res.ok) throw new Error(t("calendar.load_failed", locale))
       return (await res.json()) as CalendarEventsResponse
     },
   })
@@ -263,7 +266,7 @@ export function CalendarView({ initialConnected }: Props) {
           body: JSON.stringify({ scheduledAt }),
         },
       )
-      if (!res.ok) throw new Error("Failed to reschedule task")
+      if (!res.ok) throw new Error(t("calendar.reschedule_failed", locale))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] })
@@ -290,13 +293,13 @@ export function CalendarView({ initialConnected }: Props) {
             size="sm"
             onClick={() => setAnchor(new Date())}
           >
-            Today
+            {t("calendar.today", locale)}
           </Button>
           <div className="flex items-center">
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Previous ${view}`}
+              aria-label={t("calendar.prev", locale, { view })}
               onClick={stepBack}
             >
               <ChevronLeft className="size-4" />
@@ -304,7 +307,7 @@ export function CalendarView({ initialConnected }: Props) {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Next ${view}`}
+              aria-label={t("calendar.next", locale, { view })}
               onClick={stepForward}
             >
               <ChevronRight className="size-4" />
@@ -319,11 +322,11 @@ export function CalendarView({ initialConnected }: Props) {
             size="sm"
             onClick={() => setDialog({ kind: "create" })}
             disabled={!connected}
-            title={!connected ? "Connect Google Calendar to create events" : undefined}
+            title={!connected ? t("calendar.connect_to_create", locale) : undefined}
             className="ml-2"
           >
             <Plus className="size-4" />
-            New event
+            {t("calendar.new_event", locale)}
           </Button>
         </div>
       </div>
@@ -379,7 +382,7 @@ export function CalendarView({ initialConnected }: Props) {
 
           {query.isError && (
             <p className="text-sm text-destructive">
-              Couldn&apos;t load calendar. Try refreshing.
+              {t("calendar.load_failed_retry", locale)}
             </p>
           )}
         </div>
@@ -424,6 +427,7 @@ function TodayPanel({
   events: CalendarEventsResponse["events"]
   tasks: CalendarEventsResponse["tasks"]
 }) {
+  const locale = useLocale()
   const items = useMemo(() => {
     type Item = { key: string; time: string | null; sort: number; title: string; type: "meeting" | "task" }
     const out: Item[] = []
@@ -455,19 +459,19 @@ function TodayPanel({
   return (
     <div className="section-card">
       <div className="section-title mb-3">
-        Today
+        {t("calendar.panel.today", locale)}
         <span className="count">
-          {items.length} {items.length === 1 ? "event" : "events"} · {dateLabel}
+          {items.length} {items.length === 1 ? t("calendar.panel.event", locale) : t("calendar.panel.events", locale)} · {dateLabel}
         </span>
       </div>
       {items.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground/60 py-2">Nothing scheduled today.</p>
+        <p className="text-[13px] text-muted-foreground/60 py-2">{t("calendar.panel.nothing_today", locale)}</p>
       ) : (
         <div className="space-y-3.5">
           {items.map((it) => (
             <div key={it.key} className="flex items-start gap-3">
               <span className="font-mono text-[11px] text-muted-foreground/55 w-12 shrink-0 pt-0.5 tabular-nums">
-                {it.time ?? "All-day"}
+                {it.time ?? t("calendar.panel.all_day", locale)}
               </span>
               <span
                 className="mt-[7px] h-1.5 w-1.5 rounded-full shrink-0"
@@ -476,7 +480,7 @@ function TodayPanel({
               <div className="min-w-0">
                 <div className="text-[13.5px] font-medium text-foreground leading-snug">{it.title}</div>
                 <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/50 mt-0.5">
-                  {it.type}
+                  {it.type === "meeting" ? t("calendar.panel.type.meeting", locale) : t("calendar.panel.type.task", locale)}
                 </div>
               </div>
             </div>
@@ -497,31 +501,32 @@ function SourcesPanel({
   onToggle: (key: keyof Visibility) => void
   connected: boolean
 }) {
+  const locale = useLocale()
   return (
     <div className="section-card">
       <div className="section-title mb-1">
-        Sources
-        <span className="count">Google sync</span>
+        {t("calendar.sources", locale)}
+        <span className="count">{t("calendar.sources.google_sync", locale)}</span>
       </div>
       <div>
         <SwitchRow
           color={MEETING_COLOR}
-          label="Meetings"
-          status={connected ? "Google Cal" : "not linked"}
+          label={t("calendar.sources.meetings", locale)}
+          status={connected ? t("calendar.sources.google_cal", locale) : t("calendar.sources.not_linked", locale)}
           on={visibility.meetings}
           disabled={!connected}
           onToggle={() => onToggle("meetings")}
         />
         <SwitchRow
           color={TASK_COLOR}
-          label="Tasks"
-          status="Hub"
+          label={t("calendar.sources.tasks", locale)}
+          status={t("calendar.sources.hub", locale)}
           on={visibility.tasks}
           onToggle={() => onToggle("tasks")}
         />
       </div>
       <p className="text-[11px] leading-snug text-muted-foreground/50 mt-3">
-        Toggling a source hides its events from the grid.
+        {t("calendar.sources.toggle_hint", locale)}
       </p>
     </div>
   )
@@ -567,10 +572,11 @@ function ViewModeSwitcher({
   view: CalendarViewMode
   onChange: (v: CalendarViewMode) => void
 }) {
+  const locale = useLocale()
   const modes: { value: CalendarViewMode; label: string }[] = [
-    { value: "day", label: "Day" },
-    { value: "week", label: "Week" },
-    { value: "month", label: "Month" },
+    { value: "day", label: t("calendar.view.day", locale) },
+    { value: "week", label: t("calendar.view.week", locale) },
+    { value: "month", label: t("calendar.view.month", locale) },
   ]
   return (
     <div className="inline-flex items-center rounded-md border border-border bg-muted/30 p-0.5">
@@ -719,6 +725,7 @@ function MonthGrid({
   onOpenTask: (id: string) => void
   onJumpToDay: (day: Date) => void
 }) {
+  const locale = useLocale()
   const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
   const MAX_CHIPS_PER_DAY = 3
   return (
@@ -823,7 +830,7 @@ function MonthGrid({
                 ))}
                 {(overflowCount > 0 || taskOverflow > 0) && (
                   <div className="text-[10px] text-muted-foreground pl-1">
-                    + {overflowCount + taskOverflow} more
+                    {t("calendar.month.more", locale, { count: overflowCount + taskOverflow })}
                   </div>
                 )}
               </div>
@@ -857,6 +864,7 @@ function CalendarSelector({
   on: boolean
   onMeetingsToggle: () => void
 }) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
 
@@ -866,7 +874,7 @@ function CalendarSelector({
       const res = await fetch("/api/calendar/calendars", {
         credentials: "include",
       })
-      if (!res.ok) throw new Error("Failed to load calendars")
+      if (!res.ok) throw new Error(t("calendar.selector.load_failed", locale))
       return (await res.json()) as CalendarsResponse
     },
     enabled: !disabled,
@@ -896,7 +904,7 @@ function CalendarSelector({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selectedIds }),
       })
-      if (!res.ok) throw new Error("Failed to save selection")
+      if (!res.ok) throw new Error(t("calendar.save_selection_failed", locale))
     },
     onMutate: async (selectedIds) => {
       await queryClient.cancelQueries({ queryKey: ["calendar-list"] })
@@ -946,7 +954,7 @@ function CalendarSelector({
         type="button"
         onClick={onMeetingsToggle}
         aria-pressed={on}
-        title={`${on ? "Hide" : "Show"} meetings`}
+        title={on ? t("calendar.selector.hide_meetings", locale) : t("calendar.selector.show_meetings", locale)}
         className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 text-xs font-medium hover:text-foreground"
       >
         <span
@@ -954,7 +962,7 @@ function CalendarSelector({
           style={{ backgroundColor: "#8967F3", opacity: on ? 1 : 0.3 }}
         />
         <span className={cn(!on && "line-through decoration-muted-foreground/40")}>
-          Meetings
+          {t("calendar.sources.meetings", locale)}
         </span>
         {on && totalCount > 0 && (
           <span className="tabular-nums text-[10px] text-muted-foreground">
@@ -969,7 +977,7 @@ function CalendarSelector({
               {...props}
               type="button"
               disabled={disabled}
-              title={disabled ? "Connect Google Calendar first" : "Pick which calendars to show"}
+              title={disabled ? t("calendar.selector.connect_first", locale) : t("calendar.selector.pick", locale)}
               className={cn(
                 "inline-flex items-center justify-center px-1.5 py-1 border-l border-border/60",
                 "hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed",
@@ -981,15 +989,15 @@ function CalendarSelector({
         />
         <PopoverContent align="end" className="w-72 p-0">
           <div className="px-3 py-2.5 border-b border-border/60">
-            <div className="text-xs font-medium text-foreground">Calendars</div>
+            <div className="text-xs font-medium text-foreground">{t("calendar.selector.calendars", locale)}</div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              Pick which Google subcalendars feed the Hub view.
+              {t("calendar.selector.pick_desc", locale)}
             </div>
           </div>
           <div className="max-h-80 overflow-y-auto py-1">
             {q.isLoading && (
               <div className="px-3 py-4 text-xs text-muted-foreground">
-                Loading…
+                {t("common.loading", locale)}
               </div>
             )}
             {q.data?.error && (
@@ -1002,7 +1010,7 @@ function CalendarSelector({
             )}
             {!q.isLoading && calendars.length === 0 && !q.data?.error && (
               <div className="px-3 py-4 text-xs text-muted-foreground">
-                No calendars found on this account.
+                {t("calendar.selector.none_found", locale)}
               </div>
             )}
             {calendars.map((cal) => {
@@ -1033,7 +1041,7 @@ function CalendarSelector({
                   </span>
                   {cal.primary && (
                     <span className="text-[10px] text-muted-foreground shrink-0">
-                      Primary
+                      {t("calendar.selector.primary", locale)}
                     </span>
                   )}
                 </button>
@@ -1057,12 +1065,13 @@ function VisibilityToggle({
   on: boolean
   onClick: () => void
 }) {
+  const locale = useLocale()
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      title={`${on ? "Hide" : "Show"} ${label.toLowerCase()}`}
+      title={on ? t("calendar.toggle.hide", locale, { label: label.toLowerCase() }) : t("calendar.toggle.show", locale, { label: label.toLowerCase() })}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
         on
@@ -1085,20 +1094,20 @@ function VisibilityToggle({
 }
 
 function UndatedTasksBanner({ count }: { count: number }) {
+  const locale = useLocale()
+  const label = count === 1
+    ? t("calendar.undated.task_singular", locale, { count })
+    : t("calendar.undated.task_plural", locale, { count })
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm flex items-center justify-between gap-3">
       <p className="text-foreground">
-        You have{" "}
-        <span className="font-medium">
-          {count} task{count === 1 ? "" : "s"} without a due date
-        </span>
-        . Add a due date in the Inbox and they&apos;ll show up here.
+        {t("calendar.undated.text", locale, { label })}
       </p>
       <Link
         href="/inbox?tab=tasks"
         className="shrink-0 text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary"
       >
-        Open Inbox
+        {t("calendar.open_inbox", locale)}
       </Link>
     </div>
   )
@@ -1109,10 +1118,11 @@ function CalendarErrorBanner({
 }: {
   error: NonNullable<CalendarEventsResponse["error"]>
 }) {
+  const locale = useLocale()
   return (
     <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
       <p className="font-medium text-foreground">
-        Google Calendar fout
+        {t("calendar.error.title", locale)}
         {error.status > 0 ? ` (HTTP ${error.status})` : ""}
       </p>
       <p className="mt-1 text-muted-foreground break-words">{error.message}</p>
@@ -1124,16 +1134,16 @@ function CalendarErrorBanner({
 }
 
 function ConnectPrompt() {
+  const locale = useLocale()
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
       <p className="font-medium text-foreground">
-        Google Calendar is not connected
+        {t("calendar.connect.title", locale)}
       </p>
       <p className="mt-1 text-muted-foreground">
-        Sign out and sign back in to grant calendar access. Hub tasks below
-        will still show.{" "}
+        {t("calendar.connect.body", locale)}
         <Link href="/auth/signin" className="underline underline-offset-2">
-          Re-sign-in
+          {t("calendar.connect.resign", locale)}
         </Link>
       </p>
     </div>
@@ -1162,6 +1172,7 @@ function AllDayRow({
    *  space when there's nothing to show. */
   hasAnyContent: boolean
 }) {
+  const locale = useLocale()
   // When the row has no content, collapse to a slim 16px strip — still
   // present as a drop target so users can drag tasks back to "unscheduled",
   // but doesn't steal vertical space above the time grid.
@@ -1177,7 +1188,7 @@ function AllDayRow({
           hasAnyContent ? "py-2 px-2" : "px-2",
         )}
       >
-        {hasAnyContent ? "all-day" : ""}
+        {hasAnyContent ? t("calendar.panel.all_day", locale) : ""}
       </div>
       {days.map((d) => {
         const key = format(d, "yyyy-MM-dd")
@@ -1808,6 +1819,7 @@ function TaskChip({
   originalDueDate: string | null
   onClick: () => void
 }) {
+  const locale = useLocale()
   const onDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
     e.dataTransfer.setData(TASK_DRAG_MIME, taskId)
     e.dataTransfer.setData("text/plain", taskId)
@@ -1820,8 +1832,8 @@ function TaskChip({
   const tooltipParts = [
     title,
     clientName && `— ${clientName}`,
-    overdue && originalDueDate && `(overdue since ${originalDueDate})`,
-    done && "(done)",
+    overdue && originalDueDate && t("calendar.task.overdue_since", locale, { date: originalDueDate }),
+    done && t("calendar.task.done_suffix", locale),
   ].filter(Boolean) as string[]
   const palette = done
     ? "bg-emerald-500/15 border-l-2 border-emerald-500 text-foreground hover:bg-emerald-500/25"
