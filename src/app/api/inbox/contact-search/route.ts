@@ -14,6 +14,10 @@ type Result = {
 }
 
 const onlyDigits = (s: string | null) => (s ?? "").replace(/\D/g, "")
+/** A real, sendable email (has an @ with something either side). */
+const isRealEmail = (s: string | null) => !!s && /\S+@\S+\.\S+/.test(s.trim())
+/** A real, sendable phone (enough digits to be a number, not a stray value). */
+const isRealPhone = (s: string | null) => onlyDigits(s).length >= 8
 
 /**
  * GET /api/inbox/contact-search?q=<query>&kind=whatsapp|email
@@ -38,6 +42,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const trengo = await searchTrengoContactsFull(q, 25)
+    // Hard medium gate: you can't email a phone number or WhatsApp an email, so
+    // only surface contacts that actually have the field the channel needs.
+    const passesMedium = (phone: string | null, email: string | null) =>
+      isWa ? isRealPhone(phone) : isEmail ? isRealEmail(email) : true
     const trengoResults: Result[] = trengo
       .map((c) => ({
         id: `t${c.id}`,
@@ -46,7 +54,7 @@ export async function GET(req: NextRequest) {
         email: c.email,
         source: "trengo" as const,
       }))
-      .filter((c) => (isWa ? !!c.phone : isEmail ? !!c.email : true))
+      .filter((c) => passesMedium(c.phone, c.email))
 
     // Hub client (Monday) matches — lets an un-named WhatsApp number surface
     // under the client it belongs to (by company OR contact-person name).
@@ -58,8 +66,7 @@ export async function GET(req: NextRequest) {
       const all = [...(boards?.onboarding ?? []), ...(boards?.current ?? [])]
       clientResults = all
         .filter((cl) => {
-          const val = (isWa ? cl.phone : cl.email)?.trim()
-          if (!val) return false
+          if (!passesMedium(cl.phone, cl.email)) return false
           const hay = `${cl.companyName} ${cl.name} ${cl.firstName}`.toLowerCase()
           return hay.includes(ql)
         })
