@@ -605,18 +605,20 @@ export async function getInboxBadgeCounts(
   // total the external unread AND break it down per channel for the favourite-
   // only sidebar sum. Unread is bounded, so the row set stays small; cap it
   // defensively anyway.
+  // Fetch recent external rows and group them into THREADS in JS, so the badge
+  // counts OPEN (New) tickets exactly like the inbox list — not "unread rows".
+  // Row-level status/archived_at filters were wrong: archiving a ticket doesn't
+  // stamp archived_at on every row, so old unread rows of CLOSED threads leaked
+  // in and the badge read "99+" while only ~9 tickets were actionable. Judging
+  // archived/assigned from the thread's NEWEST row (rows come newest-first) is
+  // what listChatThreads does. Roy 2026-07-31.
   let chatQuery = supabase
     .from("inbox_events")
-    .select("trengo_channel_id, thread_key")
+    .select("trengo_channel_id, thread_key, archived_at, assigned_at, trengo_assignee_user_id")
     .not("thread_key", "is", null)
     .eq("scope", "external")
-    .eq("status", "unread")
-    // Closed (archived) tickets must NOT ping the badge — you've dealt with
-    // them. Without this the badge counted unread messages in every closed
-    // ticket too, so it read "99+" while the actionable inbox was ~9.
-    // Roy 2026-07-30.
-    .is("archived_at", null)
-    .limit(5000)
+    .order("created_at", { ascending: false })
+    .limit(6000)
 
   // Channel subscriptions broaden visibility for every role - CMs included
   // (Roy 2026-06-12: CMs need their private email channels in the Kanalen
@@ -658,11 +660,8 @@ export async function getInboxBadgeCounts(
     }
   }
 
-  // Unassigned-only Trengo gate - exclude tickets currently claimed in Trengo
-  // from the badge so the count matches what the Client Inbox actually shows.
-  chatQuery = chatQuery.or(
-    `trengo_assignee_user_id.is.null,source.neq.trengo`,
-  )
+  // (Assigned/claimed state is judged per-thread in JS below, from the newest
+  // row — so no row-level unassigned gate here.)
 
   const [updatesRes, tasksRes, chatsRes, mentionsRes] = await Promise.all([
     supabase
@@ -698,23 +697,32 @@ export async function getInboxBadgeCounts(
       .not("source_ref->>trengo_mention_in_thread_key", "is", null),
   ])
 
-  // Count unread THREADS, not message rows — a ticket with 3 unread messages is
-  // one item to act on, so it shouldn't count 3× (another reason the badge ran
-  // far ahead of the ticket list). Dedupe by thread_key. Roy 2026-07-30.
+  // Group rows into threads and count OPEN (New) tickets per channel — the same
+  // "not archived AND not assigned" definition the inbox list uses. Rows arrive
+  // newest-first, so the FIRST row seen per thread is the freshest → it decides
+  // the thread's archived / assigned state (a new inbound un-archives, matching
+  // listChatThreads). Roy 2026-07-31.
   const chatRows = (chatsRes.data ?? []) as Array<{
     trengo_channel_id: number | null
     thread_key: string | null
+    archived_at: string | null
+    assigned_at: string | null
+    trengo_assignee_user_id: number | null
   }>
   const seenThreads = new Set<string>()
   const unreadByChannel: Record<string, number> = {}
+  let unreadChats = 0
   for (const r of chatRows) {
     if (!r.thread_key || seenThreads.has(r.thread_key)) continue
     seenThreads.add(r.thread_key)
+    // Newest row decides state: skip closed (archived) or picked-up (assigned).
+    if (r.archived_at != null) continue
+    if (r.assigned_at != null || r.trengo_assignee_user_id != null) continue
+    unreadChats += 1
     if (r.trengo_channel_id == null) continue
     const key = String(r.trengo_channel_id)
     unreadByChannel[key] = (unreadByChannel[key] ?? 0) + 1
   }
-  const unreadChats = seenThreads.size
   const mentions = mentionsRes.count ?? 0
   // CM gets the Kanalen tab when (a) they have an assigned chat row,
   // OR (b) they've subscribed to any Trengo channels in /account. Roy

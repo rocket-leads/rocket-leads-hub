@@ -1246,9 +1246,12 @@ export function InboxShell({
     ? "h-[calc(100vh*var(--ui-unzoom)_-_320px)] min-h-[440px]"
     : "h-[calc(100vh*var(--ui-unzoom)_-_208px)] min-h-[520px]"
 
-  const scopeItems: Array<{ id: InboxScope; label: string }> = [
-    { id: "internal", label: t("inbox.shell.scope.internal", locale) },
-    { id: "external", label: t("inbox.shell.scope.external", locale) },
+  // Open-item count per scope, shown on the toggle so you can see at a glance
+  // what needs attention on each side: internal = open tasks/updates, external
+  // = open (New) tickets on favourite channels. Roy 2026-07-31.
+  const scopeItems: Array<{ id: InboxScope; label: string; count: number }> = [
+    { id: "internal", label: t("inbox.shell.scope.internal", locale), count: intStateCounts.open },
+    { id: "external", label: t("inbox.shell.scope.external", locale), count: favScopedCounts.open },
   ]
 
   // Compact Type/Deadline selector — the 187N 2-column fold of the internal
@@ -1323,6 +1326,11 @@ export function InboxShell({
                 )}
               >
                 {it.label}
+                {it.count > 0 && (
+                  <span className="font-mono text-[10.5px] tabular-nums opacity-70">
+                    {it.count > 99 ? "99+" : it.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
