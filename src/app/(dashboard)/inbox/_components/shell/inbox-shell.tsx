@@ -419,6 +419,15 @@ export function InboxShell({
     for (const it of intScoped) c[internalStateOf(it)] += 1
     return c
   }, [intScoped])
+  // The Internal scope badge always reflects MY items only (assignee = me),
+  // never the Delegated view - delegated items belong to whoever I sent them
+  // to, so counting them under "Internal" is misleading (it showed 68 when the
+  // Delegated tab was active). Uses the assignee-scoped tasks/updates sets
+  // directly so it's independent of the internalView tab. Roy 2026-07-31.
+  const myItemsOpenCount = useMemo(
+    () => [...tasks, ...updates].filter((it) => internalStateOf(it) !== "closed").length,
+    [tasks, updates],
+  )
   // Per-type breakdown for the internal hero strip (mirrors the external
   // per-channel breakdown): total items + how many still need attention.
   const internalTypeStats = useMemo(
@@ -1328,7 +1337,8 @@ export function InboxShell({
     {
       id: "internal",
       label: t("inbox.shell.scope.internal", locale),
-      count: intStateCounts.open + intStateCounts.assigned,
+      // Always My-items only, never Delegated (see myItemsOpenCount).
+      count: myItemsOpenCount,
     },
     {
       id: "external",
