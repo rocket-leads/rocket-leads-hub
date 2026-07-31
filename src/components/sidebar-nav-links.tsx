@@ -66,8 +66,11 @@ function InboxBadge({ userId }: { userId?: string }) {
   const { data } = useQuery<BadgeCounts>({
     queryKey: ["inbox-badge"],
     queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
-    refetchInterval: 60 * 1000,
-    staleTime: 30 * 1000,
+    // Snappier so assigning/closing a ticket reflects fast; the inbox also
+    // invalidates ["inbox-badge"] on every ticket action for instant updates.
+    // Roy 2026-07-31.
+    refetchInterval: 20 * 1000,
+    staleTime: 5 * 1000,
   })
 
   const [favIds, setFavIds] = useState<number[]>([])

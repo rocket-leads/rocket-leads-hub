@@ -715,9 +715,10 @@ export async function getInboxBadgeCounts(
   for (const r of chatRows) {
     if (!r.thread_key || seenThreads.has(r.thread_key)) continue
     seenThreads.add(r.thread_key)
-    // Newest row decides state: skip closed (archived) or picked-up (assigned).
+    // Newest row decides state: count everything NOT closed — New AND Opgepakt
+    // (assigned) — since an assigned ticket is still active work. Only closed
+    // (archived) tickets are excluded. Roy 2026-07-31.
     if (r.archived_at != null) continue
-    if (r.assigned_at != null || r.trengo_assignee_user_id != null) continue
     unreadChats += 1
     if (r.trengo_channel_id == null) continue
     const key = String(r.trengo_channel_id)

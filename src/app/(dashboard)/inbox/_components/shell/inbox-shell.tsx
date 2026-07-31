@@ -504,11 +504,11 @@ export function InboxShell({
   const pendingByChannel = useMemo(() => {
     const m = new Map<number, { whatsapp: number; email: number }>()
     for (const t of threads) {
-      // Count NEW (open) tickets only — same definition as the "All" tab, so a
-      // channel's number can never exceed All. Excluding assigned (Opgepakt)
-      // fixes "All 9 but Roy Personal 11": the 2 Opgepakt no longer inflate the
-      // per-channel chip. Closed tickets never count. Roy 2026-07-30.
-      if (t.isArchived || t.isAssigned) continue
+      // Count everything NOT closed — New AND Opgepakt (assigned) — same as the
+      // "All" tab, so the chip reflects all active tickets on the line (an
+      // assigned ticket is still open work). Closed tickets never count.
+      // Roy 2026-07-31.
+      if (t.isArchived) continue
       if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
       for (const cid of t.channelIds ?? []) {
         const e = m.get(cid) ?? { whatsapp: 0, email: 0 }
@@ -723,7 +723,9 @@ export function InboxShell({
     let n = 0
     for (const t of threads) {
       if (t.channelKind !== "whatsapp" && t.channelKind !== "email") continue
-      if (t.isArchived || t.isAssigned) continue
+      // Count everything NOT closed — New AND Opgepakt (assigned). An assigned
+      // ticket is still active work, so it must still count. Roy 2026-07-31.
+      if (t.isArchived) continue
       if (useFav && !t.channelIds?.some((id) => favSet.has(id))) continue
       n += 1
     }
@@ -896,6 +898,9 @@ export function InboxShell({
         .then((res) => {
           if (!res.ok) throw new Error(`thread ${action} failed: ${res.status}`)
           queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+          // Refresh the sidebar badge immediately (assign/close/reopen changes
+          // the open-ticket count) instead of waiting for its poll. Roy 2026-07-31.
+          queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
         })
         .catch(() => {
           queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
@@ -1250,8 +1255,16 @@ export function InboxShell({
   // what needs attention on each side: internal = open tasks/updates, external
   // = open (New) tickets on favourite channels. Roy 2026-07-31.
   const scopeItems: Array<{ id: InboxScope; label: string; count: number }> = [
-    { id: "internal", label: t("inbox.shell.scope.internal", locale), count: intStateCounts.open },
-    { id: "external", label: t("inbox.shell.scope.external", locale), count: favScopedCounts.open },
+    {
+      id: "internal",
+      label: t("inbox.shell.scope.internal", locale),
+      count: intStateCounts.open + intStateCounts.assigned,
+    },
+    {
+      id: "external",
+      label: t("inbox.shell.scope.external", locale),
+      count: favScopedCounts.open + favScopedCounts.assigned,
+    },
   ]
 
   // Compact Type/Deadline selector — the 187N 2-column fold of the internal
