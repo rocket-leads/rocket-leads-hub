@@ -419,6 +419,15 @@ export function InboxShell({
     for (const it of intScoped) c[internalStateOf(it)] += 1
     return c
   }, [intScoped])
+  // The Internal scope badge always reflects MY items only (assignee = me),
+  // never the Delegated view - delegated items belong to whoever I sent them
+  // to, so counting them under "Internal" is misleading (it showed 68 when the
+  // Delegated tab was active). Uses the assignee-scoped tasks/updates sets
+  // directly so it's independent of the internalView tab. Roy 2026-07-31.
+  const myItemsOpenCount = useMemo(
+    () => [...tasks, ...updates].filter((it) => internalStateOf(it) !== "closed").length,
+    [tasks, updates],
+  )
   // Per-type breakdown for the internal hero strip (mirrors the external
   // per-channel breakdown): total items + how many still need attention.
   const internalTypeStats = useMemo(
@@ -824,18 +833,23 @@ export function InboxShell({
   const extFilterTabs: TopTab<TicketState>[] = mentionedOnly
     ? [
         { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
-        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
+        // No count on Closed: closed tickets only accumulate, so the badge
+        // would sit at 99+ forever and mean nothing. Roy 2026-07-31.
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
       ]
     : [
         { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
         { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: extCounts.assigned },
-        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
+        // No count on Closed: closed tickets only accumulate, so the badge
+        // would sit at 99+ forever and mean nothing. Roy 2026-07-31.
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
       ]
 
   const intFilterTabs: TopTab<TicketState>[] = [
     { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: intStateCounts.open, accent: "primary" },
     { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: intStateCounts.assigned },
-    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: intStateCounts.closed },
+    // No count on Closed (see external note): it only ever climbs to 99+.
+    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
   ]
 
   // Auto-open the top row of the active scope (Roy: don't land on an empty
@@ -1328,7 +1342,8 @@ export function InboxShell({
     {
       id: "internal",
       label: t("inbox.shell.scope.internal", locale),
-      count: intStateCounts.open + intStateCounts.assigned,
+      // Always My-items only, never Delegated (see myItemsOpenCount).
+      count: myItemsOpenCount,
     },
     {
       id: "external",
