@@ -38,7 +38,9 @@ type Props = {
    *  Shift-range selection. */
   selectable?: boolean
   selected?: boolean
-  onToggleSelect?: (e: React.MouseEvent) => void
+  /** Event is optional: chat rows pass it for Shift-range selection; internal
+   *  task/update rows toggle without one. */
+  onToggleSelect?: (e?: React.MouseEvent) => void
   users?: InboxUser[]
   /** Signed-in user id. Lets task/update rows detect delegated items
    *  (author = me, assignee ≠ me) and show the delivery signal. */
@@ -71,6 +73,8 @@ export function FeedRow({ row, active, showClient, onOpen, onAction, onClose, cl
         users={users}
         keyboardFocused={active}
         currentUserId={currentUserId}
+        selected={selected}
+        onToggleSelect={selectable && onToggleSelect ? () => onToggleSelect() : undefined}
       />
     )
   }

@@ -245,13 +245,20 @@ export function InboxListRow({
     dueNode,
   ].filter(Boolean)
 
-  const titleEditable = onAction != null
-  const renderTitle = (className: string) =>
-    titleEditable ? (
-      <RowTitle title={item.title} statusClass={className} onSave={(title) => onAction!({ type: "rename", title })} />
-    ) : (
-      <span className={className}>{item.title}</span>
-    )
+  // Row structure (Roy 2026-07-31): bold headline = the client company name
+  // (or "General task" / "General update" for client-less items); light
+  // subheadline = the task/update name. The old description/body subtext is
+  // dropped, and the title is NO LONGER editable inline - renaming happens only
+  // in the detail pane on the right.
+  const generalLabel = isUpdate ? "General update" : "General task"
+  const headlineText = clientLeads
+    ? isUnlinkedRow
+      ? "Unlinked contact"
+      : item.clientName
+    : showClient
+      ? generalLabel
+      : item.title // locked per-client view: no client to show, so the title leads
+  const subheadlineText = headlineText === item.title ? null : item.title
 
   return (
     <div
@@ -319,30 +326,23 @@ export function InboxListRow({
         )}
 
         <div className="min-w-0 flex-1">
-          {/* Line 1 — subject (client name, or the title when there's no
-              client) + relative time on the right. */}
+          {/* Line 1 — bold headline: client company name (or General task /
+              General update) + relative time on the right. */}
           <div className="flex items-baseline gap-2">
             {isUnlinkedRow && <Link2Off className="h-3.5 w-3.5 shrink-0 self-center text-amber-500/90 dark:text-amber-400" />}
-            {clientLeads ? (
-              <p className={subjectClass}>{isUnlinkedRow ? "Unlinked contact" : item.clientName}</p>
-            ) : (
-              renderTitle(subjectClass)
-            )}
+            <p className={subjectClass}>{headlineText}</p>
             {isHighPriority && <AlertCircle className="h-3.5 w-3.5 shrink-0 self-center text-red-400" />}
             <span className="ml-auto shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/45">
               {fmtRelative(item.createdAt)}
             </span>
           </div>
 
-          {/* Line 2 — detail. The title (when a client leads above), or the
-              body preview (when the title is already the subject). */}
-          {clientLeads ? (
-            <div className="mt-0.5 flex items-center gap-2">{renderTitle(detailClass)}</div>
-          ) : item.body ? (
+          {/* Line 2 — light subheadline: the task/update name. */}
+          {subheadlineText && (
             <div className="mt-0.5 flex items-center gap-2">
-              <p className={detailClass}>{item.body}</p>
+              <p className={detailClass}>{subheadlineText}</p>
             </div>
-          ) : null}
+          )}
 
           {/* Line 3 — tiny meta (status / delivery / assignee / due). */}
           {metaNodes.length > 0 && (
