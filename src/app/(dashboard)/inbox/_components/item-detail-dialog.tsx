@@ -441,24 +441,27 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 Tasks get a violet accent (action), updates a muted blue
                 (informational). The reclassify control sits directly
                 next to it so a misclassification is one click away. */}
+            {/* Tasks are view-only in the detail pane (Roy 2026-07-30) - no
+                reclassify toggle. Updates keep it. */}
             <KindBanner
               kind={item.kind}
               source={item.source}
               disabled={reclassifying}
-              onChange={reclassify}
+              onChange={isTask ? undefined : reclassify}
             />
             <DialogHeader>
               <div className="flex items-start gap-2">
                 {item.priority === "high" && (
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
-                {item.kind !== "chat" ? (
+                {isUpdate ? (
                   <EditableTitle
                     value={item.title}
                     onSave={(title) => setMeta({ title })}
                     className="flex-1"
                   />
                 ) : (
+                  // Tasks + chat: title is read-only in the detail pane.
                   <h2 className="font-heading text-base font-medium leading-snug flex-1">{item.title}</h2>
                 )}
                 <SourcePill
@@ -556,7 +559,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               />
             )}
 
-            {item.kind !== "chat" ? (
+            {isUpdate ? (
               <EditableBody
                 value={item.body ?? ""}
                 onSave={(body) => setMeta({ body: body.trim() ? body : null })}
@@ -564,6 +567,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 currentUserId={currentUser.id}
               />
             ) : (
+              // Tasks + chat: body is read-only in the detail pane.
               item.body && (
                 <div className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
                   {item.body}
@@ -1230,7 +1234,9 @@ function KindBanner({
   kind: InboxKind
   source: InboxSource
   disabled: boolean
-  onChange: (kind: "task" | "update" | "chat") => void
+  /** Omit to render a read-only banner (no reclassify toggle) - used for tasks,
+   *  which aren't editable from the detail pane. Roy 2026-07-30. */
+  onChange?: (kind: "task" | "update" | "chat") => void
 }) {
   const locale = useLocale()
   const tone =
@@ -1274,13 +1280,15 @@ function KindBanner({
         <p className={cn("text-sm font-semibold leading-tight flex-1 min-w-0", tone.text)}>
           {tone.label}
         </p>
-        <ReclassifyControl
-          currentKind={kind}
-          source={source}
-          disabled={disabled}
-          onChange={onChange}
-          compact
-        />
+        {onChange && (
+          <ReclassifyControl
+            currentKind={kind}
+            source={source}
+            disabled={disabled}
+            onChange={onChange}
+            compact
+          />
+        )}
       </div>
     </div>
   )
