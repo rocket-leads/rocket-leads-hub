@@ -441,27 +441,29 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 Tasks get a violet accent (action), updates a muted blue
                 (informational). The reclassify control sits directly
                 next to it so a misclassification is one click away. */}
-            {/* Tasks are view-only in the detail pane (Roy 2026-07-30) - no
-                reclassify toggle. Updates keep it. */}
+            {/* The detail pane (right field) is the ONLY place items are
+                editable - name, description, reclassify. The list rows are
+                read-only. Roy 2026-07-31 (reverses the 07-30 read-only-task
+                experiment). */}
             <KindBanner
               kind={item.kind}
               source={item.source}
               disabled={reclassifying}
-              onChange={isTask ? undefined : reclassify}
+              onChange={reclassify}
             />
             <DialogHeader>
               <div className="flex items-start gap-2">
                 {item.priority === "high" && (
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
-                {isUpdate ? (
+                {item.kind !== "chat" ? (
                   <EditableTitle
                     value={item.title}
                     onSave={(title) => setMeta({ title })}
                     className="flex-1"
                   />
                 ) : (
-                  // Tasks + chat: title is read-only in the detail pane.
+                  // Chat rows aren't editable here.
                   <h2 className="font-heading text-base font-medium leading-snug flex-1">{item.title}</h2>
                 )}
                 <SourcePill
@@ -559,7 +561,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               />
             )}
 
-            {isUpdate ? (
+            {item.kind !== "chat" ? (
               <EditableBody
                 value={item.body ?? ""}
                 onSave={(body) => setMeta({ body: body.trim() ? body : null })}
@@ -567,7 +569,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 currentUserId={currentUser.id}
               />
             ) : (
-              // Tasks + chat: body is read-only in the detail pane.
+              // Chat rows aren't editable here.
               item.body && (
                 <div className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
                   {item.body}

@@ -44,7 +44,7 @@ type Props<T extends string> = {
    *  `onToggleSelect` receives the click event (for Shift-range). */
   selectable?: boolean
   selectedOf?: (row: FeedRowType) => boolean
-  onToggleSelect?: (row: FeedRowType, e: React.MouseEvent) => void
+  onToggleSelect?: (row: FeedRowType, e?: React.MouseEvent) => void
   /** Tri-state select-all header over the visible rows (Trengo-style). */
   selectAllState?: "none" | "some" | "all"
   onToggleSelectAll?: () => void
@@ -133,7 +133,7 @@ export function UnifiedFeed<T extends string>({
               onClose={onCloseRow && row.kind === "chat" ? () => onCloseRow(row) : undefined}
               closed={closedOf ? closedOf(row) : undefined}
               checkboxKind={checkboxKind}
-              selectable={selectable && row.kind === "chat"}
+              selectable={selectable}
               selected={selectedOf ? selectedOf(row) : undefined}
               onToggleSelect={onToggleSelect ? (e) => onToggleSelect(row, e) : undefined}
               users={users}

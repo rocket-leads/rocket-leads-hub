@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Circle, User, CircleCheck, Search, X, ChevronDown, ListTodo, MessageSquare } from "lucide-react"
+import { Plus, Circle, User, CircleCheck, Search, X, ChevronDown, ListTodo, MessageSquare, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -1032,12 +1032,12 @@ export function InboxShell({
   const selectable = isExternal && !mentionedOnly
 
   const toggleTicketSelect = useCallback(
-    (row: FeedRow, e: React.MouseEvent) => {
+    (row: FeedRow, e?: React.MouseEvent) => {
       const ordered = visibleExternalRows.map((r) => r.id)
       const anchor = lastSelectedRef.current
       setSelectedTickets((prev) => {
         const next = new Set(prev)
-        if (e.shiftKey && anchor && anchor !== row.id) {
+        if (e?.shiftKey && anchor && anchor !== row.id) {
           // Range-select every row between the last-clicked anchor and this one.
           const a = ordered.indexOf(anchor)
           const b = ordered.indexOf(row.id)
@@ -1137,6 +1137,76 @@ export function InboxShell({
   // No one-click "select all" on the All-channels view — that's how the whole
   // inbox got closed by accident. Per-channel select-all stays. Roy 2026-07-29.
   const selectAllOnToggle = viewMode === "all" ? undefined : toggleSelectAll
+
+  // --- Internal task/update multi-select (bulk done / delete) ----------------
+  // Mirrors the external ticket multi-select: pick rows via the left icon (which
+  // morphs into a checkbox on hover), then act on them all from the bulk bar.
+  // Roy 2026-07-31.
+  const [selectedInternal, setSelectedInternal] = useState<Set<string>>(new Set())
+  const internalSelectable = !isExternal && !intSearching
+  const toggleInternalSelect = useCallback((row: FeedRow) => {
+    setSelectedInternal((prev) => {
+      const next = new Set(prev)
+      if (next.has(row.id)) next.delete(row.id)
+      else next.add(row.id)
+      return next
+    })
+  }, [])
+  const clearInternalSelection = useCallback(() => {
+    setSelectedInternal((prev) => (prev.size === 0 ? prev : new Set()))
+  }, [])
+  // Drop the selection whenever the internal view / tab / filters change.
+  useEffect(() => {
+    clearInternalSelection()
+  }, [internalView, intState, scope, deadline, internalTypes, clearInternalSelection])
+
+  const internalVisibleIds = useMemo(() => visibleInternalRows.map((r) => r.id), [visibleInternalRows])
+  const internalSelectAllState: "none" | "some" | "all" = useMemo(() => {
+    if (!internalSelectable || internalVisibleIds.length === 0) return "none"
+    const sel = internalVisibleIds.filter((id) => selectedInternal.has(id)).length
+    if (sel === 0) return "none"
+    return sel === internalVisibleIds.length ? "all" : "some"
+  }, [internalSelectable, internalVisibleIds, selectedInternal])
+  const toggleInternalSelectAll = useCallback(() => {
+    setSelectedInternal((prev) => {
+      const allSelected =
+        internalVisibleIds.length > 0 && internalVisibleIds.every((id) => prev.has(id))
+      return allSelected ? new Set() : new Set(internalVisibleIds)
+    })
+  }, [internalVisibleIds])
+
+  const bulkInternal = useCallback(
+    async (action: "done" | "delete") => {
+      const rows = visibleInternalRows.filter((r) => selectedInternal.has(r.id))
+      clearInternalSelection()
+      await Promise.all(
+        rows.map((r) => {
+          if (action === "delete") return fetch(`/api/inbox/${r.id}`, { method: "DELETE" })
+          // Kind-specific "done": tasks → done, updates → read.
+          const status = r.item?.kind === "update" ? "read" : "done"
+          return fetch(`/api/inbox/${r.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          })
+        }),
+      )
+      refreshItems()
+    },
+    [visibleInternalRows, selectedInternal, clearInternalSelection, refreshItems],
+  )
+  // Two-step confirm before a bulk delete (it's destructive + irreversible).
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  useEffect(() => {
+    setConfirmBulkDelete(false)
+  }, [selectedInternal])
+  const handleBulkDelete = useCallback(() => {
+    if (!confirmBulkDelete) {
+      setConfirmBulkDelete(true)
+      return
+    }
+    void bulkInternal("delete")
+  }, [confirmBulkDelete, bulkInternal])
 
   // --- Composer --------------------------------------------------------------
   const [composerOpen, setComposerOpen] = useState(false)
@@ -1554,6 +1624,11 @@ export function InboxShell({
                 onFilterChange={setIntState}
                 onOpen={openItem}
                 onAction={handleRowAction}
+                selectable={internalSelectable}
+                selectedOf={internalSelectable ? (row) => selectedInternal.has(row.id) : undefined}
+                onToggleSelect={internalSelectable ? (row) => toggleInternalSelect(row) : undefined}
+                selectAllState={internalSelectAllState}
+                onToggleSelectAll={toggleInternalSelectAll}
                 users={users}
                 emptyHint={emptyHint}
                 currentUserId={currentUser.id}
@@ -1667,6 +1742,50 @@ export function InboxShell({
           <button
             type="button"
             onClick={clearTicketSelection}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+            {t("inbox.shell.bulk.clear", locale)}
+          </button>
+        </div>,
+        document.body,
+      )}
+
+      {/* Internal bulk-select action bar — mirrors the external one. Appears
+          once ≥1 task/update is selected via the left icon. Mark done (task→done,
+          update→read) or delete (two-step confirm). Roy 2026-07-31. */}
+      {!isExternal && selectedInternal.size > 0 && typeof document !== "undefined" && createPortal(
+        <div className="fixed bottom-4 left-1/2 z-[60] inline-flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-popover px-2 py-1.5 shadow-lg">
+          <span className="px-2 text-xs font-medium tabular-nums">
+            {t("inbox.shell.bulk.selected", locale, { n: selectedInternal.size })}
+          </span>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={() => void bulkInternal("done")}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+          >
+            <CircleCheck className="h-3.5 w-3.5" />
+            Mark done
+          </button>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={handleBulkDelete}
+            className={cn(
+              "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+              confirmBulkDelete
+                ? "bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-400"
+                : "text-muted-foreground hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400",
+            )}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {confirmBulkDelete ? `Confirm — delete ${selectedInternal.size}` : "Delete"}
+          </button>
+          <span className="h-5 w-px bg-border/60" aria-hidden />
+          <button
+            type="button"
+            onClick={clearInternalSelection}
             className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" />
