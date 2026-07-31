@@ -833,18 +833,23 @@ export function InboxShell({
   const extFilterTabs: TopTab<TicketState>[] = mentionedOnly
     ? [
         { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
-        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
+        // No count on Closed: closed tickets only accumulate, so the badge
+        // would sit at 99+ forever and mean nothing. Roy 2026-07-31.
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
       ]
     : [
         { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: extCounts.open, accent: "primary" },
         { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: extCounts.assigned },
-        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: extCounts.closed },
+        // No count on Closed: closed tickets only accumulate, so the badge
+        // would sit at 99+ forever and mean nothing. Roy 2026-07-31.
+        { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
       ]
 
   const intFilterTabs: TopTab<TicketState>[] = [
     { id: "open", label: t("inbox.shell.state.open", locale), icon: Circle, count: intStateCounts.open, accent: "primary" },
     { id: "assigned", label: t("inbox.shell.state.assigned", locale), icon: User, count: intStateCounts.assigned },
-    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck, count: intStateCounts.closed },
+    // No count on Closed (see external note): it only ever climbs to 99+.
+    { id: "closed", label: t("inbox.shell.state.closed", locale), icon: CircleCheck },
   ]
 
   // Auto-open the top row of the active scope (Roy: don't land on an empty
