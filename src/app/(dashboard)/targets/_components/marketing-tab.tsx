@@ -461,6 +461,13 @@ export function MarketingTab() {
               formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, booked)))}
               target={hasMetaSpend ? tgt?.cbc || undefined : undefined}
               targetFormatted={hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, booked)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
+              notices={[{
+                label: isMarketing ? "cost per booked call" : "cost per scheduled call",
+                tone: "muted",
+                title: isMarketing
+                  ? "CBC = ad spend ÷ booked calls (leads created that booked). Same Settings target as the Sales lens."
+                  : "CBC = ad spend ÷ scheduled calls (appointments in this period). Same Settings target as the Marketing lens.",
+              }]}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             {!isMarketing && (
