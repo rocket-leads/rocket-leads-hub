@@ -26,10 +26,11 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
     )
   }
 
-  // Show-up rate: taken (which now includes Not Updated) ÷ qualified (all past).
-  // Not Updated is folded into Taken so the conversion rate can't be gamed by
-  // skipping status updates - but we keep the Not Updated column so the data-
-  // quality issue is still visible.
+  // Show-up rate: Taken ÷ (Qualified − Not Updated). Taken counts only calls with
+  // a recorded outcome; Not Updated (past appointments the closer hasn't processed)
+  // is excluded from BOTH sides - we can't say whether those showed up, so they
+  // don't distort the rate either way. The Not Updated column stays visible so the
+  // data-quality gap is still obvious.
 
   const totalQualified = data.reduce((s, r) => s + r.qualifiedCalls, 0)
   const totalUpcoming = data.reduce((s, r) => s + r.upcomingCalls, 0)
@@ -37,7 +38,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
   const totalNotUpdated = data.reduce((s, r) => s + r.notUpdated, 0)
   const totalDeals = data.reduce((s, r) => s + r.deals, 0)
   const totalRevenue = data.reduce((s, r) => s + r.revenue, 0)
-  const totalShowUp = safeDivide(totalTaken, totalQualified)
+  const totalShowUp = safeDivide(totalTaken, totalQualified - totalNotUpdated)
   const totalConv = safeDivide(totalDeals, totalTaken)
   const totalAvg = safeDivide(totalRevenue, totalDeals)
 
@@ -58,8 +59,8 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
               <TableHead>Closer</TableHead>
               <TableHead className="text-right" title="Past appointments scheduled with this closer (all statuses)">Qualified</TableHead>
               <TableHead className="text-right">Taken</TableHead>
-              <TableHead className="text-right" title="Taken ÷ Qualified. Not Updated is included in Taken so closers can't game the conversion rate.">Show-up</TableHead>
-              <TableHead className="text-right" title="Past appointments still in Qualified / Gepland status - closer hasn't updated">Not Updated</TableHead>
+              <TableHead className="text-right" title="Taken ÷ (Qualified − Not Updated). Not Updated is excluded from both sides - we can't tell if those showed up.">Show-up</TableHead>
+              <TableHead className="text-right" title="Past appointments still in Planned / Qualified / Gepland status - closer hasn't recorded an outcome. Not counted as Taken.">Not Updated</TableHead>
               <TableHead className="text-right" title="Future appointments scheduled in the period - pending workload">Upcoming</TableHead>
               <TableHead className="text-right">Deals</TableHead>
               <TableHead className="text-right">Conv</TableHead>
@@ -69,7 +70,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
           </TableHeader>
           <TableBody>
             {data.map((row) => {
-              const showUp = safeDivide(row.takenCalls, row.qualifiedCalls)
+              const showUp = safeDivide(row.takenCalls, row.qualifiedCalls - row.notUpdated)
               const conv = safeDivide(row.deals, row.takenCalls)
               const avg = safeDivide(row.revenue, row.deals)
               const isUnassigned = row.closer === "Unassigned"

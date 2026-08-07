@@ -447,13 +447,13 @@ export async function fetchMondayTargets(
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
-    takenCalls: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
+    takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
     industryMap: Record<string, { deals: number; revenue: number }>;
     closerMap: Record<string, CloserAcc>;
   }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
+    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, notUpdated: 0, upcoming: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
   }
   // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
   // deal alongside the Stripe-side invoices.
@@ -515,10 +515,25 @@ export async function fetchMondayTargets(
     // breakdown line and are counted on the same appointment basis so they
     // reconcile with Booked.
     if (includeInTopLevel && isInRange(datumAfspraak, startDate, endDate)) {
+      // Booked decomposes into exactly one of five mutually-exclusive buckets so
+      // the "Booked − Taken breakdown" line reconciles precisely:
+      //   Booked = Taken + No-shows + Cancellations + Not-updated + Upcoming.
+      // Future appointment → Upcoming (can't have happened yet). Past appointment
+      // → Not-updated (Planned/Qualified/Gepland: closer hasn't set an outcome),
+      // No-show, Cancellation, or otherwise Taken (any real outcome, incl. new
+      // labels - subtractive so a fresh positive status still counts as taken).
+      // Taken deliberately EXCLUDES Not-updated so it matches the per-closer table.
       addTo(country, (a) => a.calls++)
-      if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
-      else if (STATUS_MAP.cancellations.includes(status)) addTo(country, (a) => a.cancellations++)
-      if (datumAfspraak !== null && datumAfspraak < todayStr && !STATUS_MAP.notTaken.includes(status)) {
+      const isPast = datumAfspraak !== null && datumAfspraak < todayStr
+      if (!isPast) {
+        addTo(country, (a) => a.upcoming++)
+      } else if (STATUS_MAP.notUpdated.includes(status)) {
+        addTo(country, (a) => a.notUpdated++)
+      } else if (STATUS_MAP.noShows.includes(status)) {
+        addTo(country, (a) => a.noShows++)
+      } else if (STATUS_MAP.cancellations.includes(status)) {
+        addTo(country, (a) => a.cancellations++)
+      } else {
         addTo(country, (a) => a.takenCalls++)
       }
     }
@@ -570,14 +585,13 @@ export async function fetchMondayTargets(
         if (isPastAppointment) {
           addTo(country, (a) => { ensureCloser(a).qualifiedCalls++ })
           if (STATUS_MAP.notUpdated.includes(status)) {
-            // Past + un-processed: count as taken AND track as notUpdated so we can
-            // flag the data-quality issue without skewing conversion rate.
-            addTo(country, (a) => {
-              const c = ensureCloser(a)
-              c.notUpdated++
-              c.takenCalls++
-            })
-          } else if (STATUS_MAP.taken.includes(status)) {
+            // Past + un-processed (Planned/Qualified/Gepland): tracked as its own
+            // Not-updated bucket. NOT counted as taken - Taken must mean "call
+            // actually happened with an outcome", matching the top-level card.
+            addTo(country, (a) => { ensureCloser(a).notUpdated++ })
+          } else if (!STATUS_MAP.noShows.includes(status) && !STATUS_MAP.cancellations.includes(status)) {
+            // Any real outcome (Deal/Signed/No-deal-*, or a new positive label) -
+            // subtractive, same rule as the top-level Taken so the totals match.
             addTo(country, (a) => { ensureCloser(a).takenCalls++ })
           }
         } else {
@@ -604,7 +618,13 @@ export async function fetchMondayTargets(
         const ws = getMondayOfWeek(datumAfspraak)
         if (targetWeeks.has(ws)) {
           addWeek(country, ws, (w) => { w.calls++ })
-          if (datumAfspraak < todayStr && !STATUS_MAP.notTaken.includes(status)) addWeek(country, ws, (w) => w.taken++)
+          // Same Taken rule as the top-level card: past appointment, excluding
+          // no-shows, cancellations AND not-updated (Planned/Qualified/Gepland).
+          if (
+            datumAfspraak < todayStr
+            && !STATUS_MAP.notTaken.includes(status)
+            && !STATUS_MAP.notUpdated.includes(status)
+          ) addWeek(country, ws, (w) => w.taken++)
         }
       }
       if (dateDeal && STATUS_MAP.deals.includes(status)) {

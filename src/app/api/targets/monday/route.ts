@@ -12,9 +12,9 @@ import type { MondayTargetsByCountry, PlatformKey } from "@/types/targets"
 export const maxDuration = 300
 
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
-// notUpdated) are stale. Also detect the old takenCalls semantic - after the recent
-// change Not Updated is folded into Taken, so a closer with notUpdated > 0 must have
-// takenCalls >= notUpdated. Old caches violate that invariant.
+// notUpdated) are stale. The 2026-08-07 funnel rework also split Not-updated + Upcoming
+// into their own top-level buckets and removed Not-updated from Taken, so any cache
+// lacking cached.all.notUpdated / cached.all.upcoming is stale and must recompute.
 //
 // Also requires the Stripe-cross-check fields (`stripeNewBusinessRevenue` and
 // `closedDeals`). Earlier code briefly overwrote `closedRevenue` with the Stripe
@@ -37,6 +37,14 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   // collectedRevenue added 2026-07-23 - it's the primary Revenue/ROAS figure, so
   // a cache without it would render collected as 0/undefined. Force a refetch.
   if (typeof cached.all.collectedRevenue !== "number") return false
+  // notUpdated + upcoming added 2026-08-07 as top-level buckets so Booked
+  // reconciles exactly (Booked = Taken + noShows + cancellations + notUpdated +
+  // upcoming). This same change flipped the Taken semantic: Not-updated is NO
+  // longer folded into Taken (top-level or per-closer). Requiring these fields
+  // rejects every pre-change cache - including closed-month entries - forcing a
+  // recompute with the corrected, mutually-exclusive funnel.
+  if (typeof cached.all.notUpdated !== "number") return false
+  if (typeof cached.all.upcoming !== "number") return false
 
   const closers = cached.all.closers
   if (!Array.isArray(closers)) return false
@@ -46,9 +54,7 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
     typeof first.qualifiedCalls === "number"
     && typeof first.upcomingCalls === "number"
     && typeof first.notUpdated === "number"
-  if (!hasFields) return false
-  // Old takenCalls (held only) doesn't include notUpdated → invariant violation.
-  return !closers.some((c) => c.notUpdated > 0 && c.takenCalls < c.notUpdated)
+  return hasFields
 }
 
 export async function GET(request: Request) {

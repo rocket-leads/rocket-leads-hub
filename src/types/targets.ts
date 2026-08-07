@@ -46,8 +46,16 @@ export interface MondayTargetsData {
   cancellations: number
   /** Subset of booked calls where the lead didn't show up. */
   noShows: number
-  /** Subset of booked calls that actually took place (Deal/Signed/No-deal-*). */
+  /** Subset of booked calls that actually took place (Deal/Signed/No-deal-*).
+   *  EXCLUDES not-updated past appointments so it matches the per-closer table. */
   takenCalls: number
+  /** Past appointments still in a pre-outcome status (Planned/Qualified/Gepland) -
+   *  the closer hasn't recorded a result yet. Its own bucket so Booked reconciles:
+   *  Booked = Taken + noShows + cancellations + notUpdated + upcoming. */
+  notUpdated: number
+  /** Future appointments booked in the period (appointment date >= today) - can't
+   *  have happened yet, so excluded from Taken/no-show/cancellation. */
+  upcoming: number
   /** Closed-positive subset of taken (Deal + Signed). */
   deals: number
   /** Total contract value of deals closed in the period (Monday `numbers`). */

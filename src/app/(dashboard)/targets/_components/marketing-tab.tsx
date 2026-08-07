@@ -116,7 +116,12 @@ export function MarketingTab() {
     const all = m?.closers ?? []
     return closerActive ? all.filter((c) => c.closer === closer) : all
   }, [m?.closers, closer, closerActive])
-  const notUpdatedTotal = closersForBreakdown.reduce((s, c) => s + c.notUpdated, 0)
+  // Not-updated + upcoming come straight off the top-level bucket (filter-scoped
+  // server-side, same as calls/taken/noShows/cancellations) so the breakdown
+  // reconciles exactly: Booked = Taken + no-shows + cancellations + not-updated
+  // + upcoming. (The old closer-derived sum could drift from the scoped calls.)
+  const notUpdated = m?.notUpdated ?? 0
+  const upcoming = m?.upcoming ?? 0
   const loading = data.mondayLoading || data.metaLoading
   // True while every Monday-driven tile is rendering MTD-range numbers as
   // placeholder for the still-loading selected range. Surface as a small
@@ -212,16 +217,36 @@ export function MarketingTab() {
         </div>
       </div>
 
-      {/* Platform / spend-source notes - Google spend can't be country-split, and
-          the sheet may not be shared with the service account yet. */}
-      {(data.googleAdsError || data.googleExcludedForCountry) && (
+      {/* Platform / spend-source transparency. The AD SPEND card blends Meta +
+          Google into one number, so on its own you can't tell whether Google is
+          contributing. Always break it out under the "All platforms" view so a
+          silent Google €0 (empty/unshared sheet) is obvious rather than looking
+          like Meta is the whole story. Error + single-country-exclusion keep
+          their explicit amber notes. */}
+      {data.googleAdsError ? (
         <div className="-mt-5 text-[11px] text-amber-600 inline-flex items-center gap-1.5">
           <AlertTriangle className="h-3 w-3 shrink-0" />
-          {data.googleAdsError
-            ? "Google Ads spend unavailable - share the Actual sheet tab (Viewer) with the Hub's Google service account."
-            : `Google Ads spend (${formatCurrency(data.googleSpend)}) is hidden under a single-country filter - it has no country attribution. Switch Country to "All" to include it.`}
+          Google Ads spend unavailable - share the Actual sheet tab (Viewer) with the Hub&apos;s Google service account.
         </div>
-      )}
+      ) : data.googleExcludedForCountry ? (
+        <div className="-mt-5 text-[11px] text-amber-600 inline-flex items-center gap-1.5">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          {`Google Ads spend (${formatCurrency(data.googleSpend)}) is hidden under a single-country filter - it has no country attribution. Switch Country to "All" to include it.`}
+        </div>
+      ) : platform === "all" && !loading && (data.metaSpend > 0 || data.googleSpend > 0) ? (
+        <div className="-mt-5 text-[11px] text-muted-foreground px-1 inline-flex items-center gap-1.5 flex-wrap">
+          <span className="font-medium">Ad spend source:</span>
+          <span className="tabular-nums">Meta {formatCurrency(data.metaSpend)}</span>
+          <span>+</span>
+          <span className="tabular-nums">Google {formatCurrency(data.googleSpend)}</span>
+          {data.googleSpend === 0 && (
+            <span className="text-amber-600 inline-flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              Google €0 for this range - check the Actual sheet is filled + shared.
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {/* ── HERO - the money story up top (ROAS + weekly revenue trend) ── */}
       <MarketingHero monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
@@ -325,8 +350,8 @@ export function MarketingTab() {
               label="Taken Calls" value={taken} formatted={String(taken)}
               target={prTaken}
               targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
-              notice={notUpdatedTotal > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdatedTotal) }) : undefined}
-              noticeTitle={notUpdatedTotal > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdatedTotal) }) : undefined}
+              notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
+              noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
@@ -419,23 +444,33 @@ export function MarketingTab() {
           </div>
         )}
 
-        {/* Booked-call drop-off transparency - surface the no-show + cancellation
-            counts that account for "Booked − Taken" so the CM knows where the
-            funnel is leaking, and the open-pending count from the past-
-            appointment-not-updated logic. Mention is plain-text, single row;
-            ratios already cover the meaningful KPIs. */}
-        {(noShows > 0 || cancellations > 0 || notUpdatedTotal > 0) && (
+        {/* Full Booked reconciliation - every booked call lands in exactly one
+            bucket, so the row visibly adds up to Booked. This is what tells the CM
+            where the funnel goes: Taken (call happened) + no-shows + cancellations
+            + not-updated (past, closer hasn't recorded an outcome) + upcoming
+            (future). Not-updated is amber - it's the data-quality gap that drags
+            the taken/show-up numbers down until the closer fills it in. */}
+        {calls > 0 && (
           <div className="pt-1 text-[11px] text-muted-foreground px-1">
-            <span className="font-medium">Booked − Taken breakdown:</span>{" "}
-            {noShows > 0 && <span>{noShows} no-show{noShows === 1 ? "" : "s"}</span>}
-            {noShows > 0 && (cancellations > 0 || notUpdatedTotal > 0) && <span> · </span>}
-            {cancellations > 0 && <span>{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>}
-            {cancellations > 0 && notUpdatedTotal > 0 && <span> · </span>}
-            {notUpdatedTotal > 0 && (
-              <span className="text-amber-600">
-                {notUpdatedTotal} past appointment{notUpdatedTotal === 1 ? "" : "s"} not yet updated by closer (empty sales outcome)
-              </span>
-            )}
+            <span className="font-medium">Booked breakdown:</span>{" "}
+            <span className="tabular-nums">{calls} booked</span>
+            {" = "}
+            <span className="tabular-nums">{taken} taken</span>
+            {" + "}
+            <span className="tabular-nums">{noShows} no-show{noShows === 1 ? "" : "s"}</span>
+            {" + "}
+            <span className="tabular-nums">{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>
+            {" + "}
+            <span
+              className={cn("tabular-nums", notUpdated > 0 && "text-amber-600")}
+              title="Past appointments still in Planned / Qualified / Gepland - the closer hasn't recorded an outcome. Not counted as taken."
+            >
+              {notUpdated} not updated
+            </span>
+            {" + "}
+            <span className="tabular-nums" title="Future appointments booked in this period - haven't happened yet.">
+              {upcoming} upcoming
+            </span>
           </div>
         )}
       </section>
