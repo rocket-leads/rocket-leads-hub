@@ -56,6 +56,15 @@ export interface MondayTargetsData {
   /** Future appointments booked in the period (appointment date >= today) - can't
    *  have happened yet, so excluded from Taken/no-show/cancellation. */
   upcoming: number
+  /** Marketing lens - leads CREATED in range that booked a call, and the same
+   *  appointment-status decomposition gated on creation date (not appointment
+   *  date). Reconciles: mktBooked = mktTaken + mktNotUpdated + mktNoShowCancel
+   *  + mktUpcoming. Used by the Marketing view's Booked Calls card + its chips. */
+  mktBooked: number
+  mktTaken: number
+  mktNotUpdated: number
+  mktNoShowCancel: number
+  mktUpcoming: number
   /** Closed-positive subset of taken (Deal + Signed). */
   deals: number
   /** Total contract value of deals closed in the period (Monday `numbers`). */

@@ -155,8 +155,30 @@ export function MarketingTab() {
   // Sales counts appointments scheduled in range (datum_afspraak, = `calls`).
   // Every cost/ratio below keys off this single figure so each lens is internally
   // consistent.
-  const booked = view === "marketing" ? (m?.leads ?? 0) : calls
+  // Marketing Booked = leads CREATED in range that booked a call (its own
+  // creation-date cohort, decomposing cleanly into the status chips below).
+  // Sales Booked = appointments scheduled in range (datum_afspraak).
   const isMarketing = view === "marketing"
+  const booked = isMarketing ? (m?.mktBooked ?? 0) : calls
+  const mktUpcoming = m?.mktUpcoming ?? 0
+  const mktNotUpdated = m?.mktNotUpdated ?? 0
+  const mktNoShowCancel = m?.mktNoShowCancel ?? 0
+  // Top-right chips on the Booked Calls card: a date-basis caption in both
+  // lenses, plus (Marketing only) the status breakdown of the creation-date
+  // cohort - upcoming / not-updated / no-show+cancel. mktBooked = taken +
+  // not-updated + no-show/cancel + upcoming, so these + taken reconcile.
+  type BookedNotice = { label: string; tone?: "warn" | "danger" | "muted"; title?: string }
+  const bookedNotices = (isMarketing
+    ? ([
+        { label: "creation date", tone: "muted", title: "Leads created in this period that booked a call - what the ads produced. Booked = taken + not-updated + no-show/cancel + upcoming." },
+        mktUpcoming > 0 ? { label: `${mktUpcoming} upcoming`, tone: "muted", title: "Future appointments - haven't happened yet." } : null,
+        mktNotUpdated > 0 ? { label: `${mktNotUpdated} not updated`, tone: "warn", title: "Past appointments the closer hasn't recorded an outcome for yet." } : null,
+        mktNoShowCancel > 0 ? { label: `${mktNoShowCancel} no-show / cancel`, tone: "danger", title: "Booked calls that dropped off before a taken call." } : null,
+      ] as Array<BookedNotice | null>)
+    : ([
+        { label: "appointment date", tone: "muted", title: "Calls scheduled in this period, counted on the appointment date." },
+      ] as Array<BookedNotice | null>)
+  ).filter((n): n is BookedNotice => n !== null)
   // Marketing ratios: Booking rate = Booked ÷ Opt-ins, Conversion = Deals ÷
   // Booked. Sales ratios (Show-up, Conversion, ROAS) reuse the shared ratio
   // calcs unchanged, so they're not recomputed here. Targets are the same
@@ -391,13 +413,7 @@ export function MarketingTab() {
               label="Booked Calls" value={booked} formatted={String(booked)}
               target={prCalls}
               targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
-              notices={[{
-                label: isMarketing ? "creation date" : "appointment date",
-                tone: "muted",
-                title: isMarketing
-                  ? "Counted on the lead's creation date - what the ads produced this period."
-                  : "Counted on the appointment date - calls scheduled in this period.",
-              }]}
+              notices={bookedNotices}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             {!isMarketing && (

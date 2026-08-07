@@ -448,12 +448,16 @@ export async function fetchMondayTargets(
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
     takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
+    // Marketing lens: leads CREATED in range that booked a call, decomposed by
+    // appointment status (gated on creation date, not appointment date). Sums as
+    // mktBooked = mktTaken + mktNotUpdated + mktNoShowCancel + mktUpcoming.
+    mktBooked: number; mktTaken: number; mktNotUpdated: number; mktNoShowCancel: number; mktUpcoming: number;
     industryMap: Record<string, { deals: number; revenue: number }>;
     closerMap: Record<string, CloserAcc>;
   }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, notUpdated: 0, upcoming: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
+    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, notUpdated: 0, upcoming: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, mktBooked: 0, mktTaken: 0, mktNotUpdated: 0, mktNoShowCancel: 0, mktUpcoming: 0, industryMap: {}, closerMap: {} }
   }
   // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
   // deal alongside the Stripe-side invoices.
@@ -506,6 +510,22 @@ export async function fetchMondayTargets(
     // period", independent of when/if they later booked a call.
     if (includeInTopLevel && isInRange(datumCreated, startDate, endDate)) {
       addTo(country, (a) => a.leads++)
+      // Marketing lens: of the leads created this period, the ones that booked a
+      // call (have an appointment date) - decomposed by appointment status the
+      // same way as the Sales funnel below, but gated on CREATION date. Reconciles
+      // exactly: mktBooked = mktTaken + mktNotUpdated + mktNoShowCancel + mktUpcoming.
+      if (datumAfspraak !== null) {
+        addTo(country, (a) => a.mktBooked++)
+        if (datumAfspraak >= todayStr) {
+          addTo(country, (a) => a.mktUpcoming++)
+        } else if (STATUS_MAP.notUpdated.includes(status)) {
+          addTo(country, (a) => a.mktNotUpdated++)
+        } else if (STATUS_MAP.noShows.includes(status) || STATUS_MAP.cancellations.includes(status)) {
+          addTo(country, (a) => a.mktNoShowCancel++)
+        } else {
+          addTo(country, (a) => a.mktTaken++)
+        }
+      }
     }
     // Booked → Taken funnel is APPOINTMENT-date based (datum_afspraak), NOT
     // creation date. Booked = every row with an appointment in range. Taken =

@@ -45,6 +45,9 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   // recompute with the corrected, mutually-exclusive funnel.
   if (typeof cached.all.notUpdated !== "number") return false
   if (typeof cached.all.upcoming !== "number") return false
+  // Marketing creation-date cohort (2026-08-07). A cache without it would render
+  // the Marketing Booked card + its status chips as 0. Force a recompute.
+  if (typeof cached.all.mktBooked !== "number") return false
 
   const closers = cached.all.closers
   if (!Array.isArray(closers)) return false
