@@ -209,7 +209,7 @@ Trengo/Monday/Slack worden onzichtbare backends.
 
 ## Toekomstige capability - Appointments tracking (uit Hub gehaald 2026-05)
 
-Per-klant afspraken (booked calls, taken calls, qualification rate, show-up rate, conversion rate, CPA) zijn in mei 2026 uit het klant-facing systeem verwijderd. Niet omdat het concept verkeerd is - het is letterlijk pilaar 2-4 uit het 4-pilaren framework - maar omdat de **onderliggende data niet betrouwbaar genoeg is** om beslissingen op te bouwen:
+Per-klant afspraken (scheduled calls, taken calls, qualification rate, show-up rate, conversion rate, CPA) zijn in mei 2026 uit het klant-facing systeem verwijderd. Niet omdat het concept verkeerd is - het is letterlijk pilaar 2-4 uit het 4-pilaren framework - maar omdat de **onderliggende data niet betrouwbaar genoeg is** om beslissingen op te bouwen:
 
 - Klanten houden Monday's lead-statussen (`Afspraak`, `Kennismaking gehad`, no-show, etc.) niet consistent bij. Sommige klanten doen niets, andere doen het 1 week wel en 2 weken niet.
 - Setters / AM's gebruiken eigen kolommen of laten leads gewoon staan na de afspraak.

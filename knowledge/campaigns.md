@@ -123,7 +123,7 @@ Geen van deze zijn actionable signalen over leadkwaliteit of efficiency. Daarom 
 
 **De ENIGE metrics die tellen:**
 1. **CPL (cost per lead)** = adSpend ÷ leads
-2. **CPA (cost per appointment / booked call)** = adSpend ÷ booked calls
+2. **CPA (cost per appointment / scheduled call)** = adSpend ÷ scheduled calls
 
 Deze normaliseren voor budget en laten echte efficiency zien - onafhankelijk van hoeveel er is uitgegeven.
 
@@ -1369,13 +1369,14 @@ to match the visual quality bar, not the content.
 
 CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose altijd terugtraceren naar de 4 pilaren:
 
-### Pilaar 1: CBC (Cost per Booked Call)
+### Pilaar 1: CBC (Cost per Scheduled Call)
+> Terminologie: "scheduled calls" = calls geteld op appointment date (vroeger "booked calls" in het Targets dashboard). "Booked calls" is nu gereserveerd voor de creation-date telling (marketing-lens). Zie company.md. CBC-acroniem blijft "CBC" voor de Settings target-key.
 - **Benchmark:** instelbaar per maand in Settings
 - **Off track = oorzaak:** creatives presteren niet, targeting is te breed/smal
 - **Optimalisatie:** nieuwe hooks, angles, formats testen. Itereren op winnende richting. 3-5 nieuwe variaties per week.
-- **Let op:** als CBC on track is maar booked calls off track → het probleem is **ad spend** (te laag), niet creative performance
+- **Let op:** als CBC on track is maar scheduled calls off track → het probleem is **ad spend** (te laag), niet creative performance
 
-### Pilaar 2: Qualification Rate (Qualified / Booked Calls)
+### Pilaar 2: Qualification Rate (Qualified / Scheduled Calls)
 - **Benchmark:** ≥75%
 - **Off track = oorzaak:** we bereiken de verkeerde mensen (ICP mismatch), ad messaging sluit niet aan
 - **Optimalisatie:** branche-specifieke ads, betere invalshoeken die de ICP direct aanspreken, kwalificatievragen in lead form toevoegen (budget, tijdlijn, beslisser)
@@ -1396,7 +1397,7 @@ CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose a
 ### Misalignment Detection
 - **Deal value gap:** als gemiddelde deal value structureel lager is dan verwacht (revenue target / deals target), kan het revenue target niet gehaald worden zelfs met genoeg deals. Oplossing: sales sturen naar HTO, kortingspraktijken reviewen.
 - **Funnel compensatie:** pilaren compenseren elkaar. Hoge show-up rate compenseert hoge CBC. Lage CBC compenseert lage conversion rate. Altijd het eindresultaat (ROAS) als toets gebruiken.
-- **Spend vs efficiency:** als CBC on track is en booked calls off track → niet de creatives aanpassen maar ad spend verhogen. De efficiency is bewezen, het volume is de bottleneck.
+- **Spend vs efficiency:** als CBC on track is en scheduled calls off track → niet de creatives aanpassen maar ad spend verhogen. De efficiency is bewezen, het volume is de bottleneck.
 
 ---
 

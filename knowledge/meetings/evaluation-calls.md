@@ -61,7 +61,7 @@ Bij elke evaluation moet AM (en straks AI) de performance terugbrengen naar de 4
 
 | Pilaar | Klant signaal | Wat checken |
 |---|---|---|
-| **CBC** (cost per booked call) | "Geen leads" / "leads zijn duur" | Creatives presteren? Refresh nodig? |
+| **CBC** (cost per scheduled call) | "Geen leads" / "leads zijn duur" | Creatives presteren? Refresh nodig? |
 | **Qualification rate** | "Verkeerde leads" / "geen ICP" | Targeting + ad messaging match? |
 | **Show-up rate** | "Mensen komen niet opdagen" | Reminder flow check, scheduling timing |
 | **Conversion rate** | "Wel afspraken maar geen deals" | Lead kwaliteit OF sales-issue klant |

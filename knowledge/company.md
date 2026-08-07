@@ -156,25 +156,31 @@ Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en
 - ~100 actieve klanten
 - Winstmarge: huidig ~25%, target 60%+
 
+**Terminologie: Booked calls vs Scheduled calls (belangrijk - niet door elkaar gebruiken):**
+- **Booked calls** = calls geteld op de **creation date** (wanneer de lead binnenkwam / de call boekte). Dit is de *marketing*-lens: "hoeveel calls hebben de ads deze periode geboekt?". In de Targets Hub = de Marketing-weergave.
+- **Scheduled calls** = calls geteld op de **appointment date** (wanneer de call gepland stond). Dit is de *sales*-lens: "hoeveel calls stonden er deze periode ingepland?". In de Targets Hub = de Sales-weergave. Dit is wat vroeger "booked calls" heette in het Targets dashboard.
+- Dezelfde call kan in beide tellingen voorkomen, maar op een andere datum. "Booked" = geboekt, "Scheduled" = ingepland.
+- De interne funnel + 4-pilaren hieronder worden gemeten op **appointment date**, dus = **scheduled calls**. (CBC's acroniem blijft "CBC" voor de Settings/UI target-key, maar staat nu voor Cost per Scheduled Call.)
+
 **Interne Marketing/Sales funnel (Rocket Leads zelf - Targets dashboard):**
-1. Ad Spend → 2. Booked Calls → 3. Qualified Calls → 4. Taken Calls → 5. Deals → 6. Revenue
+1. Ad Spend → 2. Scheduled Calls → 3. Qualified Calls → 4. Taken Calls → 5. Deals → 6. Revenue
 
 **4 pilaren die CPD en ROAS bepalen:**
 CPD en ROAS zijn OUTCOMES, nooit root causes. Ze worden bepaald door:
 
 | Pilaar | Benchmark | Off track = oorzaak | Optimalisatie lever |
 |---|---|---|---|
-| CBC (Cost per Booked Call) | Instelbaar (Settings) | Creatives, targeting, ad testing | Nieuwe hooks, angles, formats |
+| CBC (Cost per Scheduled Call) | Instelbaar (Settings) | Creatives, targeting, ad testing | Nieuwe hooks, angles, formats |
 | Qualification Rate | ≥75% | ICP mismatch, messaging | Branche-specifieke ads, lead form filters |
 | Show-up Rate | ≥80% | Reminders, lead warmth, scheduling | WhatsApp delivery audit, confirmation calls, booking window |
 | Conversion Rate | ≥30% | Sales/proposition, lead fit | Sales coaching, pricing, ICP fit |
 
 **ROAS target:** ≥4× (groen), <4× (rood)
 
-**Belangrijk:** Als CBC on track is maar booked calls off track → het probleem is ad spend (te laag), niet efficiency.
+**Belangrijk:** Als CBC on track is maar scheduled calls off track → het probleem is ad spend (te laag), niet efficiency.
 Als CBC/CQC off track zijn maar show-up rate hoog → CTC kan on track zijn, geen actie nodig op creatives.
 
-**Pro-rata targets:** Alle volume targets (booked calls, qualified, taken, deals, revenue) worden pro-rata berekend op basis van de huidige dag in de maand. Halverwege de maand = target/2.
+**Pro-rata targets:** Alle volume targets (scheduled calls, qualified, taken, deals, revenue) worden pro-rata berekend op basis van de huidige dag in de maand. Halverwege de maand = target/2.
 
 **Deal value misalignment:** Avg deal value wordt vergeleken met verwachte deal value (revenue target / deals target). Als deal value structureel lager is, kan het revenue target niet gehaald worden zelfs met genoeg deals.
 
