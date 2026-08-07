@@ -157,12 +157,15 @@ export function MarketingTab() {
   // consistent.
   const booked = view === "marketing" ? (m?.leads ?? 0) : calls
   const isMarketing = view === "marketing"
-  // Marketing ratios (Booking rate = Booked ÷ Opt-ins, Conversion = Deals ÷
-  // Booked) have no clean Settings target on the leads basis, so they show
-  // untargeted. Sales ratios (Show-up, Conversion, ROAS) reuse the shared
-  // ratio calcs unchanged, so they're not recomputed here.
+  // Marketing ratios: Booking rate = Booked ÷ Opt-ins, Conversion = Deals ÷
+  // Booked. Sales ratios (Show-up, Conversion, ROAS) reuse the shared ratio
+  // calcs unchanged, so they're not recomputed here. Targets are the same
+  // Settings ceilings in both lenses (Roy: "targets blijven altijd hetzelfde"),
+  // so we keep the red/green progress bars on the Marketing cards too.
   const bookingRate = optIns > 0 ? (booked / optIns) * 100 : 0
   const mktConvRate = booked > 0 ? (deals / booked) * 100 : 0
+  const bookingRateTarget = derivedT.bookingRate > 0 ? derivedT.bookingRate * 100 : undefined
+  const convRateTarget = derivedT.convRate > 0 ? derivedT.convRate * 100 : undefined
   // Grid columns: Sales is always 3. Marketing is 3 on the All-countries view
   // (Opt-ins · Booked · Deals) but drops to 2 under a country filter, since
   // opt-ins has no country attribution and hides.
@@ -386,8 +389,8 @@ export function MarketingTab() {
             )}
             <KpiCard
               label="Booked Calls" value={booked} formatted={String(booked)}
-              target={isMarketing ? undefined : prCalls}
-              targetFormatted={!isMarketing && prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
+              target={prCalls}
+              targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             {!isMarketing && (
@@ -427,8 +430,8 @@ export function MarketingTab() {
             <KpiCard
               label="CBC" value={hasMetaSpend ? safeDivide(spend, booked) : null}
               formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, booked)))}
-              target={!isMarketing && hasMetaSpend ? tgt?.cbc || undefined : undefined}
-              targetFormatted={!isMarketing && hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, booked)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
+              target={hasMetaSpend ? tgt?.cbc || undefined : undefined}
+              targetFormatted={hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, booked)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             {!isMarketing && (
@@ -483,6 +486,8 @@ export function MarketingTab() {
                       label={t("targets.kpi.appointment_booking_rate", locale)}
                       value={bookingRate}
                       formatted={`${bookingRate.toFixed(1)}%`}
+                      target={bookingRateTarget}
+                      targetFormatted={bookingRateTarget != null ? t("targets.kpi.target_of", locale, { value: `${bookingRate.toFixed(1)}%`, target: `${bookingRateTarget.toFixed(0)}%` }) : undefined}
                       variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
                     />
                   )}
@@ -490,6 +495,8 @@ export function MarketingTab() {
                     label="Conversion Rate"
                     value={mktConvRate}
                     formatted={`${mktConvRate.toFixed(1)}%`}
+                    target={convRateTarget}
+                    targetFormatted={convRateTarget != null ? t("targets.kpi.target_of", locale, { value: `${mktConvRate.toFixed(1)}%`, target: `${convRateTarget.toFixed(0)}%` }) : undefined}
                     variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
                   />
                   {roasKpi && <KpiCard {...roasKpi} isMtdPlaceholder={mondayMtdPlaceholder} />}
