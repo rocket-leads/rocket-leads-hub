@@ -22,6 +22,11 @@ interface KpiCardProps {
   notice?: string
   /** Tooltip text shown on hover of the notice chip */
   noticeTitle?: string
+  /** Small status chips stacked vertically in the top-right (each on its own
+   *  line). Used for the funnel-status breakdown on the Booked/Taken cards and
+   *  for the date-basis caption (e.g. "creation date" / "appointment date").
+   *  Tone: warn=amber, danger=red, muted=grey (default). */
+  notices?: Array<{ label: string; tone?: "warn" | "danger" | "muted"; title?: string }>
   /** True when the value shown is from the MTD placeholder, not the user's
    *  actual selected range. UI surfaces a small "MTD" pill + tones the value
    *  to muted so the user can tell it's a placeholder. */
@@ -63,8 +68,14 @@ function getBarColor(variant: string, value: number, target: number): string {
 //   - variant-aware tone (cost: lower=good; volume: higher=good)
 // Because of those extra features it stays its own component instead of
 // being a wrapper around KpiTile.
+const NOTICE_TONE: Record<"warn" | "danger" | "muted", string> = {
+  warn: "bg-yellow-500/15 text-yellow-500",
+  danger: "bg-red-500/15 text-red-600 dark:text-red-400",
+  muted: "bg-muted text-muted-foreground/70",
+}
+
 export const KpiCard = memo(function KpiCard({
-  label, value, formatted, target, targetFormatted, expected, expectedFormatted, isEstimated, notice, noticeTitle, isMtdPlaceholder, variant,
+  label, value, formatted, target, targetFormatted, expected, expectedFormatted, isEstimated, notice, noticeTitle, notices, isMtdPlaceholder, variant,
   isLoading, error, onRetry,
 }: KpiCardProps) {
   if (isLoading) {
@@ -108,7 +119,7 @@ export const KpiCard = memo(function KpiCard({
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">
           {label}
         </span>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-col items-end gap-1 shrink-0">
           {isMtdPlaceholder && (
             <span
               title="Showing MTD numbers while your selected range loads"
@@ -125,6 +136,18 @@ export const KpiCard = memo(function KpiCard({
               {notice}
             </span>
           )}
+          {notices?.map((n, i) => (
+            <span
+              key={i}
+              title={n.title}
+              className={cn(
+                "text-[9px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap",
+                NOTICE_TONE[n.tone ?? "muted"],
+              )}
+            >
+              {n.label}
+            </span>
+          ))}
           {isEstimated && (
             <span className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary">
               Expected

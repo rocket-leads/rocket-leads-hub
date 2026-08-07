@@ -391,6 +391,13 @@ export function MarketingTab() {
               label="Booked Calls" value={booked} formatted={String(booked)}
               target={prCalls}
               targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
+              notices={[{
+                label: isMarketing ? "creation date" : "appointment date",
+                tone: "muted",
+                title: isMarketing
+                  ? "Counted on the lead's creation date - what the ads produced this period."
+                  : "Counted on the appointment date - calls scheduled in this period.",
+              }]}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             {!isMarketing && (
@@ -400,6 +407,11 @@ export function MarketingTab() {
                 targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
                 notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
                 noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
+                notices={noShows + cancellations > 0 ? [{
+                  label: `${noShows + cancellations} no-show / cancel`,
+                  tone: "danger",
+                  title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Booked = Taken + Not-updated + these + Upcoming.`,
+                }] : undefined}
                 variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
               />
             )}
