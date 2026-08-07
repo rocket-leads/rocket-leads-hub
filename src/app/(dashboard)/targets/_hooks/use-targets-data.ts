@@ -1,7 +1,7 @@
 "use client"
 
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { format, startOfMonth } from "date-fns"
+import { useQuery } from "@tanstack/react-query"
+import { format } from "date-fns"
 import type {
   MondayTargetsByCountry, MetaTargetsByCountry, MondayTargetsData, MetaTargetsData,
   CountryKey, PlatformKey, GoogleAdsSpend, DateRange,
@@ -9,15 +9,6 @@ import type {
 
 function fmt(d: Date) {
   return format(d, "yyyy-MM-dd")
-}
-
-/** MTD range (1st of current month → today) - the cron pre-warms this exact
- *  window so it's effectively free to fetch. Used as placeholderData for the
- *  user's selected range, so the page never sits empty while the slow cold
- *  fetch (~2-3min) runs in the background. */
-function getMtdRange(): { startDate: string; endDate: string } {
-  const now = new Date()
-  return { startDate: fmt(startOfMonth(now)), endDate: fmt(now) }
 }
 
 const EMPTY_META: MetaTargetsData = { spend: 0, impressions: 0, clicks: 0, cpc: 0, cpm: 0, ctr: 0 }
@@ -28,29 +19,12 @@ export function useTargetsData(
   closer: string | null = null,
   platform: PlatformKey = "all",
 ) {
-  const queryClient = useQueryClient()
   const startDate = fmt(range.startDate)
   const endDate = fmt(range.endDate)
   // Normalise: empty / "All" → no filter. Keeps the cache key stable for the default view.
   const closerKey = closer && closer !== "All" ? closer : null
   const platformKey = platform !== "all" ? platform : null
   const filtered = !!closerKey || !!platformKey
-
-  const mtd = getMtdRange()
-  const isOnMtd = !filtered && startDate === mtd.startDate && endDate === mtd.endDate
-
-  // Always-on MTD query - fires in parallel with the selected-range query so
-  // the placeholderData below has something to fall back on. When the user is
-  // already on MTD, both queries share the same key and dedupe to one fetch.
-  const mtdMondayQuery = useQuery<MondayTargetsByCountry>({
-    queryKey: ["targets-monday", mtd.startDate, mtd.endDate, "all", "all"],
-    queryFn: () =>
-      fetch(`/api/targets/monday?startDate=${mtd.startDate}&endDate=${mtd.endDate}`, { cache: "no-store" }).then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch Monday data (MTD)")
-        return r.json()
-      }),
-    staleTime: 30 * 60 * 1000,
-  })
 
   const mondayQuery = useQuery<MondayTargetsByCountry>({
     queryKey: ["targets-monday", startDate, endDate, closerKey ?? "all", platformKey ?? "all"],
@@ -67,19 +41,6 @@ export function useTargetsData(
       })
     },
     staleTime: 30 * 60 * 1000,
-    // Fall back to the warm MTD data while the selected range fetches. Skipped
-    // when the user IS on MTD (placeholder == real) or when any filter is active
-    // (an unfiltered MTD slice would be misleading as a placeholder for a scoped view).
-    placeholderData: () => {
-      if (isOnMtd || filtered) return undefined
-      return queryClient.getQueryData<MondayTargetsByCountry>([
-        "targets-monday",
-        mtd.startDate,
-        mtd.endDate,
-        "all",
-        "all",
-      ])
-    },
   })
 
   const metaQuery = useQuery<MetaTargetsByCountry>({
@@ -132,10 +93,6 @@ export function useTargetsData(
   // (Google has no country attribution) - surface a note in the UI.
   const googleExcludedForCountry = platform !== "meta" && country !== "all" && googleSpend > 0
 
-  // `isPlaceholderData` is true when the tiles are showing MTD instead of the
-  // real selected range. UI uses this to tag tiles with a small "MTD" pill.
-  const mondayShowingMtdFallback = mondayQuery.isPlaceholderData
-
   return {
     monday,
     meta,
@@ -144,13 +101,6 @@ export function useTargetsData(
     mondayError: mondayQuery.error?.message ?? null,
     metaError: metaQuery.error?.message ?? null,
     isLoading: mondayQuery.isLoading || metaQuery.isLoading,
-    /** True while the Monday tiles are showing MTD-range data as a placeholder
-     *  for the user's actual selected range (still loading in background). */
-    mondayShowingMtdFallback,
-    // Also expose the MTD slice itself so a banner / reference line can use it
-    // without re-deriving from the query cache.
-    mondayMtd: (mtdMondayQuery.data?.[country] ?? null) as MondayTargetsData | null,
-    mtdLoading: mtdMondayQuery.isLoading,
     // Platform / spend-source signals for the UI.
     metaSpend,
     googleSpend,

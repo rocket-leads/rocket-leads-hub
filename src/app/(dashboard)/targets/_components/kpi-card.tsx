@@ -141,18 +141,33 @@ export const KpiCard = memo(function KpiCard({
               {notice}
             </span>
           )}
-          {notices?.map((n, i) => (
-            <span
-              key={i}
-              title={n.title}
+          {notices && notices.length > 0 && (
+            // >2 chips lay out 2-per-row (max 2 rows) so a long stack never
+            // bleeds into the progress bar below - Roy 2026-08-07: "ik wil niet
+            // dat die door die streep heen draait". ≤2 chips stay a simple
+            // right-aligned column.
+            <div
               className={cn(
-                "text-[9px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap",
-                NOTICE_TONE[n.tone ?? "muted"],
+                "gap-1",
+                notices.length > 2
+                  ? "grid grid-cols-[auto_auto] justify-items-end"
+                  : "flex flex-col items-end",
               )}
             >
-              {n.label}
-            </span>
-          ))}
+              {notices.map((n, i) => (
+                <span
+                  key={i}
+                  title={n.title}
+                  className={cn(
+                    "text-[9px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap",
+                    NOTICE_TONE[n.tone ?? "muted"],
+                  )}
+                >
+                  {n.label}
+                </span>
+              ))}
+            </div>
+          )}
           {isEstimated && (
             <span className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary">
               Expected

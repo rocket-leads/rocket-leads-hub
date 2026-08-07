@@ -131,11 +131,11 @@ export function MarketingTab() {
   const notUpdated = m?.notUpdated ?? 0
   const upcoming = m?.upcoming ?? 0
   const loading = data.mondayLoading || data.metaLoading
-  // True while every Monday-driven tile is rendering MTD-range numbers as
-  // placeholder for the still-loading selected range. Surface as a small
-  // amber pill on each affected tile so the user can tell the value isn't
-  // authoritative yet.
-  const mondayMtdPlaceholder = data.mondayShowingMtdFallback
+  // MTD placeholder removed 2026-08-07 (Roy: the date selector isn't MTD, so the
+  // "MTD" pill was confusing). Tiles now show a loading skeleton for the selected
+  // range instead of falling back to MTD numbers. Kept as a const so the existing
+  // isMtdPlaceholder props stay valid without touching every card.
+  const mondayMtdPlaceholder = false
 
   // Volume targets (opt-ins/calls/taken) are derived from ad-spend (= deals
   // × cpd) divided by the relevant cost ceiling. Only deals & revenue come
