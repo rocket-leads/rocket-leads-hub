@@ -110,16 +110,21 @@ export const KpiCard = memo(function KpiCard({
 
   return (
     <div className={cn(
-      "bg-card rounded-lg shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col h-full",
+      "relative bg-card rounded-lg shadow-[var(--shadow-sm)] px-5 py-4 flex flex-col h-full",
       isEstimated
         ? "border border-dashed border-primary/50"
         : "border border-border/60",
     )}>
-      <div className="flex items-start justify-between gap-3 mb-3">
+      {/* Label stays in flow (single line) so the headline value below sits at
+          the same vertical offset on every card. The status/date chips float in
+          the top-right corner (absolute) so a tall stack never pushes the value
+          down - Roy 2026-08-07: "de 3 van taken calls staat te ver naar onder". */}
+      <div className="mb-3 pr-16">
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground/70 font-medium">
           {label}
         </span>
-        <div className="flex flex-col items-end gap-1 shrink-0">
+      </div>
+      <div className="absolute top-4 right-5 flex flex-col items-end gap-1">
           {isMtdPlaceholder && (
             <span
               title="Showing MTD numbers while your selected range loads"
@@ -154,7 +159,6 @@ export const KpiCard = memo(function KpiCard({
             </span>
           )}
         </div>
-      </div>
       {/* MTD placeholder used to dim the value to text-muted-foreground/60
           but Roy 2026-05-23: "die moeten wel zwart" - the small MTD pill in
           the top-right is enough signal on its own, the headline number

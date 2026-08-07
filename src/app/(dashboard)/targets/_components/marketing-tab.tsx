@@ -160,20 +160,21 @@ export function MarketingTab() {
   // Sales Booked = appointments scheduled in range (datum_afspraak).
   const isMarketing = view === "marketing"
   const booked = isMarketing ? (m?.mktBooked ?? 0) : calls
+  const mktTaken = m?.mktTaken ?? 0
   const mktUpcoming = m?.mktUpcoming ?? 0
   const mktNotUpdated = m?.mktNotUpdated ?? 0
   const mktNoShowCancel = m?.mktNoShowCancel ?? 0
-  // Top-right chips on the Booked Calls card: a date-basis caption in both
-  // lenses, plus (Marketing only) the status breakdown of the creation-date
-  // cohort - upcoming / not-updated / no-show+cancel. mktBooked = taken +
-  // not-updated + no-show/cancel + upcoming, so these + taken reconcile.
+  // Top-right chips. Marketing "Booked Calls" (creation-date cohort) stacks its
+  // status breakdown - taken / no-show+cancel / not-updated / upcoming - each
+  // omitted when 0. They sum back to Booked. Sales "Scheduled Calls" just carries
+  // an "appointment date" caption (its own drop-off lives on the Taken card).
   type BookedNotice = { label: string; tone?: "warn" | "danger" | "muted"; title?: string }
   const bookedNotices = (isMarketing
     ? ([
-        { label: "creation date", tone: "muted", title: "Leads created in this period that booked a call - what the ads produced. Booked = taken + not-updated + no-show/cancel + upcoming." },
-        mktUpcoming > 0 ? { label: `${mktUpcoming} upcoming`, tone: "muted", title: "Future appointments - haven't happened yet." } : null,
+        mktTaken > 0 ? { label: `${mktTaken} taken`, tone: "muted", title: "Booked calls whose call took place with a recorded outcome." } : null,
+        mktNoShowCancel > 0 ? { label: `${mktNoShowCancel} no-show / cancel`, tone: "danger", title: "Booked calls that dropped off before the call took place." } : null,
         mktNotUpdated > 0 ? { label: `${mktNotUpdated} not updated`, tone: "warn", title: "Past appointments the closer hasn't recorded an outcome for yet." } : null,
-        mktNoShowCancel > 0 ? { label: `${mktNoShowCancel} no-show / cancel`, tone: "danger", title: "Booked calls that dropped off before a taken call." } : null,
+        mktUpcoming > 0 ? { label: `${mktUpcoming} upcoming`, tone: "muted", title: "Future appointments - haven't happened yet." } : null,
       ] as Array<BookedNotice | null>)
     : ([
         { label: "appointment date", tone: "muted", title: "Calls scheduled in this period, counted on the appointment date." },
@@ -410,7 +411,7 @@ export function MarketingTab() {
               />
             )}
             <KpiCard
-              label="Booked Calls" value={booked} formatted={String(booked)}
+              label={isMarketing ? "Booked Calls" : "Scheduled Calls"} value={booked} formatted={String(booked)}
               target={prCalls}
               targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
               notices={bookedNotices}
@@ -538,18 +539,18 @@ export function MarketingTab() {
           </div>
         )}
 
-        {/* Full Booked reconciliation - every booked call lands in exactly one
-            bucket, so the row visibly adds up to Booked. This is what tells the CM
-            where the funnel goes: Taken (call happened) + no-shows + cancellations
-            + not-updated (past, closer hasn't recorded an outcome) + upcoming
-            (future). Not-updated is amber - it's the data-quality gap that drags
-            the taken/show-up numbers down until the closer fills it in.
-            Sales-only: it reconciles the appointment-date Booked, which is the
-            Sales lens - in Marketing "Booked" means leads-created, a different set. */}
+        {/* Full Scheduled-calls reconciliation - every scheduled call lands in
+            exactly one bucket, so the row visibly adds up. This is what tells the
+            CM where the funnel goes: Taken (call happened) + no-shows +
+            cancellations + not-updated (past, closer hasn't recorded an outcome) +
+            upcoming (future). Not-updated is amber - the data-quality gap that
+            drags taken/show-up down until the closer fills it in. Sales-only: it
+            reconciles the appointment-date "Scheduled Calls"; in Marketing
+            "Booked Calls" is the creation-date cohort, a different set. */}
         {!isMarketing && calls > 0 && (
           <div className="pt-1 text-[11px] text-muted-foreground px-1">
-            <span className="font-medium">Booked breakdown:</span>{" "}
-            <span className="tabular-nums">{calls} booked</span>
+            <span className="font-medium">Scheduled breakdown:</span>{" "}
+            <span className="tabular-nums">{calls} scheduled</span>
             {" = "}
             <span className="tabular-nums">{taken} taken</span>
             {" + "}

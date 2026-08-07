@@ -57,9 +57,9 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
           <TableHeader>
             <TableRow>
               <TableHead>Closer</TableHead>
-              <TableHead className="text-right" title="Booked calls scheduled with this closer in the period (appointment date) - past + upcoming.">Booked</TableHead>
+              <TableHead className="text-right" title="Calls scheduled with this closer in the period (appointment date) - past + upcoming.">Scheduled</TableHead>
               <TableHead className="text-right">Taken</TableHead>
-              <TableHead className="text-right" title="Taken ÷ past appointments with an outcome (Booked minus Upcoming minus Not Updated). Upcoming + Not Updated are excluded - we can't tell if those showed up.">Show-up</TableHead>
+              <TableHead className="text-right" title="Taken ÷ past appointments with an outcome (Scheduled minus Upcoming minus Not Updated). Upcoming + Not Updated are excluded - we can't tell if those showed up.">Show-up</TableHead>
               <TableHead className="text-right" title="Past appointments still in Planned / Qualified / Gepland status - closer hasn't recorded an outcome. Not counted as Taken.">Not Updated</TableHead>
               <TableHead className="text-right" title="Future appointments scheduled in the period - pending workload">Upcoming</TableHead>
               <TableHead className="text-right">Deals</TableHead>
