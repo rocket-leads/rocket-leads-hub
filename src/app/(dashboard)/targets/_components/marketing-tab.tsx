@@ -58,6 +58,14 @@ export function MarketingTab() {
   const [country, setCountry] = useState<CountryKey>("all")
   const [platform, setPlatform] = useState<PlatformKey>("all")
   const [closer, setCloser] = useState<string>("All")
+  // Marketing vs Sales lens for the KPI matrix (metrics / costs / ratios rows only
+  // - the Breakdown section below always stays Sales-basis). The two lenses answer
+  // different questions and re-base "Booked calls":
+  //   Marketing = "what did the ads produce?" → Booked = leads CREATED in range,
+  //               shows Opt-ins · Booked · Deals, no Taken/Show-up.
+  //   Sales     = "what got scheduled & showed up?" → Booked = appointments in
+  //               range (datum_afspraak), shows Booked · Taken · Deals + Show-up.
+  const [view, setView] = useState<"marketing" | "sales">("marketing")
   const [stripeGapOpen, setStripeGapOpen] = useState(false)
   const { range, setRange, presets, applyPreset } = useDateRange()
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
@@ -142,15 +150,30 @@ export function MarketingTab() {
   // Ad spend target = pro-rata of (deals × cpd)
   const prSpend = derivedT.adSpend > 0 ? Math.round(proRata(derivedT.adSpend, range)) : undefined
 
-  // Appointment booking rate = booked calls / opt-ins. Target is a ratio (not
-  // pro-rata-able) - cpOptIn / cbc from Settings. The actual value uses live
-  // calls / optIns. Both are only meaningful on the "all" country view since
-  // opt-ins has no country attribution.
-  const bookingRate = optIns > 0 ? (calls / optIns) * 100 : 0
-  const bookingRateTarget = derivedT.bookingRate > 0 ? derivedT.bookingRate * 100 : undefined
+  // ── View-aware Booked + ratios ────────────────────────────────────────────
+  // Booked calls: Marketing counts leads CREATED in range (what the ads produced);
+  // Sales counts appointments scheduled in range (datum_afspraak, = `calls`).
+  // Every cost/ratio below keys off this single figure so each lens is internally
+  // consistent.
+  const booked = view === "marketing" ? (m?.leads ?? 0) : calls
+  const isMarketing = view === "marketing"
+  // Marketing ratios (Booking rate = Booked ÷ Opt-ins, Conversion = Deals ÷
+  // Booked) have no clean Settings target on the leads basis, so they show
+  // untargeted. Sales ratios (Show-up, Conversion, ROAS) reuse the shared
+  // ratio calcs unchanged, so they're not recomputed here.
+  const bookingRate = optIns > 0 ? (booked / optIns) * 100 : 0
+  const mktConvRate = booked > 0 ? (deals / booked) * 100 : 0
+  // Grid columns: Sales is always 3. Marketing is 3 on the All-countries view
+  // (Opt-ins · Booked · Deals) but drops to 2 under a country filter, since
+  // opt-ins has no country attribution and hides.
+  const showOptInCol = isMarketing && country === "all"
+  const matrixCols = isMarketing ? (country === "all" ? "grid-cols-3" : "grid-cols-2") : "grid-cols-3"
 
-  // Ratios group from calculations
+  // Ratios group from calculations (Show-up · Conversion · ROAS, Sales-basis).
+  // Sales view renders these as-is; Marketing view reuses only the ROAS card
+  // (identical in both lenses) and hand-rolls Booking rate + Conversion.
   const ratiosGroup = kpiGroups.find((g) => g.title === "Ratios")
+  const roasKpi = ratiosGroup?.kpis.find((k) => k.label === "ROAS")
 
   // Closer dropdown options. The backend always returns the full closers list
   // (per-closer aggregation ignores the `closer` filter), so the dropdown stays
@@ -306,7 +329,30 @@ export function MarketingTab() {
 
       {/* ── SECTION 2 - METRICS ── */}
       <section className="space-y-3">
-        <SectionHeader title={t("targets.section.metrics.title", locale)} />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <SectionHeader title={t("targets.section.metrics.title", locale)} />
+          {/* Marketing / Sales lens switch. Re-bases the three KPI rows below
+              (Booked = leads-created vs appointments-scheduled). Pill-selector
+              toggle chips - the one raw-button pattern the house rules allow. */}
+          <div className="inline-flex items-center rounded-lg border border-border/70 bg-muted/30 p-0.5" role="group" aria-label={locale === "nl" ? "Marketing- of sales-weergave" : "Marketing or sales view"}>
+            {(["marketing", "sales"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={cn(
+                  "h-8 rounded-md px-3.5 text-sm font-medium capitalize transition-colors",
+                  view === v
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1">{t("targets.section.volume_costs", locale)}</h3>
@@ -324,14 +370,12 @@ export function MarketingTab() {
             />
           </div>
 
-          {/* Volume + Cost + Ratio funnel - left column carries the opt-in
-              metrics (volume / cost / booking rate), the remaining 3 columns
-              are the booked → taken → deals funnel. Qualification stage
-              dropped 2026-05-27. Opt-in metrics are country-agnostic; they
-              hide off "all" so the 3-col remainder still renders cleanly. */}
-          {/* Row 1: Opt-ins | Booked | Taken | Deals */}
-          <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
-            {country === "all" && (
+          {/* Row 1 (metrics), view-aware:
+              Marketing → Opt-ins · Booked (leads created in range) · Deals
+              Sales     → Booked (appointments scheduled) · Taken · Deals
+              Opt-ins hides off the "all" view (no country attribution). */}
+          <div className={cn("grid gap-2", matrixCols)}>
+            {showOptInCol && (
               <KpiCard
                 label={t("targets.kpi.opt_ins", locale)}
                 value={optIns} formatted={String(optIns)}
@@ -341,19 +385,21 @@ export function MarketingTab() {
               />
             )}
             <KpiCard
-              label="Booked Calls" value={calls} formatted={String(calls)}
-              target={prCalls}
-              targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(calls), target: String(prCalls) }) : undefined}
+              label="Booked Calls" value={booked} formatted={String(booked)}
+              target={isMarketing ? undefined : prCalls}
+              targetFormatted={!isMarketing && prCalls != null ? t("targets.kpi.target_of", locale, { value: String(booked), target: String(prCalls) }) : undefined}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
-            <KpiCard
-              label="Taken Calls" value={taken} formatted={String(taken)}
-              target={prTaken}
-              targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
-              notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
-              noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
-            />
+            {!isMarketing && (
+              <KpiCard
+                label="Taken Calls" value={taken} formatted={String(taken)}
+                target={prTaken}
+                targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
+                notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
+                noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
+                variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
             <KpiCard
               label="Deals" value={deals} formatted={String(deals)}
               target={prDeals}
@@ -362,13 +408,13 @@ export function MarketingTab() {
             />
           </div>
 
-          {/* Row 2: Cost per Opt-in | CBC | CTC | CPD. CQC removed
-              2026-05-27 (qualification stage dropped). When Meta spend is
-              missing we render `-` via fmtCost() rather than a misleading
-              €0.00 green tile - and drop the target so the progress bar
-              doesn't suggest we're on track at zero. */}
-          <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
-            {country === "all" && (
+          {/* Row 2 (costs), view-aware and mirroring Row 1:
+              Marketing → Cost/opt-in · CBC (spend ÷ leads) · CPD
+              Sales     → CBC (spend ÷ appointments) · CTC (spend ÷ taken) · CPD
+              CBC has no valid Settings target under the Marketing (leads) basis,
+              so it shows untargeted there. `-` via fmtCost() when spend is missing. */}
+          <div className={cn("grid gap-2", matrixCols)}>
+            {showOptInCol && (
               <KpiCard
                 label={t("targets.kpi.cost_per_opt_in", locale)}
                 value={hasMetaSpend ? cpOptIn : null}
@@ -379,19 +425,21 @@ export function MarketingTab() {
               />
             )}
             <KpiCard
-              label="CBC" value={hasMetaSpend ? safeDivide(spend, calls) : null}
-              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, calls)))}
-              target={hasMetaSpend ? tgt?.cbc || undefined : undefined}
-              targetFormatted={hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, calls)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
+              label="CBC" value={hasMetaSpend ? safeDivide(spend, booked) : null}
+              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, booked)))}
+              target={!isMarketing && hasMetaSpend ? tgt?.cbc || undefined : undefined}
+              targetFormatted={!isMarketing && hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, booked)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
-            <KpiCard
-              label="CTC" value={hasMetaSpend ? safeDivide(spend, taken) : null}
-              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, taken)))}
-              target={hasMetaSpend ? tgt?.ctc || undefined : undefined}
-              targetFormatted={hasMetaSpend && tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
-              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
-            />
+            {!isMarketing && (
+              <KpiCard
+                label="CTC" value={hasMetaSpend ? safeDivide(spend, taken) : null}
+                formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, taken)))}
+                target={hasMetaSpend ? tgt?.ctc || undefined : undefined}
+                targetFormatted={hasMetaSpend && tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
+                variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
             <KpiCard
               label="CPD" value={hasMetaSpend ? safeDivide(spend, deals) : null}
               formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, deals)))}
@@ -419,27 +467,38 @@ export function MarketingTab() {
         {ratiosGroup && (
           <div className="pt-1">
             <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{ratiosGroup.title}</h3>
-            {/* Row 3 (ratios): Booking Rate | Show-up Rate | Conv Rate | ROAS.
-                Qualification Rate dropped 2026-05-27 along with the qualification
-                stage in the funnel. */}
-            <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
-              {country === "all" && (
-                <KpiCard
-                  label={t("targets.kpi.appointment_booking_rate", locale)}
-                  value={bookingRate}
-                  formatted={`${bookingRate.toFixed(1)}%`}
-                  target={bookingRateTarget}
-                  targetFormatted={bookingRateTarget != null ? t("targets.kpi.target_of", locale, { value: `${bookingRate.toFixed(1)}%`, target: `${bookingRateTarget.toFixed(0)}%` }) : undefined}
-                  variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
-                />
+            {/* Row 3 (ratios), view-aware:
+                Marketing → Booking Rate (Booked ÷ Opt-ins) · Conversion (Deals ÷
+                            Booked) · ROAS. Booking rate needs opt-ins, so it hides
+                            under a country filter (2-col, matching metrics/costs).
+                Sales     → Show-up (Taken ÷ Booked) · Conversion (Deals ÷ Taken) ·
+                            ROAS - the shared ratio calcs, unchanged.
+                Ratios mix Monday volume with Meta spend; when Monday serves MTD as
+                a placeholder the ratio is partially wrong - flag it via MTD pill. */}
+            <div className={cn("grid gap-2", matrixCols)}>
+              {isMarketing ? (
+                <>
+                  {showOptInCol && (
+                    <KpiCard
+                      label={t("targets.kpi.appointment_booking_rate", locale)}
+                      value={bookingRate}
+                      formatted={`${bookingRate.toFixed(1)}%`}
+                      variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+                    />
+                  )}
+                  <KpiCard
+                    label="Conversion Rate"
+                    value={mktConvRate}
+                    formatted={`${mktConvRate.toFixed(1)}%`}
+                    variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+                  />
+                  {roasKpi && <KpiCard {...roasKpi} isMtdPlaceholder={mondayMtdPlaceholder} />}
+                </>
+              ) : (
+                ratiosGroup.kpis.map((kpi) => (
+                  <KpiCard key={kpi.label} {...kpi} isMtdPlaceholder={mondayMtdPlaceholder} />
+                ))
               )}
-              {ratiosGroup.kpis.map((kpi) => (
-                // Ratios mix Monday volume with Meta spend; when Monday is
-                // serving MTD as placeholder the ratio is partially wrong
-                // (MTD leads ÷ selected-range spend) - flag it so the CM
-                // doesn't trust the number yet.
-                <KpiCard key={kpi.label} {...kpi} isMtdPlaceholder={mondayMtdPlaceholder} />
-              ))}
             </div>
           </div>
         )}
@@ -449,8 +508,10 @@ export function MarketingTab() {
             where the funnel goes: Taken (call happened) + no-shows + cancellations
             + not-updated (past, closer hasn't recorded an outcome) + upcoming
             (future). Not-updated is amber - it's the data-quality gap that drags
-            the taken/show-up numbers down until the closer fills it in. */}
-        {calls > 0 && (
+            the taken/show-up numbers down until the closer fills it in.
+            Sales-only: it reconciles the appointment-date Booked, which is the
+            Sales lens - in Marketing "Booked" means leads-created, a different set. */}
+        {!isMarketing && calls > 0 && (
           <div className="pt-1 text-[11px] text-muted-foreground px-1">
             <span className="font-medium">Booked breakdown:</span>{" "}
             <span className="tabular-nums">{calls} booked</span>

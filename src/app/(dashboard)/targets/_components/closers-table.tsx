@@ -57,9 +57,9 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
           <TableHeader>
             <TableRow>
               <TableHead>Closer</TableHead>
-              <TableHead className="text-right" title="Past appointments scheduled with this closer (all statuses)">Qualified</TableHead>
+              <TableHead className="text-right" title="Booked calls scheduled with this closer in the period (appointment date) - past + upcoming.">Booked</TableHead>
               <TableHead className="text-right">Taken</TableHead>
-              <TableHead className="text-right" title="Taken ÷ (Qualified − Not Updated). Not Updated is excluded from both sides - we can't tell if those showed up.">Show-up</TableHead>
+              <TableHead className="text-right" title="Taken ÷ past appointments with an outcome (Booked minus Upcoming minus Not Updated). Upcoming + Not Updated are excluded - we can't tell if those showed up.">Show-up</TableHead>
               <TableHead className="text-right" title="Past appointments still in Planned / Qualified / Gepland status - closer hasn't recorded an outcome. Not counted as Taken.">Not Updated</TableHead>
               <TableHead className="text-right" title="Future appointments scheduled in the period - pending workload">Upcoming</TableHead>
               <TableHead className="text-right">Deals</TableHead>
@@ -77,7 +77,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
               return (
                 <TableRow key={row.closer}>
                   <TableCell className={cn("truncate max-w-[140px]", isUnassigned ? "text-muted-foreground/60 italic" : "text-muted-foreground")}>{row.closer}</TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">{row.qualifiedCalls}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{row.qualifiedCalls + row.upcomingCalls}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{row.takenCalls}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums text-muted-foreground">{row.qualifiedCalls > 0 ? formatPercent(showUp) : "-"}</TableCell>
                   <TableCell className={cn("text-right font-mono tabular-nums", row.notUpdated > 0 ? "text-[var(--st-warn)]" : "text-muted-foreground/40")}>{row.notUpdated > 0 ? row.notUpdated : "-"}</TableCell>
@@ -93,7 +93,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
           <TableFooter>
             <TableRow>
               <TableCell className="font-semibold">Total</TableCell>
-              <TableCell className="text-right font-mono font-bold tabular-nums">{totalQualified}</TableCell>
+              <TableCell className="text-right font-mono font-bold tabular-nums">{totalQualified + totalUpcoming}</TableCell>
               <TableCell className="text-right font-mono font-bold tabular-nums">{totalTaken}</TableCell>
               <TableCell className="text-right font-mono font-bold tabular-nums">{totalQualified > 0 ? formatPercent(totalShowUp) : "-"}</TableCell>
               <TableCell className={cn("text-right font-mono font-bold tabular-nums", totalNotUpdated > 0 ? "text-[var(--st-warn)]" : "text-muted-foreground/40")}>{totalNotUpdated > 0 ? totalNotUpdated : "-"}</TableCell>
