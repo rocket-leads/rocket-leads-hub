@@ -513,7 +513,18 @@ async function loadSelectedCampaigns(
   // lookup just wants to know "does this client have ANY selected campaign?")
   // - the cron handles auto-selection daily so we don't need to do it on every
   // request, and the Meta fetch makes this the hottest cost in the route.
-  if (!options.skipAutoSelect) {
+  // Throttle the auto-select to at most once/hour across ALL requests. It hits
+  // Meta (the hottest cost in this route) and the daily cron is the real backstop
+  // - this only tops up newly-active campaigns between cron runs, so hourly is
+  // plenty. readCache with a TTL returns null once the last run is older than the
+  // window; we stamp the run before doing the work so concurrent requests don't
+  // all pile in. Roy 2026-08-08: previously ran on every live-fetch (cache miss).
+  const AUTOSELECT_THROTTLE_MS = 60 * 60 * 1000
+  const ranRecently = !options.skipAutoSelect
+    ? await readCache<number>("kpi_autoselect_last_run", AUTOSELECT_THROTTLE_MS)
+    : 1
+  if (!options.skipAutoSelect && !ranRecently) {
+    void writeCache("kpi_autoselect_last_run", Date.now())
     try {
       const { autoSelectActiveCampaignsForNonRlClients } = await import("@/lib/clients/auto-select-non-rl-campaigns")
       const candidates = (clientRows ?? [])

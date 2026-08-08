@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -1687,16 +1687,22 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     [clients, cmFilter]
   )
 
+  // KPI query is keyed on ALL clients (not the CM-filtered subset) with a sorted,
+  // stable key, so switching the Campaign-Manager filter is a pure client-side
+  // filter (rows below read from this full map) instead of a fresh per-client
+  // Meta + Monday refetch. The default view already fetches everyone, so this
+  // adds no cost - it just stops the filter from re-paying for data we have.
   const kpiClients = useMemo(
     () =>
-      filteredClients
+      clients
         .filter((c) => c.metaAdAccountId || c.clientBoardId)
         .map((c) => ({
           mondayItemId: c.mondayItemId,
           metaAdAccountId: c.metaAdAccountId || null,
           clientBoardId: c.clientBoardId || null,
-        })),
-    [filteredClients]
+        }))
+        .sort((a, b) => a.mondayItemId.localeCompare(b.mondayItemId)),
+    [clients]
   )
 
   const kpiQuery = useQuery<Record<string, KpiSummary>>({
@@ -1710,6 +1716,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     enabled: kpiClients.length > 0,
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   })
 
   const lastUpdated = kpiQuery.dataUpdatedAt
