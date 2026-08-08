@@ -92,6 +92,12 @@ export async function GET(req: NextRequest) {
     status.delivery = "failed"
   }
 
+  // Flush the MTD writes NOW, before the (slower) preset warming below. Otherwise
+  // a preset fetch that runs long could push the function past maxDuration and the
+  // MTD writes - queued after it - would never land, breaking the thing this cron
+  // exists to guarantee. Presets are a best-effort bonus on top of a warm MTD.
+  await Promise.all(writes)
+
   // Warm the rolling-window presets (Last 7/14/30 Days, Last 3 Months) so the
   // dashboard's default range and preset switches hit the warm per-range cache
   // (`targets_monday:START:END`) instead of paying the cold board fetch. The
