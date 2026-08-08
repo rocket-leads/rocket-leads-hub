@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import { format } from "date-fns"
 import type {
   MondayTargetsByCountry, MetaTargetsByCountry, MondayTargetsData, MetaTargetsData,
@@ -41,6 +41,9 @@ export function useTargetsData(
       })
     },
     staleTime: 30 * 60 * 1000,
+    // Keep the previous range's data on screen while the new range loads, so a
+    // date switch updates in place instead of flashing skeletons.
+    placeholderData: keepPreviousData,
   })
 
   const metaQuery = useQuery<MetaTargetsByCountry>({
@@ -50,6 +53,9 @@ export function useTargetsData(
       return r.json()
     }),
     staleTime: 30 * 60 * 1000,
+    // Keep the previous range's data on screen while the new range loads, so a
+    // date switch updates in place instead of flashing skeletons.
+    placeholderData: keepPreviousData,
   })
 
   // Google Ads spend (from the Actual sheet) - country-agnostic single total.
@@ -60,6 +66,9 @@ export function useTargetsData(
       return r.json()
     }),
     staleTime: 30 * 60 * 1000,
+    // Keep the previous range's data on screen while the new range loads, so a
+    // date switch updates in place instead of flashing skeletons.
+    placeholderData: keepPreviousData,
   })
 
   // Pick the right country slice (no re-fetch needed). Monday is already

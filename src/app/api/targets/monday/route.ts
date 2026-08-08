@@ -124,11 +124,16 @@ export async function GET(request: Request) {
   // Arbitrary current-period ranges (e.g. "Last 7 days", "1 May – 18 May") miss both
   // the MTD warm cache above and the historical-month cache. Without this, every load
   // of a custom range pays the full Monday board fetch + Stripe cross-check (~5–10s).
-  // A short-TTL keyed cache makes repeat loads of the same range instant - and since
-  // multiple users typically land on the same default windows, the second visitor is
-  // free even when the first paid for it.
+  // A keyed cache makes repeat loads of the same range instant.
+  //
+  // TTL bumped 5min → 6h (2026-08-08): the rolling presets (Last 7/14/30 Days,
+  // Last 3 Months) are now cron-warmed every 30min by `refresh-targets`, so a
+  // read always gets ≤30min-old data for those and stays instant between visits.
+  // The longer TTL also keeps ad-hoc custom ranges warm for the rest of the day
+  // (they end at yesterday, so intraday staleness doesn't apply); the refresh
+  // button + realtime invalidation force a recompute when the data actually moves.
   const rangeCacheKey = `targets_monday:${startDate}:${endDate}`
-  const RANGE_CACHE_TTL_MS = 5 * 60 * 1000
+  const RANGE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
   if (!filtered && !forceRefresh) {
     const cached = await readCache<MondayTargetsByCountry>(rangeCacheKey, RANGE_CACHE_TTL_MS)
     if (cached && hasFreshSchema(cached)) {

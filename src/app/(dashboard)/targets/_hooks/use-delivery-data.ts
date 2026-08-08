@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import type { DeliveryOverview } from "@/types/targets"
 
 export function useDeliveryData(startDate: string, endDate: string) {
@@ -11,6 +11,7 @@ export function useDeliveryData(startDate: string, endDate: string) {
       return r.json()
     }),
     staleTime: 30 * 60 * 1000,
+    placeholderData: keepPreviousData,
   })
 
   return {

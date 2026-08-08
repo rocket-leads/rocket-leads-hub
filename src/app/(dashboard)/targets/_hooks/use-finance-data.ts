@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import type { FinanceOverview, CostData, ProfitOverview } from "@/types/targets"
 
 /**
@@ -17,6 +17,7 @@ export function useFinanceData(startDate: string, endDate: string, year: number,
       return r.json()
     }),
     staleTime: 30 * 60 * 1000,
+    placeholderData: keepPreviousData,
   })
 
   const costsQuery = useQuery<CostData>({
@@ -26,6 +27,7 @@ export function useFinanceData(startDate: string, endDate: string, year: number,
       return r.json()
     }),
     staleTime: 15 * 60 * 1000,
+    placeholderData: keepPreviousData,
   })
 
   const profit = useMemo<ProfitOverview | null>(() => {

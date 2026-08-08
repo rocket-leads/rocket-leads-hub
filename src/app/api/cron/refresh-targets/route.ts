@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { format, subDays, startOfMonth, subMonths } from "date-fns"
 import { writeCache } from "@/lib/cache"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import {
@@ -90,6 +91,36 @@ export async function GET(req: NextRequest) {
     console.error("[refresh-targets] delivery failed:", deliveryResult.reason)
     status.delivery = "failed"
   }
+
+  // Warm the rolling-window presets (Last 7/14/30 Days, Last 3 Months) so the
+  // dashboard's default range and preset switches hit the warm per-range cache
+  // (`targets_monday:START:END`) instead of paying the cold board fetch. The
+  // board items are already cached in-process from the MTD fetch above, so each
+  // preset only re-aggregates (+ its own Stripe cross-check). Ranges + date
+  // formatting mirror use-date-range.ts exactly so the keys line up with what
+  // the client sends. All end at yesterday (source data is complete to yesterday).
+  const fmt = (d: Date) => format(d, "yyyy-MM-dd")
+  const now = new Date()
+  const yesterday = fmt(subDays(now, 1))
+  const presetRanges: Array<{ label: string; start: string; end: string }> = [
+    { label: "l7d", start: fmt(subDays(now, 7)), end: yesterday },
+    { label: "l14d", start: fmt(subDays(now, 14)), end: yesterday },
+    { label: "l30d", start: fmt(subDays(now, 30)), end: yesterday },
+    { label: "l3m", start: fmt(startOfMonth(subMonths(now, 2))), end: yesterday },
+  ]
+  const presetResults = await Promise.allSettled(
+    presetRanges.map((r) => fetchMondayTargets(r.start, r.end)),
+  )
+  presetResults.forEach((res, i) => {
+    const r = presetRanges[i]
+    if (res.status === "fulfilled") {
+      writes.push(writeCache(`targets_monday:${r.start}:${r.end}`, res.value))
+      status[`preset_${r.label}`] = "ok"
+    } else {
+      console.error(`[refresh-targets] preset ${r.label} failed:`, res.reason)
+      status[`preset_${r.label}`] = "failed"
+    }
+  })
 
   await Promise.all(writes)
   return NextResponse.json({ ok: true, status })
