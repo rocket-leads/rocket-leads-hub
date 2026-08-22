@@ -422,13 +422,30 @@ export function MarketingTab() {
                 label="Taken Calls" value={taken} formatted={String(taken)}
                 target={prTaken}
                 targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
-                notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
-                noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
-                notices={noShows + cancellations > 0 ? [{
-                  label: `${noShows + cancellations} no-show / cancel`,
-                  tone: "danger",
-                  title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Booked = Taken + Not-updated + these + Upcoming.`,
-                }] : undefined}
+                // Every scheduled call lands in exactly one of five mutually-
+                // exclusive buckets, so the Taken value + these chips ALWAYS sum
+                // back to Scheduled Calls: taken + no-show/cancel + not-updated +
+                // upcoming = scheduled. Upcoming (future appointments) was missing
+                // before, which left the card short whenever calls were booked
+                // ahead in the range - Roy 2026-08-22: "die rekensom moet ALTIJD
+                // kloppen, waar blijven de overige 2?".
+                notices={[
+                  noShows + cancellations > 0 ? {
+                    label: `${noShows + cancellations} no-show / cancel`,
+                    tone: "danger" as const,
+                    title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Scheduled = Taken + no-show/cancel + Not-updated + Upcoming.`,
+                  } : null,
+                  notUpdated > 0 ? {
+                    label: t("targets.kpi.not_updated", locale, { n: String(notUpdated) }),
+                    tone: "warn" as const,
+                    title: t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }),
+                  } : null,
+                  upcoming > 0 ? {
+                    label: `${upcoming} upcoming`,
+                    tone: "muted" as const,
+                    title: "Future appointments booked in this period - haven't happened yet. Scheduled = Taken + no-show/cancel + Not-updated + Upcoming.",
+                  } : null,
+                ].filter((n): n is { label: string; tone: "warn" | "danger" | "muted"; title: string } => n !== null)}
                 variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
               />
             )}
