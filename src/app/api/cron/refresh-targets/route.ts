@@ -8,6 +8,7 @@ import {
   fetchFinance,
   fetchCosts,
   fetchDelivery,
+  fetchGoogleAdsSpend,
   getMtdRange,
 } from "@/lib/targets/fetchers"
 
@@ -99,12 +100,16 @@ export async function GET(req: NextRequest) {
   await Promise.all(writes)
 
   // Warm the rolling-window presets (Last 7/14/30 Days, Last 3 Months) so the
-  // dashboard's default range and preset switches hit the warm per-range cache
-  // (`targets_monday:START:END`) instead of paying the cold board fetch. The
-  // board items are already cached in-process from the MTD fetch above, so each
-  // preset only re-aggregates (+ its own Stripe cross-check). Ranges + date
-  // formatting mirror use-date-range.ts exactly so the keys line up with what
-  // the client sends. All end at yesterday (source data is complete to yesterday).
+  // dashboard's default range and preset switches hit the warm per-range caches
+  // instead of paying a cold live fetch. We warm ALL THREE data sources per
+  // preset - Monday (`targets_monday:START:END`), Meta (`targets_meta:START:END`)
+  // and Google Ads (`targets_google_ads:START:END`) - because the Marketing/Sales
+  // tabs read all three and a cold Meta hit was the main reason a preset switch
+  // (esp. the L7D default) lagged even though Monday painted instantly. Monday's
+  // board items are already cached in-process from the MTD fetch above, so its
+  // preset fetch only re-aggregates; Meta + Google are independent API/sheet reads.
+  // Ranges + date formatting mirror use-date-range.ts exactly so the keys line up
+  // with what the client sends. All end at yesterday (source data complete to then).
   const fmt = (d: Date) => format(d, "yyyy-MM-dd")
   const now = new Date()
   const yesterday = fmt(subDays(now, 1))
@@ -114,6 +119,7 @@ export async function GET(req: NextRequest) {
     { label: "l30d", start: fmt(subDays(now, 30)), end: yesterday },
     { label: "l3m", start: fmt(startOfMonth(subMonths(now, 2))), end: yesterday },
   ]
+
   const presetResults = await Promise.allSettled(
     presetRanges.map((r) => fetchMondayTargets(r.start, r.end)),
   )
@@ -125,6 +131,43 @@ export async function GET(req: NextRequest) {
     } else {
       console.error(`[refresh-targets] preset ${r.label} failed:`, res.reason)
       status[`preset_${r.label}`] = "failed"
+    }
+  })
+
+  // Meta presets - apply the same all-zero guard as the MTD write so a transient
+  // empty payload never poisons a preset cache.
+  const metaPresetResults = await Promise.allSettled(
+    presetRanges.map((r) => fetchMetaTargets(r.start, r.end)),
+  )
+  metaPresetResults.forEach((res, i) => {
+    const r = presetRanges[i]
+    if (res.status === "fulfilled") {
+      const total = res.value.all
+      const hasSignal = (total?.spend ?? 0) > 0 || (total?.impressions ?? 0) > 0 || (total?.clicks ?? 0) > 0
+      if (hasSignal) {
+        writes.push(writeCache(`targets_meta:${r.start}:${r.end}`, res.value))
+        status[`preset_meta_${r.label}`] = "ok"
+      } else {
+        status[`preset_meta_${r.label}`] = "empty-skipped"
+      }
+    } else {
+      console.error(`[refresh-targets] preset meta ${r.label} failed:`, res.reason)
+      status[`preset_meta_${r.label}`] = "failed"
+    }
+  })
+
+  // Google Ads presets - fetchGoogleAdsSpend never throws; skip caching a read
+  // that carries an error so a range doesn't show €0 for the whole TTL.
+  const googlePresetResults = await Promise.allSettled(
+    presetRanges.map((r) => fetchGoogleAdsSpend(r.start, r.end)),
+  )
+  googlePresetResults.forEach((res, i) => {
+    const r = presetRanges[i]
+    if (res.status === "fulfilled" && !res.value.error) {
+      writes.push(writeCache(`targets_google_ads:${r.start}:${r.end}`, res.value))
+      status[`preset_google_${r.label}`] = "ok"
+    } else {
+      status[`preset_google_${r.label}`] = res.status === "fulfilled" ? "error-skipped" : "failed"
     }
   })
 
