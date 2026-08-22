@@ -328,7 +328,13 @@ export function CreateInvoiceDialog({
       const pres = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: Number(daysUntilDue), mode }),
+        body: JSON.stringify({
+          action: "preview",
+          items: cleaned,
+          daysUntilDue: Number(daysUntilDue),
+          mode,
+          ...(mode === "monthly" && nextPaymentDate ? { nextCycleDate: nextPaymentDate } : {}),
+        }),
       })
       const pdata = (await pres.json().catch(() => ({}))) as (InvoiceDraftPreview & { ok: true }) | { ok?: false; error?: string }
       if (pres.ok && "ok" in pdata && pdata.ok === true) {
@@ -397,7 +403,13 @@ export function CreateInvoiceDialog({
       const res = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: days, mode }),
+        body: JSON.stringify({
+          action: "preview",
+          items: cleaned,
+          daysUntilDue: days,
+          mode,
+          ...(mode === "monthly" && nextPaymentDate ? { nextCycleDate: nextPaymentDate } : {}),
+        }),
       })
       const data = (await res.json().catch(() => ({}))) as
         | (InvoiceDraftPreview & { ok: true })

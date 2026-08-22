@@ -584,11 +584,17 @@ export type CreateInvoiceInput = {
   currency?: string
   /** Billing cycle start date (`YYYY-MM-DD`) that this invoice covers. When
    *  set, every line item is tagged with Stripe's `period.start`/`period.end`
-   *  (cycle_start → cycle_start + 1 month - 1 day) and the line description
-   *  gets a "(26 May – 25 Jun 2026)" suffix so the customer can see exactly
-   *  which period they're paying for. Omit when finance doesn't have a
-   *  cycle yet - the invoice just won't carry a period block. */
+   *  and the line description gets a "(26 May – 25 Jun 2026)" suffix so the
+   *  customer can see exactly which period they're paying for. Omit when
+   *  finance doesn't have a cycle yet - the invoice just won't carry a period
+   *  block. */
   cycleStartDate?: string | null
+  /** Next cycle start date (`YYYY-MM-DD`) - the date the payment cycle
+   *  advances to on this send. Together with `cycleStartDate` it defines the
+   *  period END (next cycle − 1 day), so a quarterly invoice reads
+   *  "(28 Aug – 27 Nov 2026)" instead of a hardcoded 1-month span. When
+   *  omitted the period falls back to cycle_start + 1 month (monthly default). */
+  nextCycleDate?: string | null
 }
 
 export type CreateInvoiceResult = {
@@ -658,7 +664,7 @@ export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<In
 
   const stripe = await getStripe()
   const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
-  const period = resolveBillingPeriod(input.cycleStartDate ?? null)
+  const period = resolveBillingPeriod(input.cycleStartDate ?? null, input.nextCycleDate ?? null)
 
   const [customer, taxIds] = await Promise.all([
     stripe.customers.retrieve(input.customerId),
@@ -727,7 +733,7 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   const stripe = await getStripe()
   const currency = (input.currency ?? "eur").toLowerCase()
   const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
-  const period = resolveBillingPeriod(input.cycleStartDate ?? null)
+  const period = resolveBillingPeriod(input.cycleStartDate ?? null, input.nextCycleDate ?? null)
 
   // Stripe `automatic_tax` handles VAT end-to-end: it looks up the customer's
   // tax IDs + address, applies BG origin rules (RL is BG-registered,
@@ -787,31 +793,55 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
 }
 
 /**
- * Compute the billing period covered by an invoice given its cycle start.
- * The Rocket Leads cadence is monthly, so the period runs from cycle_start
- * to the day BEFORE the next cycle start - i.e. 26 May → 25 Jun (not 26 Jun)
+ * Compute the billing period covered by an invoice given its cycle start
+ * and (optionally) the next cycle start.
+ *
+ * The period runs from cycle_start to the day BEFORE the NEXT cycle start,
  * so two consecutive periods don't visually overlap on the customer's bank
- * statement.
+ * statement. The length is driven by the actual cadence:
+ *   - Monthly client (next cycle = +1 month): 28 Aug → 27 Sep.
+ *   - Quarterly client (next cycle = +3 months): 28 Aug → 27 Nov.
+ *
+ * `nextCycleDate` (the date the cycle advances to on this send) is the
+ * authoritative period end. When it's missing/invalid we fall back to the
+ * legacy +1-month assumption so callers that don't know the next date (one-
+ * offs, legacy paths) still get a sensible monthly label rather than nothing.
  *
  * Returns null when the cycle string is empty or malformed. Caller checks
  * for null and omits the period block in that case.
  */
-function resolveBillingPeriod(
+// Exported for unit tests (date math is the load-bearing part of the invoice
+// period suffix). Not part of the public integration surface.
+export function resolveBillingPeriod(
   cycleStartDate: string | null,
+  nextCycleDate?: string | null,
 ): { unixStart: number; unixEnd: number; label: string } | null {
   if (!cycleStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(cycleStartDate)) return null
   const [y, m, d] = cycleStartDate.split("-").map(Number)
   // UTC math - same approach as `addMonthsIso` in clients/billing-cycle.ts.
   const startUtcMs = Date.UTC(y, m - 1, d)
-  // End = same-day next month, then -1 day → "25 Jun" for a 26 May cycle.
-  // Clamp the day to the target month's last day so 31 Jan + 1mo - 1d
-  // becomes 27/28 Feb (not 30 Feb).
-  const totalMonths = m - 1 + 1
-  const endYear = y + Math.floor(totalMonths / 12)
-  const endMonthIdx = ((totalMonths % 12) + 12) % 12
-  const lastDayNextMonth = new Date(Date.UTC(endYear, endMonthIdx + 1, 0)).getUTCDate()
-  const endDay = Math.min(d, lastDayNextMonth)
-  const endUtcMs = Date.UTC(endYear, endMonthIdx, endDay) - 24 * 60 * 60 * 1000
+
+  // Preferred path: end = (next cycle start − 1 day). Only trust it when it's
+  // a valid date strictly AFTER the cycle start - a same/earlier date would
+  // produce a zero/negative period, so we fall through to the monthly default.
+  let endUtcMs: number | null = null
+  if (nextCycleDate && /^\d{4}-\d{2}-\d{2}$/.test(nextCycleDate)) {
+    const [ny, nm, nd] = nextCycleDate.split("-").map(Number)
+    const nextUtcMs = Date.UTC(ny, nm - 1, nd)
+    if (nextUtcMs > startUtcMs) endUtcMs = nextUtcMs - 24 * 60 * 60 * 1000
+  }
+
+  if (endUtcMs === null) {
+    // Fallback: same-day next month, then -1 day → "25 Jun" for a 26 May
+    // cycle. Clamp the day to the target month's last day so 31 Jan + 1mo - 1d
+    // becomes 27/28 Feb (not 30 Feb).
+    const totalMonths = m - 1 + 1
+    const endYear = y + Math.floor(totalMonths / 12)
+    const endMonthIdx = ((totalMonths % 12) + 12) % 12
+    const lastDayNextMonth = new Date(Date.UTC(endYear, endMonthIdx + 1, 0)).getUTCDate()
+    const endDay = Math.min(d, lastDayNextMonth)
+    endUtcMs = Date.UTC(endYear, endMonthIdx, endDay) - 24 * 60 * 60 * 1000
+  }
 
   // Stripe expects period boundaries in Unix seconds (not ms).
   const unixStart = Math.floor(startUtcMs / 1000)

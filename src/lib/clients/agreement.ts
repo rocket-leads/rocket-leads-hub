@@ -178,7 +178,7 @@ function isFollowUpByRL(status: string): boolean {
 /** Tolerant euro parser - Monday returns values like "1500", "€1.500",
  *  "1.500,00" depending on the column type. Strips anything that isn't a
  *  digit or sign and returns 0 when nothing parseable is left. */
-function parseEuro(raw: string): number {
+export function parseEuro(raw: string): number {
   if (!raw) return 0
   const cleaned = raw.replace(/[^0-9-]/g, "")
   if (!cleaned) return 0

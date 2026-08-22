@@ -482,23 +482,15 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
           )}
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
-          {isMulti ? (
-            group.totalAdBudget > 0 ? (
-              fmtEuro(group.totalAdBudget)
-            ) : (
-              <span className="text-muted-foreground/40">-</span>
-            )
+          {/* Ad budget = what THIS invoice will charge for media. Read-only:
+              it's the "Adbudget RL" amount, shown only when Monday's "Ad
+              account" = Rocket Leads (page.tsx gates it to 0 otherwise). To
+              stop billing ad budget, flip "Ad account" to Client - not editable
+              here. "-" = client/partner pays Meta directly. */}
+          {(isMulti ? group.totalAdBudget : primary.adBudget) > 0 ? (
+            fmtEuro(isMulti ? group.totalAdBudget : primary.adBudget)
           ) : (
-            <AgreementAmountCell
-              mondayItemId={primary.mondayItemId}
-              field="ad_budget"
-              // Show the ad budget whenever there's an amount - it's the
-              // "Adbudget RL" value RL invoices, independent of the meta
-              // ad-account-id match (which was unreliable). Finance clears it
-              // for direct-pay clients.
-              value={primary.adBudget}
-              placeholder="0"
-            />
+            <span className="text-muted-foreground/40">-</span>
           )}
         </TableCell>
         <TableCell className="py-2.5">
@@ -594,12 +586,12 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               />
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground">
-              <AgreementAmountCell
-                mondayItemId={sib.mondayItemId}
-                field="ad_budget"
-                value={sib.adBudget}
-                placeholder="0"
-              />
+              {/* Read-only gated ad-budget (see parent row comment). */}
+              {sib.adBudget > 0 ? (
+                fmtEuro(sib.adBudget)
+              ) : (
+                <span className="text-muted-foreground/40">-</span>
+              )}
             </TableCell>
             {/* Payment + AI check + Stripe - all on the parent row */}
             <TableCell colSpan={3} className="py-2" />

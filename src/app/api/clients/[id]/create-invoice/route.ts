@@ -10,9 +10,9 @@ import {
   type InvoiceDraftPreview,
   type PastInvoice,
 } from "@/lib/integrations/stripe"
-import { fetchBothBoards, parseStripeCustomerIds } from "@/lib/integrations/monday"
+import { fetchBothBoards, parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
 import { updateClientField, advanceBundledSiblings } from "@/lib/clients/edit"
-import { addMonthsIso } from "@/lib/clients/billing-cycle"
+import { addMonthsIso, deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
 import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
@@ -155,6 +155,19 @@ export async function POST(
   const currentCycle = (client.cycle_start_date as string | null) ?? null
   const periodCycle = mode === "oneoff" ? null : currentCycle
 
+  // Period END = the next cycle date this send advances to. Drives the real
+  // billing-period suffix on each line ("(28 Aug – 27 Nov 2026)" for a
+  // quarterly client) instead of a hardcoded 1-month span. Read generically
+  // off the body since both preview + send carry it; null for one-offs (no
+  // period block) and when finance hasn't supplied a next date.
+  const rawNextCycle = (body as { nextCycleDate?: unknown }).nextCycleDate
+  const periodEnd =
+    mode === "oneoff"
+      ? null
+      : typeof rawNextCycle === "string" && DATE_RE.test(rawNextCycle)
+        ? rawNextCycle
+        : null
+
   // ── action: preview ─ read-only fetch + local totals, no Stripe mutation ─
   if (action === "preview") {
     let preview: InvoiceDraftPreview
@@ -164,6 +177,7 @@ export async function POST(
         items,
         daysUntilDue: body.daysUntilDue,
         cycleStartDate: periodCycle,
+        nextCycleDate: periodEnd,
       })
     } catch (e) {
       return NextResponse.json(
@@ -193,6 +207,7 @@ export async function POST(
       items,
       daysUntilDue: body.daysUntilDue,
       cycleStartDate: periodCycle,
+      nextCycleDate: periodEnd,
     })
   } catch (e) {
     return NextResponse.json(
@@ -227,6 +242,7 @@ export async function POST(
 
   let newCycle: string | null = null
   let cycleWritten = false
+  let adminStamped = false
 
   // Cycle advance + admin stamp are MONTHLY-only. A one-off invoice is a
   // standalone charge that must not disturb the recurring cadence: no date
@@ -238,6 +254,7 @@ export async function POST(
     // overwrite ANY existing value (incl. Discuss first / Debt collection
     // agency) because "Stripe shipped the invoice" is an objective fact.
     const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
+    adminStamped = adminResult.ok
     if (!adminResult.ok) {
       postSendWarnings.push(
         `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${adminResult.error})`,
@@ -299,15 +316,68 @@ export async function POST(
   }
 
   // 1a. Refresh the Monday boards cache when we just wrote a new cycle.
-  if (cycleWritten) {
+  //
+  // We re-fetch Monday for a fresh snapshot, but Monday's API is read-after-
+  // write eventually-consistent: a fetch fired milliseconds after the cycle
+  // write can still return the OLD date. That left the Billing page showing a
+  // just-invoiced client stuck in "Today / Send invoice" (Roy reported this
+  // for Indoor Vertical.Farm - Monday advanced to Sept but the Hub still
+  // showed Aug). So after fetching we OVERLAY the values we KNOW we just wrote
+  // - the primary + its bundled siblings' new cycle/invoice dates + admin
+  // stamp - onto the fetched boards before caching. If the re-fetch itself
+  // fails, we overlay onto the previous cache instead so the page still moves.
+  if (cycleWritten && newCycle) {
+    const newInvoiceDate = deriveInvoiceDate(newCycle) ?? ""
+    const overlay = (clients: MondayClient[]): MondayClient[] =>
+      clients.map((c) => {
+        // Primary row, OR a sibling bundled onto this invoice (same Stripe
+        // customer AND the same pre-advance cycle date we just advanced from).
+        const isPrimary = c.mondayItemId === mondayItemId
+        const isBundledSibling =
+          !!currentCycle &&
+          !!c.stripeCustomerId &&
+          c.stripeCustomerId === customerId &&
+          c.cycleStartDate === currentCycle
+        if (!isPrimary && !isBundledSibling) return c
+        return {
+          ...c,
+          cycleStartDate: newCycle,
+          nextInvoiceDate: newInvoiceDate,
+          // Only the primary got the admin stamp written to Monday; leave
+          // siblings' admin column as-is.
+          administration: isPrimary && adminStamped ? ADMIN_LABELS.invoiceSend : c.administration,
+        }
+      })
+
     try {
       const { onboarding, current } = await fetchBothBoards()
-      await writeCache("monday_boards", { onboarding, current })
+      await writeCache("monday_boards", {
+        onboarding: overlay(onboarding),
+        current: overlay(current),
+      })
     } catch (e) {
       console.error(
         "[create-invoice] monday boards cache refresh failed:",
         e instanceof Error ? e.message : e,
       )
+      // Re-fetch failed - overlay onto the existing cache so the just-sent
+      // client still advances out of the "Send invoice" bucket.
+      try {
+        const prev = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+          "monday_boards",
+        )
+        if (prev) {
+          await writeCache("monday_boards", {
+            onboarding: overlay(prev.onboarding),
+            current: overlay(prev.current),
+          })
+        }
+      } catch (e2) {
+        console.error(
+          "[create-invoice] monday boards cache overlay fallback failed:",
+          e2 instanceof Error ? e2.message : e2,
+        )
+      }
     }
   }
 

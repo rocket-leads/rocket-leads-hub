@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { fetchClientById } from "@/lib/integrations/monday"
-import { getAgreement, agreementMonthly } from "@/lib/clients/agreement"
-import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+import { getAgreement, agreementMonthly, parseEuro } from "@/lib/clients/agreement"
+import { isRocketLeadsAdAccount, adBudgetInvoicedByRocketLeads } from "@/lib/clients/ad-account"
 
 /**
  * Billing seed for the global "Create invoice" flow: given a client picked
@@ -39,7 +39,12 @@ export async function GET(
       // Kept separate so each becomes its own invoice line.
       serviceFee: agreement.platforms.reduce((s, p) => s + (agreement.platform_fees[p] ?? 0), 0),
       followUpFee: agreement.follow_up ? agreement.follow_up_fee : 0,
-      adBudget: agreement.ad_budget,
+      // Ad budget invoiced only when RL fronts the spend (Monday "Ad account"
+      // = Rocket Leads); bill the dedicated "Adbudget RL" column. Client /
+      // Partner pay Meta directly → no ad-budget line.
+      adBudget: adBudgetInvoicedByRocketLeads(client.adAccountPayer)
+        ? parseEuro(client.adBudgetRl)
+        : 0,
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(client.metaAdAccountId),
     },
   })

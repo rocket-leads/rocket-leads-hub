@@ -9,9 +9,9 @@ import { fetchBothBoards, getBoardConfig, mondayItemUrl, type MondayClient } fro
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import { readReadinessMap } from "@/lib/billing/invoice-readiness"
-import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
+import { agreementMonthly, normalizeAgreement, parseEuro } from "@/lib/clients/agreement"
 import { mondayStatusToHub } from "@/lib/clients/status"
-import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+import { isRocketLeadsAdAccount, adBudgetInvoicedByRocketLeads } from "@/lib/clients/ad-account"
 import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
 import { RefreshBillingButton } from "./_components/refresh-billing-button"
@@ -247,7 +247,11 @@ export default async function BillingPage() {
       fee: money?.mrr ?? 0,
       serviceFee: money?.serviceFee ?? 0,
       followUpFee: money?.followUpFee ?? 0,
-      adBudget: money?.adBudget ?? 0,
+      // Ad budget is invoiced ONLY when RL fronts the spend (Monday "Ad account"
+      // = Rocket Leads). We bill the dedicated "Adbudget RL" column - Client /
+      // Partner clients pay Meta directly and get no ad-budget line. This is the
+      // payer gate; the generic `agreement.ad_budget` stays for KPI/spend health.
+      adBudget: adBudgetInvoicedByRocketLeads(c.adAccountPayer) ? parseEuro(c.adBudgetRl) : 0,
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(c.metaAdAccountId),
       campaignStatus: c._status,
       accountManager: c.accountManager,
@@ -322,9 +326,9 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
     siblings.sort((a, b) => a.nextInvoiceDate.localeCompare(b.nextInvoiceDate))
     const primary = siblings[0]
     const totalFee = siblings.reduce((s, r) => s + r.fee, 0)
-    // Ad budget is invoiced whenever there's an amount (the "Adbudget RL"
-    // value). Finance clears it on the client for direct-pay clients, so a
-    // stored amount means RL fronts it.
+    // Each row's `adBudget` is already payer-gated (the "Adbudget RL" amount
+    // when Monday "Ad account" = Rocket Leads, else 0), so the group total only
+    // sums media spend RL actually fronts and invoices.
     const totalAdBudget = siblings.reduce((s, r) => s + r.adBudget, 0)
     const readiness = aggregateGroupReadiness(siblings)
     groups.push({
