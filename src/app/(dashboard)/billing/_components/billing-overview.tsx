@@ -301,7 +301,10 @@ export function BillingOverview({
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
                 <TableHead className="w-[210px]">{t("billing.col.client", locale)}</TableHead>
-                <TableHead className="w-[150px]">{t("billing.col.action", locale)}</TableHead>
+                {/* Wide enough for the "Create invoice" button + the pause/hold
+                    toggle side by side (~180px). At 150px the toggle overflowed
+                    the fixed column and bled into the STATUS pill. */}
+                <TableHead className="w-[190px]">{t("billing.col.action", locale)}</TableHead>
                 <TableHead className="w-[140px]">{t("billing.col.status", locale)}</TableHead>
                 <TableHead className="w-[160px]">{t("billing.col.admin", locale)}</TableHead>
                 <TableHead className="w-[140px]">{t("billing.col.am", locale)}</TableHead>
