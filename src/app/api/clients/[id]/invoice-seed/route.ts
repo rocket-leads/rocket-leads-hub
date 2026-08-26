@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { fetchClientById } from "@/lib/integrations/monday"
-import { parseEuro, isFollowUpByRL } from "@/lib/clients/agreement"
+import { parseEuro } from "@/lib/clients/agreement"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 
 /**
@@ -29,10 +29,10 @@ export async function GET(
 
   // Monday-live money fields (see billing/page.tsx for the full rationale):
   //   service fee   = "Monthly fee"   (service_fee column)
-  //   follow-up fee = "Followup Fee"  (only when Follow-up status = Rocket Leads)
+  //   follow-up fee = "Followup Fee"  (billed whenever filled)
   //   ad budget     = "Adbudget RL"   (billed whenever filled)
   const serviceFee = parseEuro(client.serviceFee)
-  const followUpFee = isFollowUpByRL(client.followUpStatus) ? parseEuro(client.followUpFee) : 0
+  const followUpFee = parseEuro(client.followUpFee)
 
   return NextResponse.json({
     ok: true,

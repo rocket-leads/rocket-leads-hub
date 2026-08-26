@@ -9,8 +9,9 @@ import { fetchBothBoards, getBoardConfig, mondayItemUrl, type MondayClient } fro
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import { readReadinessMap } from "@/lib/billing/invoice-readiness"
-import { parseEuro, isFollowUpByRL } from "@/lib/clients/agreement"
+import { parseEuro } from "@/lib/clients/agreement"
 import { mondayStatusToHub } from "@/lib/clients/status"
+import { isInvoicedAdmin } from "@/lib/clients/administration"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
@@ -128,8 +129,15 @@ export default async function BillingPage() {
     // - On Hold + Churned drop off - those clients aren't billed this period.
     //   Live + Onboarding remain (Onboarding clients still get their first
     //   invoice on the date set in Monday).
+    // - already-invoiced admin ("Invoice sent (unpaid)") drops off INSTANTLY:
+    //   once finance sends, the Hub stamps that status (+ overlays the cache),
+    //   so the client leaves the "to send" list immediately instead of
+    //   lingering until Monday's automation advances the date. It re-appears
+    //   next cycle when the admin-sync flips it back to "Send invoice".
     .filter((c): c is typeof c & { _status: "live" | "onboarding" } =>
-      DATE_RE.test(c._invoice) && (c._status === "live" || c._status === "onboarding"),
+      DATE_RE.test(c._invoice) &&
+      (c._status === "live" || c._status === "onboarding") &&
+      !isInvoicedAdmin(c.administration),
     )
     .sort((a, b) => a._invoice.localeCompare(b._invoice))
 
@@ -137,14 +145,15 @@ export default async function BillingPage() {
   // store, which drifted - a stale auto-seed once billed Juice Concepts 2×€1250
   // instead of 2×€625). Monday is the single source of truth, so the invoice
   // matches the board 1:1:
-  //   - service fee  = Monday "Monthly fee"  (service_fee → `numeric`)
-  //   - follow-up fee = Monday "Followup Fee" (follow_up_fee), only when the
-  //     "Follow up status" column says Rocket Leads does the follow-up
-  //   - ad budget    = Monday "Adbudget RL"  (ad_budget_rl → `numbers`); billed
+  //   - service fee   = Monday "Monthly fee"   (service_fee → `numeric`)
+  //   - follow-up fee = Monday "Followup Fee"  (follow_up_fee); billed whenever
+  //     that column is filled - same rule as ad budget, the status column is
+  //     not consulted
+  //   - ad budget     = Monday "Adbudget RL"   (ad_budget_rl → `numbers`); billed
   //     whenever that column is filled (see the row map below)
   const moneyFromMonday = (c: MondayClient) => {
     const serviceFee = parseEuro(c.serviceFee)
-    const followUpFee = isFollowUpByRL(c.followUpStatus) ? parseEuro(c.followUpFee) : 0
+    const followUpFee = parseEuro(c.followUpFee)
     return { serviceFee, followUpFee, mrr: serviceFee + followUpFee }
   }
 

@@ -445,32 +445,24 @@ export async function applyCycleToAllSiblings(
 }
 
 /**
- * Advance the payment date for the siblings that were BUNDLED onto a just-sent
- * invoice. A bundle = siblings sharing the Stripe customer AND currently on the
- * same `fromCycle` date (that's exactly the set the Billing page consolidates
- * into one invoice). They all advance to `toCycle` together; siblings on a
- * different date (separately-invoiced campaigns like HeroLeads) are untouched.
+ * Find the OTHER campaigns that were bundled onto a just-sent invoice - the
+ * siblings sharing the Stripe customer AND currently on the same `fromCycle`
+ * date (exactly the set the Billing page consolidates into one invoice).
+ * Siblings on a different date (separately-invoiced campaigns like HeroLeads)
+ * are excluded.
  *
- * The source/primary row is advanced by the caller via updateClientField -
- * this only handles the OTHER bundled siblings.
+ * Read-only: the caller uses this to stamp each sibling's admin status on send.
+ * The Hub no longer advances cycle/invoice dates itself - Monday's automation
+ * owns that (the Hub doubling it caused the +2-month drift), so this returns
+ * the rows to stamp rather than writing any dates.
  */
-export async function advanceBundledSiblings(
+export async function findBundledSiblings(
   sourceMondayItemId: string,
   fromCycle: string,
-  toCycle: string,
-): Promise<{ advanced: number; siblings: Array<{ mondayItemId: string; boardType: "onboarding" | "current" }> }> {
+): Promise<Array<{ mondayItemId: string; boardType: "onboarding" | "current" }>> {
   const siblings = await fetchStripeSiblings(sourceMondayItemId)
-  const bundled = siblings.filter((s) => s.cycleStartDate === fromCycle)
-  for (const sib of bundled) {
-    await writeCycleToRow(sib.mondayItemId, sib.boardType, toCycle)
-  }
-  // Return the advanced rows so the caller can also stamp their admin status
-  // ("Invoice sent (unpaid)") - the cycle write alone left bundled siblings on
-  // "Send invoice" while the primary flipped, so a 2-campaign invoice showed
-  // one row sent and one still pending (Roy: Juice Concepts Zumex/Unox).
-  return {
-    advanced: bundled.length,
-    siblings: bundled.map((s) => ({ mondayItemId: s.mondayItemId, boardType: s.boardType })),
-  }
+  return siblings
+    .filter((s) => s.cycleStartDate === fromCycle)
+    .map((s) => ({ mondayItemId: s.mondayItemId, boardType: s.boardType }))
 }
 

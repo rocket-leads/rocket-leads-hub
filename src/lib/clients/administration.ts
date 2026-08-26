@@ -37,6 +37,20 @@ export const ADMIN_LABELS = {
 
 export type AdminLabel = (typeof ADMIN_LABELS)[keyof typeof ADMIN_LABELS]
 
+/**
+ * Whether this admin status means "an invoice has just been issued for the
+ * upcoming cycle" - i.e. the client should drop out of the Billing "to send"
+ * list immediately. Matches the "Invoice sent (unpaid)" family the Hub stamps
+ * on send (both boards use it; the onboarding subitem variant is just
+ * "Invoice sent"). Deliberately NOT "Payments complete" / "Partialy Paid" -
+ * those are payment-lifecycle states a genuinely-upcoming client can carry
+ * from the previous cycle, so excluding them would hide invoices that still
+ * need to go out.
+ */
+export function isInvoicedAdmin(label: string | null | undefined): boolean {
+  return (label ?? "").trim().toLowerCase().startsWith("invoice sent")
+}
+
 /** The canonical Monday options finance picks from, in the order the
  *  popover renders them. Keep "Payments complete" last as the resting
  *  state. "Partialy Paid" sits between sent + complete on the cash-flow
