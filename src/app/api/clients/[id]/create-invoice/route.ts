@@ -11,7 +11,8 @@ import {
   type PastInvoice,
 } from "@/lib/integrations/stripe"
 import { fetchBothBoards, parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
-import { findBundledSiblings } from "@/lib/clients/edit"
+import { updateClientField, advanceBundledSiblings } from "@/lib/clients/edit"
+import { addMonthsIso, deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
 import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
@@ -240,28 +241,28 @@ export async function POST(
   // screen + finance can manually fix Monday before walking away.
   const postSendWarnings: string[] = []
 
+  let newCycle: string | null = null
+  let cycleWritten = false
   let adminStamped = false
   // Bundled siblings whose admin we successfully stamped to "Invoice sent
   // (unpaid)" - used to reflect the same status in the cache overlay below.
   const stampedSiblingIds = new Set<string>()
 
-  // Admin stamp is MONTHLY-only. A one-off invoice is a standalone charge that
-  // must not disturb the recurring cadence - no admin flip. Stripe payment
-  // status (billing_summaries, refreshed below) still picks up the new open
-  // balance either way.
+  // Cycle advance + admin stamp are MONTHLY-only. A one-off invoice is a
+  // standalone charge that must not disturb the recurring cadence: no date
+  // shift, no admin flip. Stripe payment status (billing_summaries, refreshed
+  // below) still picks up the new open balance either way.
   //
-  // The Hub deliberately does NOT advance the cycle / invoice date on send.
-  // Monday already has an automation that advances the next-invoice date, so
-  // the Hub advancing it too pushed clients TWO months forward (Roy's
-  // Zumex/Unox: Hub +1mo, then Monday +1mo). Dates are read live from Monday
-  // everywhere, so Monday (its automation, or finance) is the single source of
-  // truth for them. On send we only stamp the STATUS.
+  // The Hub OWNS the payment-date advance (Monday's automation was removed to
+  // avoid a double +1-month jump). Dates are still READ live from Monday, but
+  // the Hub is what writes the advance on send. Default is +1 month; finance
+  // overrides via `nextCycleDate` for quarterly / 2-month clients (same value
+  // that sets the invoice-line period end).
   if (mode === "monthly") {
-    // Stamp the Monday "Administration" column to "Invoice sent (unpaid)" for
-    // the whole invoice group (primary + any bundled siblings). Per Roy's
-    // 2026-05-19 spec this auto-target may overwrite ANY existing value (incl.
-    // Discuss first / Debt collection) because "Stripe shipped the invoice" is
-    // an objective fact.
+    // 0. Stamp the Monday "Administration" column to "Invoice sent (unpaid)".
+    // Per Roy's 2026-05-19 spec this auto-target may overwrite ANY existing
+    // value (incl. Discuss first / Debt collection) because "Stripe shipped
+    // the invoice" is an objective fact.
     const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
     adminStamped = adminResult.ok
     if (!adminResult.ok) {
@@ -270,48 +271,83 @@ export async function POST(
       )
     }
 
-    // Stamp the OTHER campaigns bundled onto this same invoice (same Stripe
-    // customer AND same current payment date) so the whole group flips
-    // together - otherwise one row shows sent while the other stays pending.
-    if (currentCycle) {
+    // 1. Advance the payment date one period forward. `periodEnd` is finance's
+    // next-payment date from the dialog (also the invoice-line period end);
+    // fall back to +1 month. With no prior cycle we can still ESTABLISH one if
+    // finance supplied an explicit date (first invoice after onboarding).
+    newCycle = currentCycle ? periodEnd ?? addMonthsIso(currentCycle, 1) : periodEnd
+    if (newCycle) {
       try {
-        const siblings = await findBundledSiblings(mondayItemId, currentCycle)
-        for (const sib of siblings) {
-          const sibAdmin = await setAdministration(sib.mondayItemId, ADMIN_LABELS.invoiceSend)
-          if (sibAdmin.ok) {
-            stampedSiblingIds.add(sib.mondayItemId)
-          } else {
+        await updateClientField(mondayItemId, { fieldKey: "cycle_start_date", value: newCycle })
+        cycleWritten = true
+        // Advance + stamp the OTHER campaigns bundled onto this same invoice
+        // (same Stripe customer AND same current payment date) so the whole
+        // group moves + flips together. Separately-invoiced campaigns on a
+        // different date are left alone.
+        if (currentCycle) {
+          try {
+            const siblings = await advanceBundledSiblings(mondayItemId, currentCycle, newCycle)
+            for (const sib of siblings) {
+              const sibAdmin = await setAdministration(sib.mondayItemId, ADMIN_LABELS.invoiceSend)
+              if (sibAdmin.ok) {
+                stampedSiblingIds.add(sib.mondayItemId)
+              } else {
+                postSendWarnings.push(
+                  `Linked campaign ${sib.mondayItemId} admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${sibAdmin.error})`,
+                )
+              }
+            }
+          } catch (e) {
+            console.error(
+              `[create-invoice] bundled sibling advance failed for ${mondayItemId}:`,
+              e instanceof Error ? e.message : e,
+            )
             postSendWarnings.push(
-              `Linked campaign ${sib.mondayItemId} admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${sibAdmin.error})`,
+              `Some linked campaigns' payment dates could not advance - check the Billing page.`,
             )
           }
         }
       } catch (e) {
-        console.error(
-          `[create-invoice] bundled sibling admin stamp failed for ${mondayItemId}:`,
-          e instanceof Error ? e.message : e,
-        )
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[create-invoice] cycle advance failed for ${mondayItemId}:`, msg)
         postSendWarnings.push(
-          `Some linked campaigns' status could not be updated - check the Billing page.`,
+          `Payment date could not advance to ${newCycle} - update manually. (${msg})`,
         )
       }
+    } else {
+      postSendWarnings.push(
+        "Client has no payment date set - it won't advance until one is set.",
+      )
     }
   }
 
-  // Refresh the Monday boards cache, OVERLAYING the admin stamp we just wrote.
+  // Refresh the Monday boards cache, OVERLAYING what we just wrote (new cycle +
+  // derived invoice date + admin stamp) for the primary + bundled siblings.
   // Monday's API is read-after-write eventually-consistent (a fetch right after
-  // the write can still return the OLD status), so we force the known-new admin
+  // the write can still return the OLD values), so we force the known-new state
   // onto the fetched snapshot. This is what makes a just-invoiced client leave
-  // the Billing "to send" list INSTANTLY (the page filters out invoiced admin
-  // statuses) instead of lingering until the next cron. We do NOT touch dates -
-  // whatever Monday returns (its automation's advanced date) is the truth.
-  if (mode === "monthly" && (adminStamped || stampedSiblingIds.size > 0)) {
+  // the Billing "to send" list INSTANTLY - both because its date jumps forward
+  // and because the page filters out the "Invoice sent (unpaid)" status.
+  if (mode === "monthly" && (cycleWritten || adminStamped || stampedSiblingIds.size > 0)) {
+    const newInvoiceDate = newCycle ? deriveInvoiceDate(newCycle) ?? "" : ""
     const overlay = (clients: MondayClient[]): MondayClient[] =>
       clients.map((c) => {
-        const stamped =
-          (c.mondayItemId === mondayItemId && adminStamped) ||
-          stampedSiblingIds.has(c.mondayItemId)
-        return stamped ? { ...c, administration: ADMIN_LABELS.invoiceSend } : c
+        const isPrimary = c.mondayItemId === mondayItemId
+        const isBundledSibling =
+          !!currentCycle &&
+          !!c.stripeCustomerId &&
+          c.stripeCustomerId === customerId &&
+          c.cycleStartDate === currentCycle
+        const stamped = (isPrimary && adminStamped) || stampedSiblingIds.has(c.mondayItemId)
+        if (!isPrimary && !isBundledSibling && !stamped) return c
+        const next = { ...c }
+        // Advance dates for the group when we wrote a new cycle.
+        if (cycleWritten && newCycle && (isPrimary || isBundledSibling)) {
+          next.cycleStartDate = newCycle
+          next.nextInvoiceDate = newInvoiceDate
+        }
+        if (stamped) next.administration = ADMIN_LABELS.invoiceSend
+        return next
       })
 
     try {
@@ -385,9 +421,7 @@ export async function POST(
     ok: true,
     ...result,
     mode,
-    // The Hub no longer advances the payment date - Monday's automation owns
-    // that - so there's no Hub-set next cycle to report back.
-    newCycleStartDate: null,
+    newCycleStartDate: newCycle,
     postSendWarnings,
   })
 }

@@ -130,10 +130,11 @@ export default async function BillingPage() {
     //   Live + Onboarding remain (Onboarding clients still get their first
     //   invoice on the date set in Monday).
     // - already-invoiced admin ("Invoice sent (unpaid)") drops off INSTANTLY:
-    //   once finance sends, the Hub stamps that status (+ overlays the cache),
-    //   so the client leaves the "to send" list immediately instead of
-    //   lingering until Monday's automation advances the date. It re-appears
-    //   next cycle when the admin-sync flips it back to "Send invoice".
+    //   on send the Hub advances the date AND stamps that status (both overlaid
+    //   into the cache), so the client leaves the "to send" list immediately -
+    //   the status filter is the belt-and-suspenders that removes it even if the
+    //   date write lags. It re-appears next cycle when admin-sync flips it back
+    //   to "Send invoice".
     .filter((c): c is typeof c & { _status: "live" | "onboarding" } =>
       DATE_RE.test(c._invoice) &&
       (c._status === "live" || c._status === "onboarding") &&

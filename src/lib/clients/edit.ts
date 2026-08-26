@@ -445,24 +445,28 @@ export async function applyCycleToAllSiblings(
 }
 
 /**
- * Find the OTHER campaigns that were bundled onto a just-sent invoice - the
- * siblings sharing the Stripe customer AND currently on the same `fromCycle`
- * date (exactly the set the Billing page consolidates into one invoice).
- * Siblings on a different date (separately-invoiced campaigns like HeroLeads)
- * are excluded.
+ * Advance the payment date for the siblings that were BUNDLED onto a just-sent
+ * invoice - the campaigns sharing the Stripe customer AND currently on the same
+ * `fromCycle` date (exactly the set the Billing page consolidates into one
+ * invoice). They all advance to `toCycle` together (cycle + derived invoice
+ * date); siblings on a different date (separately-invoiced campaigns like
+ * HeroLeads) are untouched.
  *
- * Read-only: the caller uses this to stamp each sibling's admin status on send.
- * The Hub no longer advances cycle/invoice dates itself - Monday's automation
- * owns that (the Hub doubling it caused the +2-month drift), so this returns
- * the rows to stamp rather than writing any dates.
+ * The Hub owns the date advance (Monday's automation is being removed), so the
+ * source/primary row is advanced by the caller via updateClientField and this
+ * handles the OTHER bundled siblings. Returns the advanced rows so the caller
+ * can also stamp each one's admin status ("Invoice sent (unpaid)").
  */
-export async function findBundledSiblings(
+export async function advanceBundledSiblings(
   sourceMondayItemId: string,
   fromCycle: string,
+  toCycle: string,
 ): Promise<Array<{ mondayItemId: string; boardType: "onboarding" | "current" }>> {
   const siblings = await fetchStripeSiblings(sourceMondayItemId)
-  return siblings
-    .filter((s) => s.cycleStartDate === fromCycle)
-    .map((s) => ({ mondayItemId: s.mondayItemId, boardType: s.boardType }))
+  const bundled = siblings.filter((s) => s.cycleStartDate === fromCycle)
+  for (const sib of bundled) {
+    await writeCycleToRow(sib.mondayItemId, sib.boardType, toCycle)
+  }
+  return bundled.map((s) => ({ mondayItemId: s.mondayItemId, boardType: s.boardType }))
 }
 
