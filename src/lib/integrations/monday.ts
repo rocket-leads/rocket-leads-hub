@@ -79,14 +79,10 @@ export type MondayClient = {
   campaignStatus: string
   kickOffDate: string
   adBudget: string
-  /** "Ad account" status column - who runs the ads / fronts the spend.
-   *  Onboarding board `color5`, current board `color`. Options: "Rocket Leads"
-   *  / "Client" / "Partner" / "To be determined". Drives whether the ad budget
-   *  is invoiced (only "Rocket Leads" → RL fronts it → bill it back). */
-  adAccountPayer: string
   /** "Adbudget RL" numeric column - the media spend RL fronts and invoices.
-   *  Onboarding board `numeric3`, current board `numbers`. Distinct from
-   *  `adBudget` (the generic "Adbudget" total used for KPI/spend health). */
+   *  Onboarding board `numeric3`, current board `numbers`. Billed whenever
+   *  filled. Distinct from `adBudget` (the generic "Adbudget" total used for
+   *  KPI/spend health) and from "Adbudget Client" (`numeric6`, never invoiced). */
   adBudgetRl: string
   serviceFee: string
   /** Numeric follow-up fee from Monday (`numbers0__1`). Empty when not set. */
@@ -284,12 +280,9 @@ function mapItem(
     campaignStatus: cv[columns.campaign_status] ?? "",
     kickOffDate: cv[columns.kick_off_date] ?? "",
     adBudget: cv[columns.ad_budget] ?? "",
-    // "Ad account" payer + "Adbudget RL" amount. Board-type literal fallbacks
-    // (same pattern as phone/email/administration) so reads work before any
-    // board_config resave. NOTE the per-board split: `color` = "Ad account" on
-    // the current board but "Country" on onboarding, so it must be board-typed.
-    adAccountPayer:
-      cv[columns.ad_account] ?? (boardType === "onboarding" ? cv["color5"] : cv["color"]) ?? "",
+    // "Adbudget RL" amount. Board-type literal fallbacks (same pattern as
+    // phone/email/administration) so reads work before any board_config resave:
+    // onboarding `numeric3`, current `numbers`.
     adBudgetRl:
       cv[columns.ad_budget_rl] ?? (boardType === "onboarding" ? cv["numeric3"] : cv["numbers"]) ?? "",
     serviceFee: cv[columns.service_fee] ?? "",

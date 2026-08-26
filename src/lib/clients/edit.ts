@@ -458,12 +458,19 @@ export async function advanceBundledSiblings(
   sourceMondayItemId: string,
   fromCycle: string,
   toCycle: string,
-): Promise<{ advanced: number }> {
+): Promise<{ advanced: number; siblings: Array<{ mondayItemId: string; boardType: "onboarding" | "current" }> }> {
   const siblings = await fetchStripeSiblings(sourceMondayItemId)
   const bundled = siblings.filter((s) => s.cycleStartDate === fromCycle)
   for (const sib of bundled) {
     await writeCycleToRow(sib.mondayItemId, sib.boardType, toCycle)
   }
-  return { advanced: bundled.length }
+  // Return the advanced rows so the caller can also stamp their admin status
+  // ("Invoice sent (unpaid)") - the cycle write alone left bundled siblings on
+  // "Send invoice" while the primary flipped, so a 2-campaign invoice showed
+  // one row sent and one still pending (Roy: Juice Concepts Zumex/Unox).
+  return {
+    advanced: bundled.length,
+    siblings: bundled.map((s) => ({ mondayItemId: s.mondayItemId, boardType: s.boardType })),
+  }
 }
 

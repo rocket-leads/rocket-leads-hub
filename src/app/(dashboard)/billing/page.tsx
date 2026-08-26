@@ -9,9 +9,9 @@ import { fetchBothBoards, getBoardConfig, mondayItemUrl, type MondayClient } fro
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import { readReadinessMap } from "@/lib/billing/invoice-readiness"
-import { agreementMonthly, normalizeAgreement, parseEuro } from "@/lib/clients/agreement"
+import { parseEuro, isFollowUpByRL } from "@/lib/clients/agreement"
 import { mondayStatusToHub } from "@/lib/clients/status"
-import { isRocketLeadsAdAccount, adBudgetInvoicedByRocketLeads } from "@/lib/clients/ad-account"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
 import { RefreshBillingButton } from "./_components/refresh-billing-button"
@@ -133,48 +133,19 @@ export default async function BillingPage() {
     )
     .sort((a, b) => a._invoice.localeCompare(b._invoice))
 
-  // Look up MRR / ad budget for the scheduled set in one round-trip. We need
-  // the Supabase clients.id to join client_agreements, so this is two queries:
-  // monday_item_id → clients.id, then clients.id → flat agreement columns.
-  const mondayIds = scheduled.map((c) => c.mondayItemId)
-  const moneyByMondayId = new Map<
-    string,
-    { mrr: number; serviceFee: number; followUpFee: number; adBudget: number }
-  >()
-
-  if (mondayIds.length > 0) {
-    const { data: clientRows } = await supabase
-      .from("clients")
-      .select("id, monday_item_id")
-      .in("monday_item_id", mondayIds)
-    const mondayIdById = new Map<string, string>()
-    for (const row of clientRows ?? []) {
-      mondayIdById.set(row.id as string, row.monday_item_id as string)
-    }
-    if (mondayIdById.size > 0) {
-      const { data: agreements } = await supabase
-        .from("client_agreements")
-        .select(
-          "client_id, ad_budget, platforms, platform_fees, follow_up, follow_up_fee",
-        )
-        .in("client_id", Array.from(mondayIdById.keys()))
-      for (const a of agreements ?? []) {
-        const mondayItemId = mondayIdById.get(a.client_id as string)
-        if (!mondayItemId) continue
-        const agreement = normalizeAgreement(a)
-        moneyByMondayId.set(mondayItemId, {
-          mrr: agreementMonthly(agreement),
-          // Service fee + follow-up fee kept separate so each becomes its own
-          // invoice line (not merged into one "Service fee" total).
-          serviceFee: agreement.platforms.reduce(
-            (s, p) => s + (agreement.platform_fees[p] ?? 0),
-            0,
-          ),
-          followUpFee: agreement.follow_up ? agreement.follow_up_fee : 0,
-          adBudget: agreement.ad_budget,
-        })
-      }
-    }
+  // Fees + ad budget are read LIVE from Monday (not the Supabase agreement
+  // store, which drifted - a stale auto-seed once billed Juice Concepts 2×€1250
+  // instead of 2×€625). Monday is the single source of truth, so the invoice
+  // matches the board 1:1:
+  //   - service fee  = Monday "Monthly fee"  (service_fee → `numeric`)
+  //   - follow-up fee = Monday "Followup Fee" (follow_up_fee), only when the
+  //     "Follow up status" column says Rocket Leads does the follow-up
+  //   - ad budget    = Monday "Adbudget RL"  (ad_budget_rl → `numbers`); billed
+  //     whenever that column is filled (see the row map below)
+  const moneyFromMonday = (c: MondayClient) => {
+    const serviceFee = parseEuro(c.serviceFee)
+    const followUpFee = isFollowUpByRL(c.followUpStatus) ? parseEuro(c.followUpFee) : 0
+    return { serviceFee, followUpFee, mrr: serviceFee + followUpFee }
   }
 
   // Stripe is the source of truth for payment state - Monday's "Administration"
@@ -235,7 +206,7 @@ export default async function BillingPage() {
   const boardConfig = await getBoardConfig()
 
   const rows: UpcomingInvoice[] = scheduled.map((c) => {
-    const money = moneyByMondayId.get(c.mondayItemId)
+    const money = moneyFromMonday(c)
     const summary = c.stripeCustomerId ? billingCache[c.stripeCustomerId] : undefined
     const heldEntry = billingHoldByMondayId.get(c.mondayItemId)
     return {
@@ -244,14 +215,15 @@ export default async function BillingPage() {
       nextInvoiceDate: c._invoice,
       cycleStartDate: c._cycle,
       stripeCustomerId: c.stripeCustomerId || null,
-      fee: money?.mrr ?? 0,
-      serviceFee: money?.serviceFee ?? 0,
-      followUpFee: money?.followUpFee ?? 0,
-      // Ad budget is invoiced ONLY when RL fronts the spend (Monday "Ad account"
-      // = Rocket Leads). We bill the dedicated "Adbudget RL" column - Client /
-      // Partner clients pay Meta directly and get no ad-budget line. This is the
-      // payer gate; the generic `agreement.ad_budget` stays for KPI/spend health.
-      adBudget: adBudgetInvoicedByRocketLeads(c.adAccountPayer) ? parseEuro(c.adBudgetRl) : 0,
+      fee: money.mrr,
+      serviceFee: money.serviceFee,
+      followUpFee: money.followUpFee,
+      // Ad budget is invoiced whenever the Monday "Adbudget RL" column
+      // (`numbers`) is filled - that column IS the amount RL fronts and bills
+      // back. "Adbudget Client" (`numeric6`) is what the client pays Meta
+      // directly and is never invoiced. The >0 amount is the gate: filled →
+      // one line; empty → none.
+      adBudget: parseEuro(c.adBudgetRl),
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(c.metaAdAccountId),
       campaignStatus: c._status,
       accountManager: c.accountManager,

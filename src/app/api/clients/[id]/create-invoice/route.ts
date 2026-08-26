@@ -243,6 +243,9 @@ export async function POST(
   let newCycle: string | null = null
   let cycleWritten = false
   let adminStamped = false
+  // Bundled siblings whose admin we successfully stamped to "Invoice sent
+  // (unpaid)" - used to reflect the same status in the cache overlay below.
+  const stampedSiblingIds = new Set<string>()
 
   // Cycle advance + admin stamp are MONTHLY-only. A one-off invoice is a
   // standalone charge that must not disturb the recurring cadence: no date
@@ -288,7 +291,20 @@ export async function POST(
         // campaigns on a different date are left alone.
         if (currentCycle) {
           try {
-            await advanceBundledSiblings(mondayItemId, currentCycle, newCycle)
+            const { siblings } = await advanceBundledSiblings(mondayItemId, currentCycle, newCycle)
+            // Stamp each bundled sibling's admin to "Invoice sent (unpaid)" too.
+            // The cycle write alone left them on "Send invoice" while the primary
+            // flipped, so a 2-campaign invoice showed one row sent + one pending.
+            for (const sib of siblings) {
+              const sibAdmin = await setAdministration(sib.mondayItemId, ADMIN_LABELS.invoiceSend)
+              if (sibAdmin.ok) {
+                stampedSiblingIds.add(sib.mondayItemId)
+              } else {
+                postSendWarnings.push(
+                  `Linked campaign ${sib.mondayItemId} admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${sibAdmin.error})`,
+                )
+              }
+            }
           } catch (e) {
             console.error(
               `[create-invoice] bundled sibling advance failed for ${mondayItemId}:`,
@@ -339,13 +355,16 @@ export async function POST(
           c.stripeCustomerId === customerId &&
           c.cycleStartDate === currentCycle
         if (!isPrimary && !isBundledSibling) return c
+        // Reflect the admin stamp for the primary AND any bundled sibling we
+        // successfully stamped, so the whole invoice group leaves "Send invoice"
+        // together on the next render.
+        const stamped =
+          (isPrimary && adminStamped) || stampedSiblingIds.has(c.mondayItemId)
         return {
           ...c,
           cycleStartDate: newCycle,
           nextInvoiceDate: newInvoiceDate,
-          // Only the primary got the admin stamp written to Monday; leave
-          // siblings' admin column as-is.
-          administration: isPrimary && adminStamped ? ADMIN_LABELS.invoiceSend : c.administration,
+          administration: stamped ? ADMIN_LABELS.invoiceSend : c.administration,
         }
       })
 

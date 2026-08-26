@@ -171,7 +171,7 @@ export async function seedDefaultAgreementIfMissing(
 
 /** Permissive matcher - any status label that mentions "rocket" (case-insensitive)
  *  counts as RL doing the follow-up. Anything else (incl. empty) means we don't. */
-function isFollowUpByRL(status: string): boolean {
+export function isFollowUpByRL(status: string): boolean {
   return /rocket/i.test(status)
 }
 
