@@ -1237,6 +1237,11 @@ export async function fetchClientItemUpdates(
  *  if any older webhook lingers anywhere. */
 export type MondayWebhookEvent =
   | "change_column_value"
+  // Per-column subscription - REQUIRED for status/color columns, which
+  // `change_column_value` does NOT fire for. We use it for the Administration
+  // + Campaign-status columns so billing/watchlist stay real-time on status
+  // flips. Needs a `{ columnId }` config on create.
+  | "change_specific_column_value"
   | "change_name"
   | "create_item"
   | "item_deleted"
@@ -1247,6 +1252,10 @@ export type MondayWebhook = {
   boardId: string
   event: MondayWebhookEvent
   url: string | null
+  /** Set only for `change_specific_column_value` webhooks - the single column
+   *  the subscription is scoped to. Parsed from Monday's `config` (which comes
+   *  back as a Ruby-hash string `{"columnId" => "status_16"}`, not JSON). */
+  columnId: string | null
 }
 
 /**
@@ -1261,17 +1270,21 @@ export async function createMondayWebhook(
   boardId: string,
   event: MondayWebhookEvent,
   url: string,
+  /** Required for `change_specific_column_value` - the column the subscription
+   *  is scoped to. Ignored (and omitted from the mutation) for other events. */
+  columnId?: string,
 ): Promise<string> {
   const token = await getToken()
-  const query = `mutation ($boardId: ID!, $url: String!, $event: WebhookEventType!) {
-    create_webhook(board_id: $boardId, url: $url, event: $event) {
+  const query = `mutation ($boardId: ID!, $url: String!, $event: WebhookEventType!, $config: JSON) {
+    create_webhook(board_id: $boardId, url: $url, event: $event, config: $config) {
       id
     }
   }`
+  const config = columnId ? JSON.stringify({ columnId }) : undefined
   const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: token },
-    body: JSON.stringify({ query, variables: { boardId, url, event } }),
+    body: JSON.stringify({ query, variables: { boardId, url, event, config } }),
   })
   const json = (await res.json()) as {
     data?: { create_webhook?: { id?: string } }
@@ -1310,12 +1323,18 @@ export async function listMondayWebhooks(boardId: string): Promise<MondayWebhook
   const list = json.data?.webhooks ?? []
   return list.map((w) => {
     let url: string | null = null
+    let columnId: string | null = null
     if (w.config) {
       try {
-        const parsed = JSON.parse(w.config) as { url?: string }
+        const parsed = JSON.parse(w.config) as { url?: string; columnId?: string }
         url = parsed.url ?? null
+        columnId = parsed.columnId ?? null
       } catch {
-        // Some webhook configs aren't JSON - leave url null.
+        // Monday returns webhook `config` as a Ruby-hash string, not JSON:
+        //   {"columnId" => "status_16"}
+        // so JSON.parse throws. Pull the columnId out with a regex instead.
+        const m = w.config.match(/"columnId"\s*=>\s*"([^"]+)"/)
+        if (m) columnId = m[1]
       }
     }
     return {
@@ -1323,6 +1342,7 @@ export async function listMondayWebhooks(boardId: string): Promise<MondayWebhook
       boardId: String(w.board_id),
       event: w.event as MondayWebhookEvent,
       url,
+      columnId,
     }
   })
 }

@@ -9,6 +9,7 @@ import { Loader2, RefreshCw, Webhook } from "lucide-react"
 
 type MondayWebhookEvent =
   | "change_column_value"
+  | "change_specific_column_value"
   | "change_name"
   | "create_item"
   | "item_deleted"
@@ -19,6 +20,7 @@ type Webhook = {
   boardId: string
   event: MondayWebhookEvent
   url: string | null
+  columnId?: string | null
 }
 
 type StatusResponse = {
@@ -41,6 +43,7 @@ type RegisterResult = {
   results: Array<{
     boardId: string
     event: MondayWebhookEvent
+    columnId?: string
     status: "created" | "exists" | "failed" | "deleted"
     webhookId?: string
     error?: string
@@ -97,7 +100,7 @@ export function MondayWebhooksCard() {
       // and re-create are dropped (Monday won't retry events sent during
       // that ~1s window).
       const ok = window.confirm(
-        "This deletes every existing Monday webhook for the 5 target events on both boards and re-creates them with the current secret URL. Continue?",
+        "This deletes + re-creates every Hub Monday webhook on both boards (the 5 base events AND the Administration / Campaign-status per-column webhooks) with the current secret URL. Use this to point stale status-column webhooks back at the Hub. Continue?",
       )
       if (!ok) return
     }

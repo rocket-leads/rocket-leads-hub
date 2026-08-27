@@ -239,6 +239,17 @@ export async function POST(req: NextRequest) {
   const SYNC_EVENT_TYPES = new Set([
     "change_column_value",
     "change_status_column_value",
+    // `change_specific_column_value` webhooks (registered per-column, e.g.
+    // status_16 = Administration, color5 = Campaign status) are the ONLY way
+    // status-column edits reach us: Monday's catch-all `change_column_value`
+    // does NOT fire for status/color columns. Without this the admin flip to
+    // "Invoice sent (unpaid)" never updated the cache, so the Hub kept showing
+    // "Send invoice" for hours (Roy: Cadeaukaart Specialist). The `update_*`
+    // aliases guard against Monday sending the payload `type` as the mutation
+    // name rather than the subscription name across API versions.
+    "change_specific_column_value",
+    "update_specific_column_value",
+    "update_column_value",
     "change_name",
     "update_name",
     "create_item",
@@ -257,7 +268,14 @@ export async function POST(req: NextRequest) {
     // all), so drop the pre-aggregated delivery cache. A column edit only
     // matters when it hits one of the attribution columns; creates/renames
     // always matter (new client, new fuzzy-match name).
-    const isColumnEdit = event.type === "change_column_value" || event.type === "change_status_column_value"
+    const COLUMN_EDIT_TYPES = new Set([
+      "change_column_value",
+      "change_status_column_value",
+      "change_specific_column_value",
+      "update_specific_column_value",
+      "update_column_value",
+    ])
+    const isColumnEdit = !!event.type && COLUMN_EDIT_TYPES.has(event.type)
     const affectsDelivery = !isColumnEdit ||
       (!!event.columnId && deliveryColumnIds(boardConfig, boardType).has(event.columnId))
     if (affectsDelivery) await wipeDeliveryCaches(supabase)

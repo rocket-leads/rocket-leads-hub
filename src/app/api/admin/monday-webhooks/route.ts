@@ -44,6 +44,27 @@ const TARGET_EVENTS: MondayWebhookEvent[] = [
   "create_update",
 ]
 
+// Status/color columns don't fire `change_column_value`, so we register a
+// per-column `change_specific_column_value` for the billing-critical status
+// columns. These board_config keys resolve to the actual Monday column ids
+// (which differ per board: current Administration = status_16, onboarding =
+// dup__of_facebook, etc.), so status flips like "Send invoice" → "Invoice sent
+// (unpaid)" reach the Hub in real-time instead of waiting on the daily cron.
+const SPECIFIC_COLUMN_KEYS = ["administration", "campaign_status"] as const
+
+function specificColumnIds(
+  config: { onboarding_columns?: Record<string, string>; current_columns?: Record<string, string> },
+  boardType: "onboarding" | "current",
+): string[] {
+  const cols = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
+  const ids: string[] = []
+  for (const key of SPECIFIC_COLUMN_KEYS) {
+    const id = cols?.[key]
+    if (id) ids.push(id)
+  }
+  return ids
+}
+
 function buildWebhookUrl(req: NextRequest): string | null {
   const secret = process.env.MONDAY_WEBHOOK_SECRET
   if (!secret) return null
@@ -165,6 +186,8 @@ export async function POST(req: NextRequest) {
   if (!boards) {
     return NextResponse.json({ error: "Board config missing" }, { status: 500 })
   }
+  // Full config for the per-column (status) webhook ids - board-specific.
+  const fullConfig = await getBoardConfig()
 
   // `?reset=1` mode: delete every existing webhook for our target events on
   // both boards before re-registering. Use when the secret has rotated and
@@ -173,13 +196,13 @@ export async function POST(req: NextRequest) {
   // the URL embedded in Monday's registration.
   const reset = req.nextUrl.searchParams.get("reset") === "1"
 
-  type Result = { boardId: string; event: MondayWebhookEvent; status: "created" | "exists" | "failed" | "deleted"; webhookId?: string; error?: string }
+  type Result = { boardId: string; event: MondayWebhookEvent; columnId?: string; status: "created" | "exists" | "failed" | "deleted"; webhookId?: string; error?: string }
   const results: Result[] = []
 
   // Reconcile each board independently. Existing-webhook lookup runs once
   // per board so we can compute the "events still missing" set in one shot.
-  for (const [label, boardId] of [["onboarding", boards.onboarding], ["current", boards.current]] as const) {
-    void label
+  for (const [boardType, boardId] of [["onboarding", boards.onboarding], ["current", boards.current]] as const) {
+    const specificIds = fullConfig ? specificColumnIds(fullConfig, boardType) : []
     let existing: MondayWebhook[] = []
     try {
       existing = await listMondayWebhooks(boardId)
@@ -187,36 +210,43 @@ export async function POST(req: NextRequest) {
       console.error("[monday-webhooks] list failed for", boardId, e)
     }
 
-    // In reset mode, kill every existing webhook for our target events first
-    // so the next create call writes a fresh URL with the current secret.
+    // In reset mode, kill every existing webhook for our target events (+ our
+    // status-column specific webhooks) first so the next create call writes a
+    // fresh URL with the current secret. Other apps' change_specific webhooks
+    // (columns we don't target) are left alone.
     if (reset) {
-      const toDelete = existing.filter((w) => TARGET_EVENTS.includes(w.event))
+      const toDelete = existing.filter(
+        (w) =>
+          TARGET_EVENTS.includes(w.event) ||
+          (w.event === "change_specific_column_value" && !!w.columnId && specificIds.includes(w.columnId)),
+      )
       for (const w of toDelete) {
         try {
           await deleteMondayWebhook(w.id)
-          results.push({ boardId, event: w.event, status: "deleted", webhookId: w.id })
+          results.push({ boardId, event: w.event, columnId: w.columnId ?? undefined, status: "deleted", webhookId: w.id })
         } catch (e) {
           results.push({
             boardId,
             event: w.event,
+            columnId: w.columnId ?? undefined,
             status: "failed",
             webhookId: w.id,
             error: `delete failed: ${e instanceof Error ? e.message : String(e)}`,
           })
         }
       }
-      // Wipe `existing` so the registration pass below treats every target
-      // event as missing and re-creates them with the current URL.
-      existing = existing.filter((w) => !TARGET_EVENTS.includes(w.event))
+      const deletedIds = new Set(toDelete.map((w) => w.id))
+      existing = existing.filter((w) => !deletedIds.has(w.id))
     }
 
-    const presentEvents = new Set(
+    // Only count webhooks pointing at OUR URL - a webhook registered against
+    // another env (preview vs prod) or a different consumer is irrelevant.
+    const ourUrl = (w: MondayWebhook) => !w.url || w.url === webhookUrl
+    const presentEvents = new Set(existing.filter(ourUrl).map((w) => w.event))
+    const presentSpecificCols = new Set(
       existing
-        // Only count webhooks pointing at OUR URL - a webhook registered
-        // against another env (preview vs prod) or to a different consumer
-        // is irrelevant for "should we register here?".
-        .filter((w) => !w.url || w.url === webhookUrl)
-        .map((w) => w.event),
+        .filter((w) => w.event === "change_specific_column_value" && ourUrl(w) && w.columnId)
+        .map((w) => w.columnId as string),
     )
 
     for (const event of TARGET_EVENTS) {
@@ -231,6 +261,28 @@ export async function POST(req: NextRequest) {
         results.push({
           boardId,
           event,
+          status: "failed",
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+
+    // Per-column status webhooks (Administration + Campaign status). These are
+    // what carry status flips - `change_column_value` above never fires for
+    // status/color columns.
+    for (const columnId of specificIds) {
+      if (presentSpecificCols.has(columnId)) {
+        results.push({ boardId, event: "change_specific_column_value", columnId, status: "exists" })
+        continue
+      }
+      try {
+        const webhookId = await createMondayWebhook(boardId, "change_specific_column_value", webhookUrl, columnId)
+        results.push({ boardId, event: "change_specific_column_value", columnId, status: "created", webhookId })
+      } catch (e) {
+        results.push({
+          boardId,
+          event: "change_specific_column_value",
+          columnId,
           status: "failed",
           error: e instanceof Error ? e.message : String(e),
         })
