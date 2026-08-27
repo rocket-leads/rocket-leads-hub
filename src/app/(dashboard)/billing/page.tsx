@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { t } from "@/lib/i18n/t"
 import { getUserLocale } from "@/lib/i18n/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { readCache } from "@/lib/cache"
+import { readCache, writeCache } from "@/lib/cache"
 import { PageHeader } from "@/components/ui/page-header"
 import { fetchBothBoards, getBoardConfig, mondayItemUrl, type MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
@@ -58,22 +58,31 @@ export default async function BillingPage() {
     if (isPureCm) redirect("/watchlist")
   }
 
-  // Layer 1: cache.
-  const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
-    "monday_boards",
-  )
-  let boards = cached ?? (await fetchBothBoards().catch(() => ({ onboarding: [], current: [] })))
-  let allClients = [...boards.onboarding, ...boards.current]
-
-  // If the cache exists but no client carries either billing date, the cache
-  // predates the field shapes - fall through to a live Monday fetch so the
-  // page isn't stuck waiting on the next cron tick.
-  const cacheCarriesDates = allClients.some(
-    (c) => DATE_RE.test(c.nextInvoiceDate) || DATE_RE.test(c.cycleStartDate),
-  )
-  if (cached && !cacheCarriesDates) {
-    boards = await fetchBothBoards().catch(() => boards)
-    allClients = [...boards.onboarding, ...boards.current]
+  // Real-time 1:1 with Monday: fetch the boards LIVE on every load so the
+  // Billing list always matches Monday's current state - a just-invoiced client
+  // (admin "Invoice sent (unpaid)", cycle advanced) drops off immediately
+  // instead of trailing a periodic cache. Previously this read a `monday_boards`
+  // cache that could be hours stale, so an invoice sent (or a date changed)
+  // straight in Monday/Stripe left the client sitting in the "to send" list -
+  // Roy's confusion risk of double-sending.
+  //
+  // We still write the shared cache + refresh stamp (so other pages benefit and
+  // the "Last updated" reads "just now"), and fall back to the last-known cache
+  // if Monday is unreachable rather than rendering an empty page.
+  let boards: { onboarding: MondayClient[]; current: MondayClient[] }
+  let liveOk = false
+  try {
+    boards = await fetchBothBoards()
+    liveOk = true
+  } catch {
+    boards =
+      (await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")) ??
+      { onboarding: [], current: [] }
+  }
+  const allClients = [...boards.onboarding, ...boards.current]
+  if (liveOk) {
+    await writeCache("monday_boards", boards)
+    await writeCache("billing_refreshed_at", new Date().toISOString())
   }
 
   // Supabase fallback - fills in dates for rows where the live/cache source
