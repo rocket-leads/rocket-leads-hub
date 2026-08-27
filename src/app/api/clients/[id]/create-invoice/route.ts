@@ -1,6 +1,5 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
 import {
   createAndSendInvoice,
   fetchInvoicePreview,
@@ -10,7 +9,7 @@ import {
   type InvoiceDraftPreview,
   type PastInvoice,
 } from "@/lib/integrations/stripe"
-import { fetchBothBoards, parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
+import { fetchBothBoards, fetchClientById, parseStripeCustomerIds, type MondayClient } from "@/lib/integrations/monday"
 import { updateClientField, advanceBundledSiblings } from "@/lib/clients/edit"
 import { addMonthsIso, deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
@@ -91,20 +90,19 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  // Server-side authoritative customer id - pulled from Supabase by the
-  // Monday item id rather than trusted from the request, so a tampered
-  // client state can't redirect the invoice.
-  const supabase = await createAdminClient()
-  const { data: client } = await supabase
-    .from("clients")
-    .select("monday_item_id, stripe_customer_id, name, cycle_start_date")
-    .eq("monday_item_id", mondayItemId)
-    .maybeSingle()
+  // Resolve the Stripe customer + current cycle LIVE from Monday - server-side,
+  // so a tampered client state still can't redirect the invoice. We used to read
+  // the Supabase `clients` mirror here, but it lags Monday: right after finance
+  // links a Stripe customer on the client, the mirror hasn't synced yet, so the
+  // send/preview failed with "No Stripe customer linked" even though Monday
+  // already had it (and the dialog header showed it). `bypassCache` forces a
+  // fresh Monday read so a just-linked customer works immediately.
+  const client = await fetchClientById(mondayItemId, { bypassCache: true })
 
   if (!client) {
-    return NextResponse.json({ error: "Client not synced to Supabase yet" }, { status: 404 })
+    return NextResponse.json({ error: "Client not found in Monday" }, { status: 404 })
   }
-  if (!client.stripe_customer_id) {
+  if (!client.stripeCustomerId) {
     return NextResponse.json(
       { error: "No Stripe customer linked for this client. Add a Stripe customer ID on the client first." },
       { status: 400 },
@@ -117,7 +115,7 @@ export async function POST(
   // errors. When there's more than one, block invoicing and point finance to
   // the Billing tab, where they pick the correct customer (which replaces the
   // other). A single well-formed id is used as-is.
-  const stripeIds = parseStripeCustomerIds(client.stripe_customer_id)
+  const stripeIds = parseStripeCustomerIds(client.stripeCustomerId)
   if (stripeIds.length === 0) {
     return NextResponse.json(
       { error: "No valid Stripe customer linked for this client." },
@@ -153,7 +151,7 @@ export async function POST(
   // billing period (cycle → cycle+1mo-1d) that recurring invoices tag on each
   // line. Passing null suppresses the "(3 Jun – 2 Jul)" suffix for one-offs.
   const mode: InvoiceMode = "mode" in body && body.mode === "oneoff" ? "oneoff" : "monthly"
-  const currentCycle = (client.cycle_start_date as string | null) ?? null
+  const currentCycle = client.cycleStartDate || null
   const periodCycle = mode === "oneoff" ? null : currentCycle
 
   // Period END = the next cycle date this send advances to. Drives the real
