@@ -17,13 +17,15 @@ import { TARGETS_BOARD_ID, OPT_INS_BOARD_ID } from "@/lib/targets/fetchers"
 // receiver schedules a debounced cache re-warm instead of the client-board sync.
 // Status (lead stage) + country are status/color columns, which only fire via
 // change_specific_column_value - date/number columns fire change_column_value.
-const GROWTH_BOARDS: Array<{ boardId: string; events: MondayWebhookEvent[]; specificColumns: string[] }> = [
+const GROWTH_BOARDS: Array<{ label: string; boardId: string; events: MondayWebhookEvent[]; specificColumns: string[] }> = [
   {
+    label: "Targets board (Marketing/Sales)",
     boardId: TARGETS_BOARD_ID,
     events: ["change_column_value", "create_item", "item_deleted"],
     specificColumns: ["status", "color"],
   },
   {
+    label: "Opt-ins board",
     boardId: OPT_INS_BOARD_ID,
     events: ["change_column_value", "create_item", "item_deleted"],
     specificColumns: [],
@@ -140,9 +142,10 @@ export async function GET(req: NextRequest) {
   }
 
   // Per-board list in parallel - Monday's webhooks query is scoped by board.
-  const [onboardingWebhooks, currentWebhooks] = await Promise.all([
+  const [onboardingWebhooks, currentWebhooks, ...growthWebhooks] = await Promise.all([
     listMondayWebhooks(boards.onboarding).catch(() => [] as MondayWebhook[]),
     listMondayWebhooks(boards.current).catch(() => [] as MondayWebhook[]),
+    ...GROWTH_BOARDS.map((b) => listMondayWebhooks(b.boardId).catch(() => [] as MondayWebhook[])),
   ])
 
   // Diagnostics for "secret is set in Vercel but the function says it isn't"
@@ -173,6 +176,16 @@ export async function GET(req: NextRequest) {
     currentOrigin: req.nextUrl.origin,
     onboarding: onboardingWebhooks,
     current: currentWebhooks,
+    // Growth (targets + opt-ins) boards: these feed the Marketing/Sales/Targets
+    // dashboard via a debounced cache re-warm rather than the client-list sync,
+    // so they carry their own expected-event set (no create_update/change_name).
+    growth: GROWTH_BOARDS.map((b, i) => ({
+      label: b.label,
+      boardId: b.boardId,
+      events: b.events,
+      specificColumns: b.specificColumns,
+      webhooks: growthWebhooks[i] ?? [],
+    })),
   })
 }
 

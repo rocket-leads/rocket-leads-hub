@@ -34,6 +34,15 @@ type StatusResponse = {
   currentOrigin?: string
   onboarding: Webhook[]
   current: Webhook[]
+  /** Targets + opt-ins boards - feed the Marketing/Sales/Targets dashboard.
+   *  Carry their own expected-event set (status/color are per-column). */
+  growth?: Array<{
+    label: string
+    boardId: string
+    events: MondayWebhookEvent[]
+    specificColumns: string[]
+    webhooks: Webhook[]
+  }>
 }
 
 type RegisterResult = {
@@ -218,6 +227,65 @@ export function MondayWebhooksCard() {
             ))}
           </div>
         ) : null}
+
+        {/* Growth boards (targets + opt-ins). Separate block: these drive the
+            Marketing/Sales/Targets dashboard's real-time cache re-warm and have
+            a different expected-event set - status + country are per-column
+            (change_specific_column_value), which the generic events don't cover. */}
+        {status?.growth && status.growth.length > 0 && (
+          <div className="grid gap-3 md:grid-cols-2">
+            {status.growth.map((b) => {
+              const presentEvents = new Set(b.webhooks.map((w) => w.event))
+              const presentCols = new Set(
+                b.webhooks.filter((w) => w.event === "change_specific_column_value" && w.columnId).map((w) => w.columnId as string),
+              )
+              const totalExpected = b.events.length + b.specificColumns.length
+              const totalOk =
+                b.events.filter((e) => presentEvents.has(e)).length +
+                b.specificColumns.filter((c) => presentCols.has(c)).length
+              return (
+                <div key={b.boardId} className="rounded-lg border border-border/60 bg-card/50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{b.label}</span>
+                    {totalOk === totalExpected ? (
+                      <StatusPill tone="success">All registered</StatusPill>
+                    ) : (
+                      <StatusPill tone="warning">{totalOk}/{totalExpected}</StatusPill>
+                    )}
+                  </div>
+                  <ul className="text-[11px] text-muted-foreground space-y-1">
+                    {b.events.map((event) => {
+                      const present = b.webhooks.find((w) => w.event === event)
+                      return (
+                        <li key={event} className="flex items-center justify-between">
+                          <code className="text-foreground/80">{event}</code>
+                          {present ? (
+                            <span className="text-emerald-600">✓ #{present.id}</span>
+                          ) : (
+                            <span className="text-muted-foreground/60">- missing</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                    {b.specificColumns.map((columnId) => {
+                      const present = b.webhooks.find((w) => w.event === "change_specific_column_value" && w.columnId === columnId)
+                      return (
+                        <li key={columnId} className="flex items-center justify-between">
+                          <code className="text-foreground/80">status_col:{columnId}</code>
+                          {present ? (
+                            <span className="text-emerald-600">✓ #{present.id}</span>
+                          ) : (
+                            <span className="text-muted-foreground/60">- missing</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {lastResult && (
           <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs">
