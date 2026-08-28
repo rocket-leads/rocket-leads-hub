@@ -130,6 +130,16 @@ export function MarketingTab() {
   // + upcoming. (The old closer-derived sum could drift from the scoped calls.)
   const notUpdated = m?.notUpdated ?? 0
   const upcoming = m?.upcoming ?? 0
+  // Defensive reconciliation guard. Server-side every scheduled call lands in
+  // exactly one of five mutually-exclusive buckets, so this remainder is 0 in a
+  // healthy response. But if a future server change adds a sixth bucket without
+  // wiring a chip here, the card would silently under-count and read as broken
+  // ("77 scheduled but 36+6+32 only makes 74"). Surfacing the remainder as its
+  // own chip means the visible breakdown ALWAYS sums back to Scheduled Calls -
+  // the card can never lie, it just labels the unclassified rest as "other".
+  // Roy 2026-08-28: "taken + no-show/cancel should be exactly the same as
+  // scheduled - I'm missing a couple of calls there."
+  const bucketRemainder = calls - (taken + noShows + cancellations + notUpdated + upcoming)
   const loading = data.mondayLoading || data.metaLoading
   // MTD placeholder removed 2026-08-07 (Roy: the date selector isn't MTD, so the
   // "MTD" pill was confusing). Tiles now show a loading skeleton for the selected
@@ -422,13 +432,37 @@ export function MarketingTab() {
                 label="Taken Calls" value={taken} formatted={String(taken)}
                 target={prTaken}
                 targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
-                notice={notUpdated > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdated) }) : undefined}
-                noticeTitle={notUpdated > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }) : undefined}
-                notices={noShows + cancellations > 0 ? [{
-                  label: `${noShows + cancellations} no-show / cancel`,
-                  tone: "danger",
-                  title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Booked = Taken + Not-updated + these + Upcoming.`,
-                }] : undefined}
+                // The Taken value + these chips ALWAYS sum back to Scheduled Calls:
+                // taken + no-show/cancel + not-updated + upcoming (+ any remainder)
+                // = scheduled. Upcoming (future appointments) was missing before,
+                // which left the card short whenever calls were booked ahead in the
+                // range - Roy 2026-08-28: "36 + 6 + 32 = 74, not 77, I'm missing a
+                // couple of calls." Those 3 were upcoming.
+                notices={[
+                  noShows + cancellations > 0 ? {
+                    label: `${noShows + cancellations} no-show / cancel`,
+                    tone: "danger" as const,
+                    title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Scheduled = Taken + no-show/cancel + Not-updated + Upcoming.`,
+                  } : null,
+                  notUpdated > 0 ? {
+                    label: t("targets.kpi.not_updated", locale, { n: String(notUpdated) }),
+                    tone: "warn" as const,
+                    title: t("targets.kpi.not_updated_title", locale, { n: String(notUpdated) }),
+                  } : null,
+                  upcoming > 0 ? {
+                    label: `${upcoming} upcoming`,
+                    tone: "muted" as const,
+                    title: "Future appointments booked in this period - haven't happened yet. Scheduled = Taken + no-show/cancel + Not-updated + Upcoming.",
+                  } : null,
+                  // Defense-in-depth: only ever non-zero if the server grows a new
+                  // bucket that isn't wired above. Keeps the card honest instead of
+                  // silently under-counting.
+                  bucketRemainder !== 0 ? {
+                    label: `${bucketRemainder > 0 ? bucketRemainder : `(${bucketRemainder})`} other`,
+                    tone: "muted" as const,
+                    title: "Scheduled calls not yet classified into a known bucket. If you see this, a data source changed - flag it.",
+                  } : null,
+                ].filter((n): n is { label: string; tone: "warn" | "danger" | "muted"; title: string } => n !== null)}
                 variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
               />
             )}
