@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { TARGETS_BOARD_ID, OPT_INS_BOARD_ID } from "@/lib/targets/fetchers"
+import { rewarmTargetsMondayCaches } from "@/lib/targets/rewarm"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { stripHtml } from "@/lib/html"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
@@ -8,7 +10,9 @@ import { patchMondayBoardsCache } from "@/lib/clients/edit"
 import { syncClientToSupabase } from "@/lib/clients/sync"
 import { readCache, writeCache } from "@/lib/cache"
 
-export const maxDuration = 60
+// 300 so the out-of-band Targets re-warm scheduled via after() (a ~3-min cold
+// board scrape) can finish after we've already acked Monday.
+export const maxDuration = 300
 
 /**
  * Monday update webhook receiver.
@@ -209,6 +213,29 @@ export async function POST(req: NextRequest) {
   const eventBoardId = String(event.boardId ?? "")
   const onboardingBoard = String(boardConfig.onboarding_board_id ?? "")
   const currentBoard = String(boardConfig.current_board_id ?? "")
+
+  // Targets board (central sales funnel) + opt-ins board: a lead status / date /
+  // deal / revenue change here moves the Marketing/Sales KPI counts. Schedule a
+  // debounced, out-of-band re-warm of the Targets caches so the dashboard reflects
+  // the change within a scrape instead of waiting up to 30min for the cron. after()
+  // runs the work AFTER we've acked Monday, so the webhook responds instantly and
+  // Monday never retries; the debounce lock inside rewarmTargetsMondayCaches keeps
+  // a burst of edits from stampeding the ~3-min board scrape. Name-only edits don't
+  // change any count, so skip them.
+  if (eventBoardId === TARGETS_BOARD_ID || eventBoardId === OPT_INS_BOARD_ID) {
+    const nameOnly = event.type === "change_name" || event.type === "update_name"
+    if (!nameOnly) {
+      after(async () => {
+        try {
+          await rewarmTargetsMondayCaches()
+        } catch (e) {
+          console.error("[monday-webhook] targets rewarm failed:", e instanceof Error ? e.message : e)
+        }
+      })
+    }
+    return NextResponse.json({ ok: true, targets: nameOnly ? "ignored-name" : "rewarm-scheduled" })
+  }
+
   if (eventBoardId !== onboardingBoard && eventBoardId !== currentBoard) {
     // Event on some other board (lead board, internal board, etc.) - out of scope.
     return NextResponse.json({ ok: true, ignored: "non-client board" })

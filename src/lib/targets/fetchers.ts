@@ -34,7 +34,7 @@ import type {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const TARGETS_BOARD_ID = "3762696870"
+export const TARGETS_BOARD_ID = "3762696870"
 // The only Targets-board columns the marketing/sales aggregation reads. Passed
 // to fetchAllItems so each page fetches ~9 columns instead of all ~30 - a big
 // cut in payload + Monday query complexity, which is what makes the cold board
@@ -107,7 +107,7 @@ async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> 
 // The board is small relative to the targets board (only form submissions,
 // not the full lead history) but we cache it the same way for symmetry and
 // so range-switching on the Marketing tab stays instant.
-const OPT_INS_BOARD_ID = "6488483465"
+export const OPT_INS_BOARD_ID = "6488483465"
 const OPT_INS_DATE_COLUMN = "date4"
 let optInsBoardCache: { items: TargetsBoardItem[]; fetchedAt: number; inflight: Promise<TargetsBoardItem[]> | null } = {
   items: [],

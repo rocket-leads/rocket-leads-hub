@@ -8,6 +8,27 @@ import {
   type MondayWebhook,
   type MondayWebhookEvent,
 } from "@/lib/integrations/monday"
+import { TARGETS_BOARD_ID, OPT_INS_BOARD_ID } from "@/lib/targets/fetchers"
+
+// The Growth (Marketing/Sales/Targets) dashboard reads two extra boards: the
+// central targets/leads board and the opt-ins board. A lead status change,
+// appointment-date edit, deal-date/revenue edit, or a new/deleted lead row all
+// move the KPI counts, so we register the same mutation events on them. The
+// receiver schedules a debounced cache re-warm instead of the client-board sync.
+// Status (lead stage) + country are status/color columns, which only fire via
+// change_specific_column_value - date/number columns fire change_column_value.
+const GROWTH_BOARDS: Array<{ boardId: string; events: MondayWebhookEvent[]; specificColumns: string[] }> = [
+  {
+    boardId: TARGETS_BOARD_ID,
+    events: ["change_column_value", "create_item", "item_deleted"],
+    specificColumns: ["status", "color"],
+  },
+  {
+    boardId: OPT_INS_BOARD_ID,
+    events: ["change_column_value", "create_item", "item_deleted"],
+    specificColumns: [],
+  },
+]
 
 /**
  * Admin-only management endpoint for the Monday → Hub real-time sync
@@ -286,6 +307,66 @@ export async function POST(req: NextRequest) {
           status: "failed",
           error: e instanceof Error ? e.message : String(e),
         })
+      }
+    }
+  }
+
+  // Growth boards (targets + opt-ins). Register-if-missing, honouring reset by
+  // deleting our matching webhooks first so a rotated secret re-writes the URL.
+  for (const { boardId, events, specificColumns } of GROWTH_BOARDS) {
+    let existing: MondayWebhook[] = []
+    try {
+      existing = await listMondayWebhooks(boardId)
+    } catch (e) {
+      console.error("[monday-webhooks] list failed for growth board", boardId, e)
+    }
+
+    if (reset) {
+      const toDelete = existing.filter(
+        (w) =>
+          events.includes(w.event) ||
+          (w.event === "change_specific_column_value" && !!w.columnId && specificColumns.includes(w.columnId)),
+      )
+      for (const w of toDelete) {
+        try {
+          await deleteMondayWebhook(w.id)
+          results.push({ boardId, event: w.event, columnId: w.columnId ?? undefined, status: "deleted", webhookId: w.id })
+        } catch (e) {
+          results.push({ boardId, event: w.event, columnId: w.columnId ?? undefined, status: "failed", webhookId: w.id, error: `delete failed: ${e instanceof Error ? e.message : String(e)}` })
+        }
+      }
+      const deletedIds = new Set(toDelete.map((w) => w.id))
+      existing = existing.filter((w) => !deletedIds.has(w.id))
+    }
+
+    const ourUrl = (w: MondayWebhook) => !w.url || w.url === webhookUrl
+    const presentEvents = new Set(existing.filter(ourUrl).map((w) => w.event))
+    const presentSpecificCols = new Set(
+      existing.filter((w) => w.event === "change_specific_column_value" && ourUrl(w) && w.columnId).map((w) => w.columnId as string),
+    )
+
+    for (const event of events) {
+      if (presentEvents.has(event)) {
+        results.push({ boardId, event, status: "exists" })
+        continue
+      }
+      try {
+        const webhookId = await createMondayWebhook(boardId, event, webhookUrl)
+        results.push({ boardId, event, status: "created", webhookId })
+      } catch (e) {
+        results.push({ boardId, event, status: "failed", error: e instanceof Error ? e.message : String(e) })
+      }
+    }
+    for (const columnId of specificColumns) {
+      if (presentSpecificCols.has(columnId)) {
+        results.push({ boardId, event: "change_specific_column_value", columnId, status: "exists" })
+        continue
+      }
+      try {
+        const webhookId = await createMondayWebhook(boardId, "change_specific_column_value", webhookUrl, columnId)
+        results.push({ boardId, event: "change_specific_column_value", columnId, status: "created", webhookId })
+      } catch (e) {
+        results.push({ boardId, event: "change_specific_column_value", columnId, status: "failed", error: e instanceof Error ? e.message : String(e) })
       }
     }
   }
