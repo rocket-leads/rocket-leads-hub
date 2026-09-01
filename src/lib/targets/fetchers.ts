@@ -1528,6 +1528,68 @@ export async function fetchGoogleAdsSpend(startDate: string, endDate: string): P
 }
 
 /**
+ * Diagnostic dump for the Google Ads spend sheet. Reads a WIDER column span
+ * (A:F) than the production reader (A:B) so we can see whether spend is actually
+ * in column B or split across other columns, plus surfaces every row skipped by
+ * date parsing (a common under-count cause). Used by /api/admin/google-ads-debug
+ * to explain "sheet says X but Google says Y" without guessing.
+ */
+export async function debugGoogleAdsSheet(startDate: string, endDate: string) {
+  const authClient = await getGoogleAuth()
+  const sheets = google.sheets({ version: "v4", auth: authClient })
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_ADS_SHEET_ID,
+    range: `${GOOGLE_ADS_SHEET_TAB}!A:F`,
+    valueRenderOption: "UNFORMATTED_VALUE",
+  })
+  const rows = (res.data.values ?? []) as Array<Array<string | number>>
+
+  const toAmount = (v: string | number | undefined): number =>
+    typeof v === "number" ? v : parseEuro(String(v ?? ""))
+
+  let sumB = 0
+  // Per-column in-range sums (A..F) so we can spot if the real spend lives in
+  // C/D/E rather than B, or is the sum of several columns.
+  const colSums = [0, 0, 0, 0, 0, 0]
+  const inRange: Array<{ rowNum: number; rawA: string | number; parsedDate: string; cols: Array<string | number> }> = []
+  const skipped: Array<{ rowNum: number; rawA: string | number; rawB: string | number }> = []
+
+  rows.forEach((row, i) => {
+    const parsedDate = parseSheetDate(row?.[0])
+    if (!parsedDate) {
+      // Only flag rows that carry a numeric value in B - blank/header rows are
+      // expected to have no date and aren't a data-loss signal.
+      const b = toAmount(row?.[1])
+      if (isFinite(b) && b !== 0) skipped.push({ rowNum: i + 1, rawA: row?.[0] ?? "", rawB: row?.[1] ?? "" })
+      return
+    }
+    if (parsedDate < startDate || parsedDate > endDate) return
+    const b = toAmount(row?.[1])
+    if (isFinite(b)) sumB += b
+    for (let c = 0; c < 6; c++) {
+      const v = toAmount(row?.[c])
+      if (isFinite(v)) colSums[c] += v
+    }
+    inRange.push({ rowNum: i + 1, rawA: row?.[0] ?? "", parsedDate, cols: (row ?? []).slice(0, 6) })
+  })
+
+  return {
+    spreadsheetId: GOOGLE_ADS_SHEET_ID,
+    tab: GOOGLE_ADS_SHEET_TAB,
+    range: { startDate, endDate },
+    totalRows: rows.length,
+    headerRow: rows[0] ?? [],
+    firstRows: rows.slice(0, 8),
+    productionSumB: sumB,
+    perColumnInRangeSums: { A: colSums[0], B: colSums[1], C: colSums[2], D: colSums[3], E: colSums[4], F: colSums[5] },
+    inRangeCount: inRange.length,
+    inRange: inRange.slice(0, 300),
+    skippedWithValueCount: skipped.length,
+    skippedSample: skipped.slice(0, 30),
+  }
+}
+
+/**
  * Delivery - service-fee MRR/NB + ad budget (kept separate) + revenue per account manager.
  *
  * Builds on the same `buildInvoiceBreakdown` core as Finance so the line-item split
