@@ -16,6 +16,7 @@ import { t } from "@/lib/i18n/t"
 const TARGETS_QUERY_PREFIXES = [
   "targets-monday",
   "targets-meta",
+  "targets-google-ads",
   "targets-finance",
   "targets-costs",
   "targets-delivery",
@@ -120,6 +121,9 @@ export function TargetsToolbar({
       await Promise.allSettled([
         fetch(`/api/targets/monday?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
         fetch(`/api/targets/meta?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
+        // Google Ads spend was missing from the refresh set, so a corrected sheet
+        // never re-pulled on demand - it waited on the 6h TTL. Bust it here too.
+        fetch(`/api/targets/google-ads?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
         ...(canSeeFinance
           ? [fetch(`/api/targets/finance?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" })]
           : []),
