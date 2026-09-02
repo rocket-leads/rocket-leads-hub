@@ -71,24 +71,12 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
     lastClick.current = null
   }
 
-  function pick(side: "from" | "to", day: Date | undefined, modifiers: { disabled?: boolean }) {
-    if (!day || modifiers.disabled) return
-    const ms = startOfDay(day).getTime()
-    const now = Date.now()
-    const isDouble =
-      lastClick.current?.side === side &&
-      lastClick.current?.ms === ms &&
-      now - (lastClick.current?.at ?? 0) < DOUBLE_CLICK_MS
-    lastClick.current = isDouble ? null : { side, ms, at: now }
-
-    if (isDouble) {
-      // Double-click a single day → collapse the whole range to that one day.
-      setFrom(day)
-      setTo(day)
-      setFromMonth(day)
-      setToMonth(day)
-      return
-    }
+  // Single-pick logic, driven by react-day-picker's onSelect. Both calendars are
+  // CONTROLLED (selected + onSelect) so a change to `from`/`to` always re-renders
+  // the other calendar's highlight - without onSelect RDP goes uncontrolled and
+  // freezes its highlight at the first value (Roy 2026-09-02: double-clicking left
+  // moved `to` but not the right calendar's selection).
+  function pickSingle(side: "from" | "to", day: Date) {
     if (side === "from") {
       setFrom(day)
       setFromMonth(day)
@@ -103,6 +91,27 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
         setFrom(day)
         setFromMonth(day)
       }
+    }
+  }
+
+  // Double-click detection lives in onDayClick (which always fires with the day,
+  // unlike onSelect which can emit undefined). A double-click collapses BOTH ends
+  // to that one day - and because both calendars are controlled, the other side's
+  // highlight moves with it.
+  function handleDayClick(side: "from" | "to", day: Date, modifiers: { disabled?: boolean }) {
+    if (modifiers.disabled) return
+    const ms = startOfDay(day).getTime()
+    const now = Date.now()
+    const isDouble =
+      lastClick.current?.side === side &&
+      lastClick.current?.ms === ms &&
+      now - (lastClick.current?.at ?? 0) < DOUBLE_CLICK_MS
+    lastClick.current = isDouble ? null : { side, ms, at: now }
+    if (isDouble) {
+      setFrom(day)
+      setTo(day)
+      setFromMonth(day)
+      setToMonth(day)
     }
   }
 
@@ -192,10 +201,12 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
                   <FieldColumn label="From" value={from}>
                     <DayPicker
                       mode="single"
+                      required
                       selected={from}
                       month={fromMonth}
                       onMonthChange={setFromMonth}
-                      onDayClick={(day, modifiers) => pick("from", day, modifiers)}
+                      onSelect={(day) => day && pickSingle("from", day)}
+                      onDayClick={(day, modifiers) => handleDayClick("from", day, modifiers)}
                       weekStartsOn={1}
                       showOutsideDays
                       className="rdp-rl"
@@ -205,10 +216,12 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
                   <FieldColumn label="To" value={to}>
                     <DayPicker
                       mode="single"
+                      required
                       selected={to}
                       month={toMonth}
                       onMonthChange={setToMonth}
-                      onDayClick={(day, modifiers) => pick("to", day, modifiers)}
+                      onSelect={(day) => day && pickSingle("to", day)}
+                      onDayClick={(day, modifiers) => handleDayClick("to", day, modifiers)}
                       weekStartsOn={1}
                       showOutsideDays
                       className="rdp-rl"
