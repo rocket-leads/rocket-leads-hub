@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useCallback, useEffect, useMemo } from "react"
-import { startOfMonth, endOfMonth, subMonths, subDays, format } from "date-fns"
+import { subDays, format } from "date-fns"
 import type { DateRange, QuickPreset } from "@/types/targets"
+import { getDatePresets } from "@/lib/targets/date-presets"
 
 /**
  * Two-layer persistence for the chosen date range:
@@ -101,45 +102,9 @@ export function useDateRange() {
 
   const range: DateRange = useMemo(() => ({ startDate, endDate }), [startDate, endDate])
 
-  const presets: QuickPreset[] = useMemo(() => [
-    {
-      // MTD intentionally ends TODAY (not yesterday). Server-side getMtdRange()
-      // also uses today, so the UI key matches the cron-warmed cache exactly
-      // and the page renders instantly from cache instead of paying a live
-      // Meta + Monday fetch every load. Intraday partial spend is fine here
-      // - MTD is meant to be a running "this month so far" view. The other
-      // rolling-window presets stay at yesterday because they're comparison
-      // baselines where partial-day data would skew the ratio.
-      label: "MTD",
-      getRange: () => ({ startDate: startOfMonth(new Date()), endDate: new Date() }),
-    },
-    {
-      label: "Last 7 Days",
-      getRange: () => ({ startDate: subDays(new Date(), 7), endDate: yesterday() }),
-    },
-    {
-      label: "Last 14 Days",
-      getRange: () => ({ startDate: subDays(new Date(), 14), endDate: yesterday() }),
-    },
-    {
-      label: "Last 30 Days",
-      getRange: () => ({ startDate: subDays(new Date(), 30), endDate: yesterday() }),
-    },
-    {
-      label: "Last Month",
-      getRange: () => ({
-        startDate: startOfMonth(subMonths(new Date(), 1)),
-        endDate: endOfMonth(subMonths(new Date(), 1)),
-      }),
-    },
-    {
-      label: "Last 3 Months",
-      getRange: () => ({
-        startDate: startOfMonth(subMonths(new Date(), 2)),
-        endDate: yesterday(),
-      }),
-    },
-  ], [])
+  // Shared with the date picker's quick-choice rail so header chips and picker
+  // presets can never drift. See [date-presets.ts](src/lib/targets/date-presets.ts).
+  const presets: QuickPreset[] = useMemo(() => getDatePresets(), [])
 
   const applyPreset = useCallback((preset: QuickPreset) => {
     const { startDate: s, endDate: e } = preset.getRange()
