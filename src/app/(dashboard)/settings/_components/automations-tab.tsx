@@ -757,7 +757,7 @@ Open Targets`,
 • Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 0 deal (0%), 2 empty outcome
 
 *Afspraken voor vandaag* :calendar:
-• 15:00: Melle Stam (Klatt Interieur) - Bekijk in Monday`,
+• 15:00: Anel - Melle Stam (Klatt Interieur) - Bekijk in Monday`,
     },
     {
       id: "eod",
@@ -784,8 +784,8 @@ Open Targets`,
 • Quintus: 2 scheduled, 1 no show/cancel, 0 taken (0%), 0 deal (0%), 1 empty outcome
 
 *Afspraken voor morgen* :calendar:
-• 09:30: Mylene Klatt (Klatt Interieur) - Bekijk in Monday
-• 14:00: Frans (Bouwbedrijf Frans) - Bekijk in Monday`,
+• 12:00: Anel - Jeroen de Roon (Daaf) - Bekijk in Monday
+• 13:00: Quintus - Gabriel Hernalsteens (The Platinum Realty) - Bekijk in Monday`,
     },
   ]
 

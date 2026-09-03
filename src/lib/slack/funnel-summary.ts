@@ -69,16 +69,18 @@ export function closerLinesFrom(
 }
 
 /**
- * Agenda block: one bullet per appointment with time, lead name, company name
- * (bedrijfsnaam) and a Monday deep-link. Falls back to `emptyLabel` when empty.
+ * Agenda block: one bullet per appointment with time, closer (wie_), lead name,
+ * company name (bedrijfsnaam) and a Monday deep-link. Each piece is omitted
+ * cleanly when absent. Falls back to `emptyLabel` when there are no appointments.
  */
 export function appointmentLines(appts: AppointmentRow[], emptyLabel: string): string {
   if (appts.length === 0) return emptyLabel
   return appts
     .map((a) => {
       const timePart = a.time ? `${a.time}: ` : ""
+      const closerPart = a.closer ? `${a.closer} - ` : ""
       const companyPart = a.companyName ? ` (${a.companyName})` : ""
-      return `• ${timePart}${a.name}${companyPart} - <${a.url}|Bekijk in Monday>`
+      return `• ${timePart}${closerPart}${a.name}${companyPart} - <${a.url}|Bekijk in Monday>`
     })
     .join("\n")
 }
