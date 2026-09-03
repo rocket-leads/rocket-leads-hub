@@ -94,7 +94,8 @@ function computeDayFunnel(
 
 /**
  * Assembles the End-of-Day message. Marketing = today's spend / opt-ins / booked
- * (last 24h of the day that's ending). Sales + per-closer = today's calls by
+ * (calendar day - Meta + Google Ads are per-day only, no rolling window, so this
+ * is "today so far" at 18:00). Sales + per-closer = today's calls by
  * outcome, computed live from raw items. Agenda = tomorrow's appointments.
  * Shared by the daily cron and the admin preview.
  */

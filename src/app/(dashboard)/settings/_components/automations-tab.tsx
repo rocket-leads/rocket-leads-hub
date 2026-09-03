@@ -771,10 +771,10 @@ Open Targets`,
       cronEndpoint: "/api/cron/slack-eod",
       audience: "closers",
       description:
-        "Team-wide End-of-Day wrap-up. Today: marketing funnel over the last 24h (spend · opt-ins · booked · BR), today's sales outcomes (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown of today's calls, and tomorrow's appointments with Monday deep-links.",
+        "Team-wide End-of-Day wrap-up. Today's marketing funnel (spend · opt-ins · booked · BR - calendar day, spend up to send time), today's sales outcomes (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown of today's calls, and tomorrow's appointments with Monday deep-links.",
       examplePreview: `Einde van de dag 🌆
 
-*Marketing last 24h* :bar_chart:
+*Marketing vandaag* :bar_chart:
 €1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales vandaag* :dart:

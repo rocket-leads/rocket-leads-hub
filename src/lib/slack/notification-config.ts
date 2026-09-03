@@ -145,7 +145,7 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 
   eod: `{{greeting}}
 
-*Marketing last 24h* :bar_chart:
+*Marketing vandaag* :bar_chart:
 {{marketing_line}}
 
 *Sales vandaag* :dart:
@@ -213,7 +213,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
   ],
   eod: [
     { name: "greeting", description: "Date-deterministic evening greeting." },
-    { name: "marketing_line", description: "Last 24h (today): spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads." },
+    { name: "marketing_line", description: "Today (calendar day, spend up to now): spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads - both per calendar day only, no rolling window." },
     { name: "sales_line", description: "Today (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer breakdown of today's calls (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
     { name: "appointments_lines", description: "Tomorrow's appointments: time, lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
