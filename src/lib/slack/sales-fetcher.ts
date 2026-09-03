@@ -67,9 +67,11 @@ export function targetsItemUrl(itemId: string): string {
   return `https://rocketleads-team.monday.com/boards/${TARGETS_BOARD_ID}/pulses/${itemId}`
 }
 
-export type TodayAppointment = {
+export type AppointmentRow = {
   itemId: string
   name: string
+  /** `bedrijfsnaam` column, or null when empty - shown next to the lead name. */
+  companyName: string | null
   closer: string | null
   /** HH:MM, or null when the appointment has no time-of-day set. */
   time: string | null
@@ -79,20 +81,21 @@ export type TodayAppointment = {
 }
 
 /**
- * Every targets-board item whose appointment date (`datum_afspraak`) is `today`
- * (YYYY-MM-DD, Amsterdam). Sorted by time ascending, untimed appointments last.
+ * Every targets-board item whose appointment date (`datum_afspraak`) equals
+ * `date` (YYYY-MM-DD). Sorted by time ascending, untimed appointments last.
  * Cron/preview-only - reads the board live so the agenda is always current.
  */
-export async function fetchTodaysAppointments(today: string): Promise<TodayAppointment[]> {
+export async function fetchAppointmentsForDate(date: string): Promise<AppointmentRow[]> {
   const token = await getMondayToken()
   const items = await fetchAllItems(TARGETS_BOARD_ID, token)
-  const out: TodayAppointment[] = []
+  const out: AppointmentRow[] = []
   for (const item of items) {
     const raw = col(item, "datum_afspraak")
-    if (parseDate(raw) !== today) continue
+    if (parseDate(raw) !== date) continue
     out.push({
       itemId: item.id,
       name: item.name,
+      companyName: col(item, "bedrijfsnaam").trim() || null,
       closer: col(item, "wie_").trim() || null,
       time: parseTime(raw),
       status: col(item, "status").trim(),

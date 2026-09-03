@@ -53,6 +53,7 @@ export const HUB_FEATURES: ReadonlyArray<HubFeature> = [
       "slack-team-watchlist",
       "slack-daily-watchlist",
       "slack-bod",
+      "slack-eod",
       "slack-personal-sales",
     ],
   },

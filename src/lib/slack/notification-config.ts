@@ -5,6 +5,7 @@ export type NotificationKey =
   | "team_watchlist"
   | "personal_sales"
   | "bod"
+  | "eod"
   | "personal_inbox"
 
 export type NotificationConfig = {
@@ -24,6 +25,7 @@ const DEFAULTS: AllNotificationConfigs = {
   team_watchlist: { enabled: true, hour: DEFAULT_HOUR, template: null },
   personal_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
   bod: { enabled: true, hour: DEFAULT_HOUR, template: null },
+  eod: { enabled: true, hour: 18, template: null },
   personal_inbox: { enabled: true, hour: 8, template: null },
 }
 
@@ -32,6 +34,7 @@ const KEYS: NotificationKey[] = [
   "team_watchlist",
   "personal_sales",
   "bod",
+  "eod",
   "personal_inbox",
 ]
 
@@ -140,6 +143,20 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 *Afspraken voor vandaag* :calendar:
 {{appointments_lines}}`,
 
+  eod: `{{greeting}}
+
+*Marketing last 24h* :bar_chart:
+{{marketing_line}}
+
+*Sales vandaag* :dart:
+{{sales_line}}
+
+*Closer stats* :bust_in_silhouette:
+{{closer_lines}}
+
+*Afspraken voor morgen* :calendar:
+{{appointments_lines}}`,
+
   personal_inbox: `Goedemorgen {{first_name}}.
 
 *Op je bord vandaag*
@@ -192,7 +209,14 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "marketing_line", description: "Last 7d: spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
     { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
-    { name: "appointments_lines", description: "Today's appointments: time, name, status + a 'Bekijk in Monday' deep-link, one bullet each." },
+    { name: "appointments_lines", description: "Today's appointments: time, lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
+  ],
+  eod: [
+    { name: "greeting", description: "Date-deterministic evening greeting." },
+    { name: "marketing_line", description: "Last 24h (today): spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads." },
+    { name: "sales_line", description: "Today (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
+    { name: "closer_lines", description: "Per-closer breakdown of today's calls (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
+    { name: "appointments_lines", description: "Tomorrow's appointments: time, lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
   personal_inbox: [
     { name: "first_name", description: "Hub user's first name (split on space)." },

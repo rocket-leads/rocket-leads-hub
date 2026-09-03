@@ -534,7 +534,7 @@ type Closer = {
 }
 
 type AudienceKind = "hub-users" | "closers"
-type ChannelKey = "team_watchlist" | "sales" | "bod"
+type ChannelKey = "team_watchlist" | "sales" | "bod" | "eod"
 
 type NotificationDef = {
   id: string
@@ -558,6 +558,7 @@ function NotificationsSection({
   recipients,
   teamChannelId,
   bodChannelId,
+  eodChannelId,
   closers: initialClosers,
   notificationConfigs,
 }: {
@@ -565,6 +566,7 @@ function NotificationsSection({
   recipients: Recipient[]
   teamChannelId: string | null
   bodChannelId: string | null
+  eodChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }) {
@@ -755,7 +757,35 @@ Open Targets`,
 • Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 0 deal (0%), 2 empty outcome
 
 *Afspraken voor vandaag* :calendar:
-• 15:00: Melle Stam (Gepland) - Bekijk in Monday`,
+• 15:00: Melle Stam (Klatt Interieur) - Bekijk in Monday`,
+    },
+    {
+      id: "eod",
+      title: "End of Day (EOD)",
+      destination: "channel",
+      channelLabel: "Slack channel",
+      channelKey: "eod",
+      channelId: eodChannelId,
+      schedule: "Daily · 18:00 Europe/Amsterdam",
+      previewEndpoint: "/api/slack/preview-eod",
+      cronEndpoint: "/api/cron/slack-eod",
+      audience: "closers",
+      description:
+        "Team-wide End-of-Day wrap-up. Today: marketing funnel over the last 24h (spend · opt-ins · booked · BR), today's sales outcomes (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown of today's calls, and tomorrow's appointments with Monday deep-links.",
+      examplePreview: `Einde van de dag 🌆
+
+*Marketing last 24h* :bar_chart:
+€1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
+
+*Sales vandaag* :dart:
+17 scheduled · 4 no show/cancel · 10 taken calls (59%) · 3 deal (30%) · 3 empty outcome
+
+*Closer stats* :bust_in_silhouette:
+• Quintus: 2 scheduled, 1 no show/cancel, 0 taken (0%), 0 deal (0%), 1 empty outcome
+
+*Afspraken voor morgen* :calendar:
+• 09:30: Mylene Klatt (Klatt Interieur) - Bekijk in Monday
+• 14:00: Frans (Bouwbedrijf Frans) - Bekijk in Monday`,
     },
   ]
 
@@ -1196,6 +1226,7 @@ type Props = {
   recipients: Recipient[]
   teamChannelId: string | null
   bodChannelId: string | null
+  eodChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }
@@ -1206,6 +1237,7 @@ export function AutomationsTab({
   recipients,
   teamChannelId,
   bodChannelId,
+  eodChannelId,
   closers,
   notificationConfigs,
 }: Props) {
@@ -1220,6 +1252,7 @@ export function AutomationsTab({
         recipients={recipients}
         teamChannelId={teamChannelId}
         bodChannelId={bodChannelId}
+        eodChannelId={eodChannelId}
         closers={closers}
         notificationConfigs={notificationConfigs}
       />

@@ -16,27 +16,15 @@ import {
   getNotificationConfig,
   renderTemplate,
 } from "./notification-config"
-import { amsterdamToday, fetchTodaysAppointments } from "./sales-fetcher"
-import type { TodayAppointment } from "./sales-fetcher"
-
-// ─── Formatting ─────────────────────────────────────────────────────────────
-
-/** Whole-euro amount with thousands separators: 1000 → "€1,000". */
-function eur0(n: number): string {
-  return `€${Math.round(n).toLocaleString("en-GB")}`
-}
-
-/** Cost-per amount: no decimals when whole, else two. 10 → "€10", 12.375 → "€12.38". */
-function eurCost(n: number): string {
-  const r = Math.round(n * 100) / 100
-  return Number.isInteger(r) ? `€${r}` : `€${r.toFixed(2)}`
-}
-
-/** Ratio as a whole percent. Returns "–" when the denominator is 0 (no data), not "0%". */
-function pct(num: number, den: number): string {
-  if (den <= 0) return "–"
-  return `${Math.round((num / den) * 100)}%`
-}
+import { amsterdamToday, fetchAppointmentsForDate } from "./sales-fetcher"
+import type { AppointmentRow } from "./sales-fetcher"
+import {
+  marketingLine,
+  salesLine,
+  closerLinesFrom,
+  appointmentLines,
+  type SalesCounts,
+} from "./funnel-summary"
 
 // ─── Greeting ───────────────────────────────────────────────────────────────
 
@@ -73,64 +61,45 @@ export type BodVars = {
  * bucket, the combined (Meta + Google) 7d ad spend, and today's appointments.
  *
  * Windows: Marketing/Sales/Closer numbers are all last 7 days excluding today.
- * Booking Rate (BR) = booked calls (creation-date/marketing lens) / opt-ins.
  * Scheduled/taken/empty are appointment-date lens; deals are on deal-close date.
- * Returns `closerCount` so the caller can log/report how many closers were shown.
  */
 export function computeBodVars(
   mkt: MondayTargetsData,
   spend7d: number,
-  appointments: TodayAppointment[],
+  appointments: AppointmentRow[],
   today: string,
 ): { vars: BodVars; closerCount: number } {
-  // Marketing lens. Top-of-funnel is OPT-INS (form submissions on the opt-ins
-  // board), not raw Meta leads - matches the dashboard's "Opt-ins" +
-  // "Cost per opt-in" cards, and makes BR = booked / opt-ins reconcile with the
-  // opt-ins number shown on the same line.
-  const optIns = mkt.optIns
-  const costPerOptIn = optIns > 0 ? spend7d / optIns : 0
-  const booked = mkt.mktBooked
-  const cbc = booked > 0 ? spend7d / booked : 0
-  const marketing_line = `${eur0(spend7d)} spend · ${optIns} opt-ins (${eurCost(costPerOptIn)}) · ${booked} booked (${eurCost(cbc)}) · ${pct(booked, optIns)} BR`
+  const teamCounts: SalesCounts = {
+    scheduled: mkt.calls,
+    noShowCancel: mkt.noShows + mkt.cancellations,
+    taken: mkt.takenCalls,
+    deals: mkt.deals,
+    empty: mkt.notUpdated,
+  }
 
-  // Sales lens: appointment-date scheduled calls decomposed by outcome.
-  const scheduled = mkt.calls
-  const noShowCancel = mkt.noShows + mkt.cancellations
-  const taken = mkt.takenCalls
-  const empty = mkt.notUpdated
-  const sales_line = `${scheduled} scheduled · ${noShowCancel} no show/cancel · ${taken} taken calls (${pct(taken, scheduled)}) · ${mkt.deals} deal (${pct(mkt.deals, taken)}) · ${empty} empty outcome`
-
-  // Per-closer: same 7d appointment-date lens. no show/cancel is derived
-  // (scheduled − taken − empty) because CloserData doesn't split it out.
-  const activeClosers = mkt.closers
-    .filter((c) => c.qualifiedCalls > 0 || c.deals > 0)
-    .sort((a, b) => b.qualifiedCalls - a.qualifiedCalls || b.deals - a.deals)
-  const closerLines = activeClosers.map((c) => {
-    const cScheduled = c.qualifiedCalls
-    const cNsc = Math.max(0, c.qualifiedCalls - c.takenCalls - c.notUpdated)
-    return `• ${c.closer}: ${cScheduled} scheduled, ${cNsc} no show/cancel, ${c.takenCalls} taken (${pct(c.takenCalls, cScheduled)}), ${c.deals} deal (${pct(c.deals, c.takenCalls)}), ${c.notUpdated} empty outcome`
-  })
-  const closer_lines =
-    closerLines.length > 0 ? closerLines.join("\n") : "• Geen calls in de afgelopen 7 dagen"
-
-  // Today's agenda.
-  const apptLines = appointments.map((a) => {
-    const timePart = a.time ? `${a.time}: ` : ""
-    const statusPart = a.status ? ` (${a.status})` : ""
-    return `• ${timePart}${a.name}${statusPart} - <${a.url}|Bekijk in Monday>`
-  })
-  const appointments_lines =
-    apptLines.length > 0 ? apptLines.join("\n") : "• Geen afspraken vandaag 🎉"
+  // Per-closer no show/cancel is derived (scheduled − taken − empty) because
+  // CloserData doesn't split it out.
+  const closerRows = mkt.closers.map((c) => ({
+    name: c.closer,
+    counts: {
+      scheduled: c.qualifiedCalls,
+      noShowCancel: Math.max(0, c.qualifiedCalls - c.takenCalls - c.notUpdated),
+      taken: c.takenCalls,
+      deals: c.deals,
+      empty: c.notUpdated,
+    } satisfies SalesCounts,
+  }))
+  const closers = closerLinesFrom(closerRows, "• Geen calls in de afgelopen 7 dagen")
 
   return {
     vars: {
       greeting: bodGreeting(today),
-      marketing_line,
-      sales_line,
-      closer_lines,
-      appointments_lines,
+      marketing_line: marketingLine({ spend: spend7d, optIns: mkt.optIns, booked: mkt.mktBooked }),
+      sales_line: salesLine(teamCounts),
+      closer_lines: closers.text,
+      appointments_lines: appointmentLines(appointments, "• Geen afspraken vandaag 🎉"),
     },
-    closerCount: activeClosers.length,
+    closerCount: closers.count,
   }
 }
 
@@ -146,13 +115,13 @@ function last7dRange(): { start: string; end: string } {
   return { start: format(subDays(now, 7), "yyyy-MM-dd"), end: format(subDays(now, 1), "yyyy-MM-dd") }
 }
 
-async function loadMonday(start: string, end: string): Promise<MondayTargetsData> {
+export async function loadMondayTargets(start: string, end: string): Promise<MondayTargetsData> {
   const cached = await readCache<MondayTargetsByCountry>(`targets_monday:${start}:${end}`)
   const data = cached ?? (await fetchMondayTargets(start, end))
   return data.all
 }
 
-async function loadSpend(start: string, end: string): Promise<number> {
+export async function loadSpend(start: string, end: string): Promise<number> {
   const metaCached = await readCache<MetaTargetsByCountry>(`targets_meta:${start}:${end}`)
   const meta = metaCached ?? (await fetchMetaTargets(start, end))
   const metaSpend = meta.all?.spend ?? 0
@@ -176,9 +145,9 @@ export async function buildBodMessage(
   const today = amsterdamToday()
 
   const [mkt, spend7d, appointments, config] = await Promise.all([
-    loadMonday(start, end),
+    loadMondayTargets(start, end),
     loadSpend(start, end),
-    fetchTodaysAppointments(today),
+    fetchAppointmentsForDate(today),
     getNotificationConfig("bod"),
   ])
 

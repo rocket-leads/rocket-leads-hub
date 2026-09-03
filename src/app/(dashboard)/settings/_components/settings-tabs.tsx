@@ -56,6 +56,7 @@ type AdminProps = {
     recipients: React.ComponentProps<typeof AutomationsTab>["recipients"]
     teamChannelId: string | null
     bodChannelId: string | null
+    eodChannelId: string | null
     closers: React.ComponentProps<typeof AutomationsTab>["closers"]
     configs: React.ComponentProps<typeof AutomationsTab>["notificationConfigs"]
   }
@@ -158,6 +159,7 @@ export function SettingsTabs(props: Props) {
             recipients={props.notifications.recipients}
             teamChannelId={props.notifications.teamChannelId}
             bodChannelId={props.notifications.bodChannelId}
+            eodChannelId={props.notifications.eodChannelId}
             closers={props.notifications.closers}
             notificationConfigs={props.notifications.configs}
           />

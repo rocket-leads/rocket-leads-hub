@@ -168,7 +168,7 @@ const MONTH_NAMES_NL = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", 
 // "No deal/NI", "No deal/UQ", "No deal/FU" and "Not interesting". Old /
 // deactivated labels (DEAL - AE, Lead cancelation, Gepland, No show automation)
 // are kept in their buckets so historical ranges still count correctly.
-const STATUS_MAP = {
+export const STATUS_MAP = {
   /** Call actually happened. Outcome may be positive (DEAL/Signed) or negative
    *  (No deal/* variants - call took place, just didn't close). */
   taken: [
