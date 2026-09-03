@@ -70,7 +70,7 @@ export async function sendSlackChannelMessage(channelId: string, text: string): 
   await slackPost("chat.postMessage", { channel: channelId, text })
 }
 
-export type SlackChannelKey = "team_watchlist" | "sales" | "bod" | "eod"
+export type SlackChannelKey = "team_watchlist" | "sales" | "bod" | "eod" | "targets"
 
 export type SlackChannels = Partial<Record<SlackChannelKey, string>>
 
@@ -88,7 +88,7 @@ export async function getSlackChannels(): Promise<SlackChannels> {
     .maybeSingle()
   const raw = (data?.value ?? {}) as Record<string, unknown>
   const result: SlackChannels = {}
-  for (const k of ["team_watchlist", "sales", "bod", "eod"] as const) {
+  for (const k of ["team_watchlist", "sales", "bod", "eod", "targets"] as const) {
     const v = raw[k]
     if (typeof v === "string" && v.trim()) result[k] = v.trim()
   }

@@ -21,6 +21,10 @@
       "schedule": "17 * * * *"
     },
     {
+      "path": "/api/cron/slack-targets",
+      "schedule": "19 * * * *"
+    },
+    {
       "path": "/api/cron/slack-personal-sales",
       "schedule": "20 * * * *"
     },

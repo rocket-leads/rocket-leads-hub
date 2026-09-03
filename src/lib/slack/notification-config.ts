@@ -6,6 +6,7 @@ export type NotificationKey =
   | "personal_sales"
   | "bod"
   | "eod"
+  | "targets"
   | "personal_inbox"
 
 export type NotificationConfig = {
@@ -26,6 +27,7 @@ const DEFAULTS: AllNotificationConfigs = {
   personal_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
   bod: { enabled: true, hour: DEFAULT_HOUR, template: null },
   eod: { enabled: true, hour: 18, template: null },
+  targets: { enabled: true, hour: DEFAULT_HOUR, template: null },
   personal_inbox: { enabled: true, hour: 8, template: null },
 }
 
@@ -35,6 +37,7 @@ const KEYS: NotificationKey[] = [
   "personal_sales",
   "bod",
   "eod",
+  "targets",
   "personal_inbox",
 ]
 
@@ -157,6 +160,17 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 *Afspraken voor morgen* :calendar:
 {{appointments_lines}}`,
 
+  targets: `{{header}}
+
+*Targets Tracker* 🎯
+{{tracker_lines}}
+
+*Sales leaderboard*
+{{sales_leaderboard}}
+
+*Delivery leaderboard*
+{{delivery_leaderboard}}`,
+
   personal_inbox: `Goedemorgen {{first_name}}.
 
 *Op je bord vandaag*
@@ -217,6 +231,12 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "sales_line", description: "Today (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer breakdown of today's calls (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
     { name: "appointments_lines", description: "Tomorrow's appointments: time, closer (wie_), lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
+  ],
+  targets: [
+    { name: "header", description: "Date header, e.g. 'BOD | Donderdag 3 september'." },
+    { name: "tracker_lines", description: "MTD vs target lines (taken calls, deals, NB closed, NB collected, MRR): actual/pro-rata ✅|❌ (full-month target)." },
+    { name: "sales_leaderboard", description: "Top-3 closers this month by closed revenue: closed & collected (collected%)." },
+    { name: "delivery_leaderboard", description: "Delivery teams ranked by MRR this month + an Unassigned-revenue MRR line." },
   ],
   personal_inbox: [
     { name: "first_name", description: "Hub user's first name (split on space)." },

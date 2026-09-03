@@ -534,7 +534,7 @@ type Closer = {
 }
 
 type AudienceKind = "hub-users" | "closers"
-type ChannelKey = "team_watchlist" | "sales" | "bod" | "eod"
+type ChannelKey = "team_watchlist" | "sales" | "bod" | "eod" | "targets"
 
 type NotificationDef = {
   id: string
@@ -559,6 +559,7 @@ function NotificationsSection({
   teamChannelId,
   bodChannelId,
   eodChannelId,
+  targetsChannelId,
   closers: initialClosers,
   notificationConfigs,
 }: {
@@ -567,6 +568,7 @@ function NotificationsSection({
   teamChannelId: string | null
   bodChannelId: string | null
   eodChannelId: string | null
+  targetsChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }) {
@@ -786,6 +788,37 @@ Open Targets`,
 *Afspraken voor morgen* :calendar:
 • 12:00: Anel - Jeroen de Roon (Daaf) - Bekijk in Monday
 • 13:00: Quintus - Gabriel Hernalsteens (The Platinum Realty) - Bekijk in Monday`,
+    },
+    {
+      id: "targets",
+      title: "Targets Tracker (BOD)",
+      destination: "channel",
+      channelLabel: "Slack channel",
+      channelKey: "targets",
+      channelId: targetsChannelId,
+      schedule: "Daily · 06:00 Europe/Amsterdam",
+      previewEndpoint: "/api/slack/preview-targets",
+      cronEndpoint: "/api/cron/slack-targets",
+      audience: "closers",
+      description:
+        "Team-wide month-to-date targets pulse (finance + delivery). Each metric shows MTD actual vs pro-rata target (✅ on track / ❌ behind) with the full-month target in parentheses: taken calls, deals, new business closed & collected, MRR. Plus a sales leaderboard (closed & collected per closer) and a delivery leaderboard (MRR per team + unassigned).",
+      examplePreview: `BOD | Donderdag 3 september
+
+*Targets Tracker* 🎯
+- Taken calls 8/5 ✅ (100)
+- Deals 1/1 ✅ (10)
+- New business closed €8,000/€7,000 ✅ (€40,000)
+- New business collected €4,000/€3,000 ✅ (€25,000)
+- MRR €7,000/€8,000 ❌ (€40,000)
+
+*Sales leaderboard*
+🥇 Anel €5,000 closed & €2,500 collected (50%)
+🥈 Quintus €3,000 closed & €1,500 collected (50%)
+
+*Delivery leaderboard*
+🥇 Roel & Mike €3,000 MRR
+🥈 Danny & Stefan €2,000 MRR
+⏳ Unassigned revenue €2,000 MRR`,
     },
   ]
 
@@ -1227,6 +1260,7 @@ type Props = {
   teamChannelId: string | null
   bodChannelId: string | null
   eodChannelId: string | null
+  targetsChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }
@@ -1238,6 +1272,7 @@ export function AutomationsTab({
   teamChannelId,
   bodChannelId,
   eodChannelId,
+  targetsChannelId,
   closers,
   notificationConfigs,
 }: Props) {
@@ -1253,6 +1288,7 @@ export function AutomationsTab({
         teamChannelId={teamChannelId}
         bodChannelId={bodChannelId}
         eodChannelId={eodChannelId}
+        targetsChannelId={targetsChannelId}
         closers={closers}
         notificationConfigs={notificationConfigs}
       />

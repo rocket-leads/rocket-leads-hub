@@ -265,6 +265,7 @@ export default async function SettingsPage({
               teamChannelId: slackChannels.team_watchlist ?? null,
               bodChannelId: slackChannels.bod ?? null,
               eodChannelId: slackChannels.eod ?? null,
+              targetsChannelId: slackChannels.targets ?? null,
               closers,
               configs: notificationConfigs,
             }}

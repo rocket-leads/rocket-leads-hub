@@ -133,7 +133,10 @@ export interface CloserData {
   /** Past appointments still sitting in pre-call status (Qualified / Gepland) - closer hasn't updated. */
   notUpdated: number
   deals: number
+  /** Closed deal value (Monday `numbers`) for this closer's deals in the period. */
   revenue: number
+  /** Cash actually collected (Monday `numeric_mm5bv69m`) on this closer's deals. */
+  collectedRevenue: number
 }
 
 export interface WeeklyData {
@@ -242,6 +245,8 @@ export interface UnassignedCustomer {
   /** Total revenue for this customer in the period: fee (incl. credits) + adBudget (incl. credits). */
   revenue: number
   fee: number
+  /** Service-fee MRR portion of `fee` (returning-customer recurring revenue). */
+  mrr: number
   adBudget: number
   /**
    * Why this customer ended up under "Unassigned":

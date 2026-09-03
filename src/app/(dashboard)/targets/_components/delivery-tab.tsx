@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { format, parseISO, subDays, differenceInCalendarDays } from "date-fns"
+import { format, parseISO, subDays, differenceInCalendarDays, startOfMonth, getDaysInMonth, max as dateMax } from "date-fns"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -34,6 +34,18 @@ function previousPeriodRange(startDate: string, endDate: string): { start: Date;
 
 const SHORT_DATE = "MMM d"
 
+/** Pro-rata a monthly target to where we should be in the current range.
+ *  Mirrors Marketing/Sales so MRR and New Business track "on pace" rather
+ *  than always reading against the full-month goal. */
+function proRata(monthlyTarget: number, range: { startDate: Date; endDate: Date }): number {
+  if (monthlyTarget <= 0) return 0
+  const refMonthStart = startOfMonth(range.endDate)
+  const effectiveStart = dateMax([range.startDate, refMonthStart])
+  const days = differenceInCalendarDays(range.endDate, effectiveStart) + 1
+  const daysInMonth = getDaysInMonth(range.endDate)
+  return (monthlyTarget * days) / daysInMonth
+}
+
 export function DeliveryTab() {
   const locale = useLocale()
   const { range, setRange, presets, applyPreset } = useDateRange()
@@ -45,6 +57,12 @@ export function DeliveryTab() {
   // Renamed from `t` to `tgt` so we can use the imported i18n `t()` helper.
   const tgt = targets ?? null
   const prevRange = previousPeriodRange(startDate, endDate)
+  // MRR & New Business are cumulative monthly goals - pro-rata them to the
+  // selected range so the bar reads "where we should be by now", not the
+  // full-month endpoint. Ratio targets (service fee/customer, churn) stay
+  // absolute. Rounded to whole euros.
+  const prMrr = tgt?.mrr ? Math.round(proRata(tgt.mrr, range)) : undefined
+  const prNewBusiness = tgt?.newBusiness ? Math.round(proRata(tgt.newBusiness, range)) : undefined
   // Optimism (resolved/linked rows) is scoped to the child and keyed by the
   // range, so switching periods remounts it clean - see <UnassignedSection>.
   const rangeKey = `${startDate}|${endDate}`
@@ -90,8 +108,8 @@ export function DeliveryTab() {
             label="MRR"
             value={data?.mrr ?? null}
             formatted={formatCurrency(data?.mrr ?? 0)}
-            target={tgt?.mrr || undefined}
-            targetFormatted={tgt?.mrr ? t("targets.kpi.target_of", locale, { value: formatCurrency(data?.mrr ?? 0), target: formatCurrency(tgt.mrr) }) : undefined}
+            target={prMrr || undefined}
+            targetFormatted={prMrr ? t("targets.kpi.target_of", locale, { value: formatCurrency(data?.mrr ?? 0), target: formatCurrency(prMrr) }) : undefined}
             variant="volume"
             isLoading={loading}
           />
@@ -99,8 +117,8 @@ export function DeliveryTab() {
             label="New Business"
             value={data?.newBusiness ?? null}
             formatted={formatCurrency(data?.newBusiness ?? 0)}
-            target={tgt?.newBusiness || undefined}
-            targetFormatted={tgt?.newBusiness ? t("targets.kpi.target_of", locale, { value: formatCurrency(data?.newBusiness ?? 0), target: formatCurrency(tgt.newBusiness) }) : undefined}
+            target={prNewBusiness || undefined}
+            targetFormatted={prNewBusiness ? t("targets.kpi.target_of", locale, { value: formatCurrency(data?.newBusiness ?? 0), target: formatCurrency(prNewBusiness) }) : undefined}
             variant="volume"
             isLoading={loading}
           />

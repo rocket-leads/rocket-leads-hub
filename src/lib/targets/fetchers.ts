@@ -444,7 +444,7 @@ export async function fetchMondayTargets(
   const platform = platformFilter && platformFilter !== "all" ? platformFilter : null
 
   // Per-country accumulators
-  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
+  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
     takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
@@ -595,7 +595,7 @@ export async function fetchMondayTargets(
     if (apptInRange || dealInRangeForCloser) {
       const ensureCloser = (a: Acc) => {
         if (!a.closerMap[closerKey]) {
-          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, notUpdated: 0, deals: 0, revenue: 0 }
+          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, notUpdated: 0, deals: 0, revenue: 0, collectedRevenue: 0 }
         }
         return a.closerMap[closerKey]
       }
@@ -624,6 +624,7 @@ export async function fetchMondayTargets(
           const c = ensureCloser(a)
           c.deals++
           c.revenue += dealValue
+          c.collectedRevenue += collectedValue
         })
       }
     }
@@ -1744,6 +1745,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
         customerId: c.customerId,
         customerName: c.customerName,
         fee: customerFee,
+        mrr: c.feeMrr,
         adBudget: c.adAmount,
         revenue: customerFee + c.adAmount,
         reason: link ? "empty_am" : "no_monday_match",
