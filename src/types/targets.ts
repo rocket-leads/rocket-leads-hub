@@ -245,8 +245,6 @@ export interface UnassignedCustomer {
   /** Total revenue for this customer in the period: fee (incl. credits) + adBudget (incl. credits). */
   revenue: number
   fee: number
-  /** Service-fee MRR portion of `fee` (returning-customer recurring revenue). */
-  mrr: number
   adBudget: number
   /**
    * Why this customer ended up under "Unassigned":

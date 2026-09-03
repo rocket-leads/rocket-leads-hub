@@ -805,20 +805,19 @@ Open Targets`,
       examplePreview: `BOD | Donderdag 3 september
 
 *Targets Tracker* 🎯
-- Taken calls 8/5 ✅ (100)
-- Deals 1/1 ✅ (10)
-- New business closed €8,000/€7,000 ✅ (€40,000)
-- New business collected €4,000/€3,000 ✅ (€25,000)
-- MRR €7,000/€8,000 ❌ (€40,000)
+✅ Taken calls 10/5 (200% van 54)
+✅ Deals 1/1 (100% van 9)
+✅ New business closed €4,500/€4,000 (113% van €40,000)
+✅ New business collected €4,500/€2,500 (180% van €25,000)
+✅ MRR €5,500/€4,000 (138% van €40,000)
 
 *Sales leaderboard*
-🥇 Anel €5,000 closed & €2,500 collected (50%)
-🥈 Quintus €3,000 closed & €1,500 collected (50%)
+🥇 Roy €4,500 closed & €4,500 collected (100%)
 
 *Delivery leaderboard*
-🥇 Roel & Mike €3,000 MRR
-🥈 Danny & Stefan €2,000 MRR
-⏳ Unassigned revenue €2,000 MRR`,
+🥇 Roel & Mike €1,300 MRR
+🥈 Danny & Stefan €450 MRR
+⏳ Unassigned revenue €6,750`,
     },
   ]
 

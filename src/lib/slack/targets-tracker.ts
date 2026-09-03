@@ -46,10 +46,10 @@ const int = (n: number): string => String(Math.round(n))
 const firstName = (name: string): string => name.split(" ")[0]
 
 /**
- * One tracker line: `- {label} {actual}/{pro-rata target} {✅|❌} ({full-month target})`.
+ * One tracker line: `{✅|❌} {label} {actual}/{pro-rata target} ({pace}% van {full-month target})`.
  * Pro-rata target = full-month × fraction-of-month-elapsed; ✅ when actual is at or
- * ahead of that pace. Money metrics format as euros, volume metrics as integers.
- * When there's no full-month target configured, shows just the actual.
+ * ahead of that pace. Pace% = actual / pro-rata. Money metrics format as euros,
+ * volume metrics as integers. With no full-month target configured, shows just the actual.
  */
 function trackerLine(
   label: string,
@@ -59,10 +59,11 @@ function trackerLine(
   money: boolean,
 ): string {
   const fmt = money ? eur0 : int
-  if (fullTarget <= 0) return `- ${label} ${fmt(actual)}`
+  if (fullTarget <= 0) return `${label} ${fmt(actual)}`
   const proRata = fullTarget * frac
   const ok = actual >= proRata
-  return `- ${label} ${fmt(actual)}/${fmt(proRata)} ${ok ? "✅" : "❌"} (${fmt(fullTarget)})`
+  const pace = proRata > 0 ? Math.round((actual / proRata) * 100) : 0
+  return `${ok ? "✅" : "❌"} ${label} ${fmt(actual)}/${fmt(proRata)} (${pace}% van ${fmt(fullTarget)})`
 }
 
 function trackerLines(mkt: MondayTargetsData, delivery: DeliveryOverview, cfg: TargetsConfig | null, frac: number): string {
@@ -81,18 +82,21 @@ function salesLeaderboard(closers: CloserData[]): string {
   const rows = closers.filter((c) => c.revenue > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 3)
   if (rows.length === 0) return "• Nog geen deals deze maand"
   return rows
-    .map(
-      (c, i) =>
-        `${MEDALS[i] ?? "•"} ${firstName(c.closer)} ${eur0(c.revenue)} closed & ${eur0(c.collectedRevenue)} collected (${pct(c.collectedRevenue, c.revenue)})`,
-    )
+    .map((c, i) => {
+      const collected = c.collectedRevenue ?? 0
+      return `${MEDALS[i] ?? "•"} ${firstName(c.closer)} ${eur0(c.revenue)} closed & ${eur0(collected)} collected (${pct(collected, c.revenue)})`
+    })
     .join("\n")
 }
 
 function deliveryLeaderboard(delivery: DeliveryOverview): string {
   const teams = delivery.byTeam.filter((t) => t.mrr > 0).sort((a, b) => b.mrr - a.mrr)
   const lines = teams.map((t, i) => `${MEDALS[i] ?? "•"} ${t.name} ${eur0(t.mrr)} MRR`)
-  const unassignedMrr = delivery.unassignedCustomers.reduce((s, c) => s + (c.mrr ?? 0), 0)
-  if (unassignedMrr > 0) lines.push(`⏳ Unassigned revenue ${eur0(unassignedMrr)} MRR`)
+  // Unassigned = total revenue not attributed to a team (fee + ad budget), matching
+  // the delivery dashboard's bold "Unassigned" figure. Uses the pre-existing
+  // `revenue` field so it renders even before the cache picks up newer fields.
+  const unassignedRevenue = delivery.unassignedCustomers.reduce((s, c) => s + (c.revenue ?? 0), 0)
+  if (unassignedRevenue > 0) lines.push(`⏳ Unassigned revenue ${eur0(unassignedRevenue)}`)
   if (lines.length === 0) return "• Geen MRR deze maand"
   return lines.join("\n")
 }
@@ -101,7 +105,11 @@ function deliveryLeaderboard(delivery: DeliveryOverview): string {
 
 async function loadMonthMonday(): Promise<MondayTargetsData> {
   const cached = await readCache<MondayTargetsByCountry>("targets_marketing_monday")
-  if (cached) return cached.all
+  // A cache written before `collectedRevenue` was added to CloserData lacks it,
+  // which renders as €NaN in the sales leaderboard. Treat that as stale and refetch
+  // live until the next refresh-targets run repopulates the cache with the new field.
+  const stale = !!cached && cached.all.closers.some((c) => c.collectedRevenue === undefined)
+  if (cached && !stale) return cached.all
   const mtd = getMtdRange()
   return (await fetchMondayTargets(mtd.startDate, mtd.endDate)).all
 }

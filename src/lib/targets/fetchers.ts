@@ -1745,7 +1745,6 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
         customerId: c.customerId,
         customerName: c.customerName,
         fee: customerFee,
-        mrr: c.feeMrr,
         adBudget: c.adAmount,
         revenue: customerFee + c.adAmount,
         reason: link ? "empty_am" : "no_monday_match",
