@@ -189,7 +189,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
   ],
   bod: [
     { name: "greeting", description: "Date-deterministic random morning greeting." },
-    { name: "marketing_line", description: "Last 7d: spend · leads (CPL) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
+    { name: "marketing_line", description: "Last 7d: spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
     { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
     { name: "appointments_lines", description: "Today's appointments: time, name, status + a 'Bekijk in Monday' deep-link, one bullet each." },

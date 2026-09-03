@@ -83,12 +83,15 @@ export function computeBodVars(
   appointments: TodayAppointment[],
   today: string,
 ): { vars: BodVars; closerCount: number } {
-  // Marketing lens: leads created in range + the ones that booked (mktBooked).
-  const leads = mkt.leads
-  const cpl = leads > 0 ? spend7d / leads : 0
+  // Marketing lens. Top-of-funnel is OPT-INS (form submissions on the opt-ins
+  // board), not raw Meta leads - matches the dashboard's "Opt-ins" +
+  // "Cost per opt-in" cards, and makes BR = booked / opt-ins reconcile with the
+  // opt-ins number shown on the same line.
+  const optIns = mkt.optIns
+  const costPerOptIn = optIns > 0 ? spend7d / optIns : 0
   const booked = mkt.mktBooked
   const cbc = booked > 0 ? spend7d / booked : 0
-  const marketing_line = `${eur0(spend7d)} spend · ${leads} leads (${eurCost(cpl)}) · ${booked} booked (${eurCost(cbc)}) · ${pct(booked, mkt.optIns)} BR`
+  const marketing_line = `${eur0(spend7d)} spend · ${optIns} opt-ins (${eurCost(costPerOptIn)}) · ${booked} booked (${eurCost(cbc)}) · ${pct(booked, optIns)} BR`
 
   // Sales lens: appointment-date scheduled calls decomposed by outcome.
   const scheduled = mkt.calls

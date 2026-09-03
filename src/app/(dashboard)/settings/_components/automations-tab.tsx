@@ -742,11 +742,11 @@ Open Targets`,
       cronEndpoint: "/api/cron/slack-bod",
       audience: "closers",
       description:
-        "Team-wide Beginning-of-Day post. Last 7 days (excl. today): marketing funnel (spend · leads · booked · BR), sales funnel (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown, and today's appointments with Monday deep-links.",
+        "Team-wide Beginning-of-Day post. Last 7 days (excl. today): marketing funnel (spend · opt-ins · booked · BR), sales funnel (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown, and today's appointments with Monday deep-links.",
       examplePreview: `Goedemorgen sales team ☀️
 
 *Marketing last 7d* :bar_chart:
-€1,000 spend · 100 leads (€10) · 10 booked (€100) · 50% BR
+€1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales last 7d* :dart:
 8 scheduled · 2 no show/cancel · 4 taken calls (50%) · 1 deal (25%) · 1 empty outcome
