@@ -55,7 +55,7 @@ type AdminProps = {
     slackConnected: boolean
     recipients: React.ComponentProps<typeof AutomationsTab>["recipients"]
     teamChannelId: string | null
-    salesChannelId: string | null
+    bodChannelId: string | null
     closers: React.ComponentProps<typeof AutomationsTab>["closers"]
     configs: React.ComponentProps<typeof AutomationsTab>["notificationConfigs"]
   }
@@ -157,7 +157,7 @@ export function SettingsTabs(props: Props) {
             slackConnected={props.notifications.slackConnected}
             recipients={props.notifications.recipients}
             teamChannelId={props.notifications.teamChannelId}
-            salesChannelId={props.notifications.salesChannelId}
+            bodChannelId={props.notifications.bodChannelId}
             closers={props.notifications.closers}
             notificationConfigs={props.notifications.configs}
           />

@@ -52,7 +52,7 @@ export const HUB_FEATURES: ReadonlyArray<HubFeature> = [
     cronNames: [
       "slack-team-watchlist",
       "slack-daily-watchlist",
-      "slack-team-sales",
+      "slack-bod",
       "slack-personal-sales",
     ],
   },

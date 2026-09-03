@@ -118,7 +118,7 @@ export async function updateNotificationConfig(
 }
 
 export async function saveSlackChannelId(
-  key: "team_watchlist" | "sales",
+  key: "team_watchlist" | "sales" | "bod",
   channelId: string,
 ) {
   await requireAdmin()

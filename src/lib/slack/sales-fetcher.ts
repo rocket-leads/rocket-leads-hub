@@ -50,6 +50,59 @@ function parseDate(s: string): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * Extract HH:MM from a Monday date-with-time column text (e.g. "2026-09-03 15:00").
+ * Monday only renders a time part when the appointment column has one set, so this
+ * returns null for date-only appointments - the BOD then shows the name without a time.
+ */
+function parseTime(s: string): string | null {
+  if (!s) return null
+  const m = s.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (!m) return null
+  return `${m[1].padStart(2, "0")}:${m[2]}`
+}
+
+/** Deep-link to an item on the central targets board. */
+export function targetsItemUrl(itemId: string): string {
+  return `https://rocketleads-team.monday.com/boards/${TARGETS_BOARD_ID}/pulses/${itemId}`
+}
+
+export type TodayAppointment = {
+  itemId: string
+  name: string
+  closer: string | null
+  /** HH:MM, or null when the appointment has no time-of-day set. */
+  time: string | null
+  /** Raw Monday status column text (e.g. "Gepland", "Qualified", "DEAL"). */
+  status: string
+  url: string
+}
+
+/**
+ * Every targets-board item whose appointment date (`datum_afspraak`) is `today`
+ * (YYYY-MM-DD, Amsterdam). Sorted by time ascending, untimed appointments last.
+ * Cron/preview-only - reads the board live so the agenda is always current.
+ */
+export async function fetchTodaysAppointments(today: string): Promise<TodayAppointment[]> {
+  const token = await getMondayToken()
+  const items = await fetchAllItems(TARGETS_BOARD_ID, token)
+  const out: TodayAppointment[] = []
+  for (const item of items) {
+    const raw = col(item, "datum_afspraak")
+    if (parseDate(raw) !== today) continue
+    out.push({
+      itemId: item.id,
+      name: item.name,
+      closer: col(item, "wie_").trim() || null,
+      time: parseTime(raw),
+      status: col(item, "status").trim(),
+      url: targetsItemUrl(item.id),
+    })
+  }
+  out.sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"))
+  return out
+}
+
 function parseEuro(s: string): number {
   const n = parseFloat((s ?? "").replace(/[^0-9.-]/g, ""))
   return isNaN(n) ? 0 : n

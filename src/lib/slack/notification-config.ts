@@ -4,7 +4,7 @@ export type NotificationKey =
   | "personal_watchlist"
   | "team_watchlist"
   | "personal_sales"
-  | "team_sales"
+  | "bod"
   | "personal_inbox"
 
 export type NotificationConfig = {
@@ -23,7 +23,7 @@ const DEFAULTS: AllNotificationConfigs = {
   personal_watchlist: { enabled: true, hour: DEFAULT_HOUR, template: null },
   team_watchlist: { enabled: true, hour: DEFAULT_HOUR, template: null },
   personal_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
-  team_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
+  bod: { enabled: true, hour: DEFAULT_HOUR, template: null },
   personal_inbox: { enabled: true, hour: 8, template: null },
 }
 
@@ -31,7 +31,7 @@ const KEYS: NotificationKey[] = [
   "personal_watchlist",
   "team_watchlist",
   "personal_sales",
-  "team_sales",
+  "bod",
   "personal_inbox",
 ]
 
@@ -126,20 +126,19 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 
 {{action_items_section}}`,
 
-  team_sales: `{{greeting}}
+  bod: `{{greeting}}
 
-*Gisteren*
-{{yesterday_lines}}
+*Marketing last 7d* :bar_chart:
+{{marketing_line}}
 
-*Vandaag*
-{{today_lines}}
+*Sales last 7d* :dart:
+{{sales_line}}
 
-{{action_items_section}}
+*Closer stats last 7d* :bust_in_silhouette:
+{{closer_lines}}
 
-*Deze maand ({{month_label}})*
-{{mtd_lines}}
-
-{{leaderboard_section}}`,
+*Afspraken voor vandaag* :calendar:
+{{appointments_lines}}`,
 
   personal_inbox: `Goedemorgen {{first_name}}.
 
@@ -188,15 +187,12 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "action_items_section", description: "Empty call outcomes block (header + per-name backlog), or empty." },
     { name: "open_link", description: "Slack link to open the Targets page." },
   ],
-  team_sales: [
+  bod: [
     { name: "greeting", description: "Date-deterministic random morning greeting." },
-    { name: "yesterday_lines", description: "Per-closer yesterday breakdown (calls + outcomes); plus a sub-section for deals closed yesterday from older calls." },
-    { name: "today_lines", description: "Aggregated bullet line about today's planned calls." },
-    { name: "mtd_lines", description: "Aggregated MTD vs targets bullet lines." },
-    { name: "month_label", description: "Lowercase Dutch month name." },
-    { name: "leaderboard_section", description: "Closer leaderboard block (top 3 by deals, MTD-active closers only), or empty." },
-    { name: "action_items_section", description: ":rotating_light: *Empty call outcomes* header + per-closer breakdown ('2 bij Sebastiaan en 1 bij Anel - checken in Monday'). Empty when all outcomes are logged." },
-    { name: "open_link", description: "Slack link to open the Targets page." },
+    { name: "marketing_line", description: "Last 7d: spend · leads (CPL) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
+    { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
+    { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
+    { name: "appointments_lines", description: "Today's appointments: time, name, status + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
   personal_inbox: [
     { name: "first_name", description: "Hub user's first name (split on space)." },

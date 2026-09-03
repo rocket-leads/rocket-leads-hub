@@ -534,7 +534,7 @@ type Closer = {
 }
 
 type AudienceKind = "hub-users" | "closers"
-type ChannelKey = "team_watchlist" | "sales"
+type ChannelKey = "team_watchlist" | "sales" | "bod"
 
 type NotificationDef = {
   id: string
@@ -557,14 +557,14 @@ function NotificationsSection({
   slackConnected,
   recipients,
   teamChannelId,
-  salesChannelId,
+  bodChannelId,
   closers: initialClosers,
   notificationConfigs,
 }: {
   slackConnected: boolean
   recipients: Recipient[]
   teamChannelId: string | null
-  salesChannelId: string | null
+  bodChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }) {
@@ -731,25 +731,31 @@ Open Watchlist`,
 Open Targets`,
     },
     {
-      id: "team_sales",
-      title: "Team Sales Summary",
+      id: "bod",
+      title: "Beginning of Day (BOD)",
       destination: "channel",
       channelLabel: "Slack channel",
-      channelKey: "sales",
-      channelId: salesChannelId,
+      channelKey: "bod",
+      channelId: bodChannelId,
       schedule: "Daily · 06:00 Europe/Amsterdam",
-      previewEndpoint: "/api/slack/preview-team-sales",
-      cronEndpoint: "/api/cron/slack-team-sales",
+      previewEndpoint: "/api/slack/preview-bod",
+      cronEndpoint: "/api/cron/slack-bod",
       audience: "closers",
       description:
-        "Team-wide sales overview posted to the sales channel. Aggregated yesterday/today/MTD numbers across all closers, plus a leaderboard sorted by deals.",
-      examplePreview: `Goedemorgen sales team! ☕
+        "Team-wide Beginning-of-Day post. Last 7 days (excl. today): marketing funnel (spend · leads · booked · BR), sales funnel (scheduled · no-show/cancel · taken · deals · empty), a per-closer breakdown, and today's appointments with Monday deep-links.",
+      examplePreview: `Goedemorgen sales team ☀️
 
-*Leaderboard - deze maand*
-🥇 Anel - *12 deals* · €27.4k · 32%
-🥈 Jill - *9 deals* · €19.8k · 28%
+*Marketing last 7d* :bar_chart:
+€1,000 spend · 100 leads (€10) · 10 booked (€100) · 50% BR
 
-Open Targets`,
+*Sales last 7d* :dart:
+8 scheduled · 2 no show/cancel · 4 taken calls (50%) · 1 deal (25%) · 1 empty outcome
+
+*Closer stats last 7d* :bust_in_silhouette:
+• Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 0 deal (0%), 2 empty outcome
+
+*Afspraken voor vandaag* :calendar:
+• 15:00: Melle Stam (Gepland) - Bekijk in Monday`,
     },
   ]
 
@@ -1189,7 +1195,7 @@ type Props = {
   slackConnected: boolean
   recipients: Recipient[]
   teamChannelId: string | null
-  salesChannelId: string | null
+  bodChannelId: string | null
   closers: Closer[]
   notificationConfigs: AllNotificationConfigs
 }
@@ -1199,7 +1205,7 @@ export function AutomationsTab({
   slackConnected,
   recipients,
   teamChannelId,
-  salesChannelId,
+  bodChannelId,
   closers,
   notificationConfigs,
 }: Props) {
@@ -1213,7 +1219,7 @@ export function AutomationsTab({
         slackConnected={slackConnected}
         recipients={recipients}
         teamChannelId={teamChannelId}
-        salesChannelId={salesChannelId}
+        bodChannelId={bodChannelId}
         closers={closers}
         notificationConfigs={notificationConfigs}
       />

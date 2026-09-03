@@ -263,7 +263,7 @@ export default async function SettingsPage({
                 hasSlack: !!u.slack_user_id,
               })),
               teamChannelId: slackChannels.team_watchlist ?? null,
-              salesChannelId: slackChannels.sales ?? null,
+              bodChannelId: slackChannels.bod ?? null,
               closers,
               configs: notificationConfigs,
             }}
