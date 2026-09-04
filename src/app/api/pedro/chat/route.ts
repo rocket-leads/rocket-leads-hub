@@ -10,8 +10,10 @@ import { loadPedroChatBaseSystem, buildDynamicSystemBlock } from "@/lib/pedro/ch
 // SDK reads ANTHROPIC_API_KEY from env - same key the rest of the Hub uses.
 const anthropic = new Anthropic()
 
-// Sonnet 4: reasoning + tool use. Same model constant the creative Pedro uses.
-const MODEL = "claude-sonnet-4-20250514"
+// Sonnet 5: current-generation reasoning + tool-use model. (The creative Pedro
+// route still references claude-sonnet-4-20250514, which this API key no longer
+// has access to - 404 not_found_error - so the chat assistant uses Sonnet 5.)
+const MODEL = "claude-sonnet-5"
 const MAX_TOKENS = 2000
 // Tool-use loops chain several Claude round-trips + data fetches (Monday board
 // scrape can be slow). 120s (the creative route's cap) is too tight; give the
