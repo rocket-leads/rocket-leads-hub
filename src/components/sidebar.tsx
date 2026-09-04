@@ -83,6 +83,7 @@ export async function Sidebar() {
   // ── Nav items ──
   const HOME: NavItem = { href: "/home", label: t("nav.home", locale), icon: "Home" }
   const WATCH_LIST: NavItem = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" }
+  const PEDRO: NavItem = { href: "/pedro/chat", label: t("nav.pedro", locale), icon: "Sparkles" }
   const INBOX: NavItem = { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" }
   const CLIENTS: NavItem = { href: "/clients", label: t("nav.clients", locale), icon: "Users" }
   const ONBOARDING: NavItem = { href: "/onboarding", label: t("nav.onboarding", locale), icon: "ClipboardCheck" }
@@ -112,7 +113,7 @@ export async function Sidebar() {
   // managers hide Billing; the Finance dashboard is admin + finance only.
   // Empty sections are dropped so a filtered-out group leaves no orphan label.
   const rawSections: NavSection[] = [
-    { label: "Overview", items: [HOME, ...(isFinance ? [] : [WATCH_LIST])] },
+    { label: "Overview", items: [HOME, ...(isFinance ? [] : [WATCH_LIST]), PEDRO] },
     {
       label: "Workspace",
       items: [INBOX, CLIENTS, ...(isFinance ? [] : [ONBOARDING, OPTIMIZE, CALENDAR])],
