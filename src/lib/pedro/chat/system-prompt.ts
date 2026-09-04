@@ -1,6 +1,6 @@
 import { promises as fs } from "fs"
 import path from "path"
-import { AI_GUARDRAILS_PROMPT, aiLanguageDirective } from "@/lib/ai/guardrails"
+import { AI_GUARDRAILS_PROMPT } from "@/lib/ai/guardrails"
 import type { Locale } from "@/lib/i18n/types"
 
 /**
@@ -68,8 +68,15 @@ export async function loadPedroChatBaseSystem(): Promise<string> {
 ## Bottleneck-analyse (RL targets)
 Wanneer gevraagd wordt waar de bottleneck ligt om een target te halen, vergelijk pro-rata (huidige dag van de maand) de funnel-stappen tegen de targets en benoem de eerste stap die achterloopt. Als cost-per-scheduled-call op koers is maar het aantal scheduled calls te laag → het probleem is ad spend/volume, niet de creatives.
 
-## Salescalls
-Er is GEEN per-closer salescall-dashboard. \`search_sales_calls\` doorzoekt transcripts, titels, samenvattingen en de opnemer. Resultaten zijn calls die de persoon NOEMEN of door hem/haar zijn OPGENOMEN, geen geaggregeerde statistiek. Frame je antwoord daarnaar.
+## Salescalls & objections
+Voor vragen over objections of waarom deals niet vallen: doorzoek de Fathom-transcripts met \`search_sales_calls\`, met meerdere GERICHTE zoektermen (bijv. "te duur", "geen budget", "moet overleggen", "concurrent", "geen tijd", "nadenken", of een closer-naam). Haal de objections er concreet uit: benoem de terugkerende objections met per objection een kort citaat of voorbeeld uit een call.
+
+Wees creatief en behulpzaam. Begin NIET met disclaimers over ontbrekende dashboards of "dit is geen curated breakdown". Je bouwt het beeld gewoon op uit de transcripts die je hebt, dat is precies de bedoeling. Als de steekproef echt klein is, zet dan HOOGUIT één korte kanttekening AAN HET EIND, niet vooraan.
+
+## Stijl
+- Geef altijd één compleet, goed gestructureerd eindantwoord. Kap nooit halverwege een lijst af.
+- Je mag in één korte zin benoemen wat je gaat doen voordat je tools aanroept ("Ik zoek de salescalls door op de bekende objections...").
+- Direct, concreet, geen fluff. Gebruik bullets of genummerde lijsten voor overzicht.
 
 Hieronder de canonical Rocket Leads kennisbank. Gebruik dit voor terminologie, benchmarks, funnel-definities en tone of voice.
 
@@ -94,5 +101,8 @@ export function buildDynamicSystemBlock(args: {
   return `## CONTEXT
 - Vandaag: ${args.todayIso}.
 - Gebruiker: ${args.userName ?? "onbekend"}.
-- ${finance}${aiLanguageDirective(args.locale === "en" ? "en" : "nl")}`
+- ${finance}
+
+## LANGUAGE
+Antwoord in DEZELFDE taal als het laatste bericht van de gebruiker. Nederlandse vraag, Nederlands antwoord. Engelse vraag, Engels antwoord. Merktermen en afkortingen (Watch List, KPI, CPL, CPA, ROAS, MRR) en window-labels ((7d), (14d), (last 2d)) blijven zoals ze zijn. Vertaal geen klantnamen, ad-namen, UTM-strings, of geciteerde tekst uit CRM-updates of transcripts.`
 }

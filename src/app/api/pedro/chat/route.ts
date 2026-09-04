@@ -14,7 +14,10 @@ const anthropic = new Anthropic()
 // route still references claude-sonnet-4-20250514, which this API key no longer
 // has access to - 404 not_found_error - so the chat assistant uses Sonnet 5.)
 const MODEL = "claude-sonnet-5"
-const MAX_TOKENS = 2000
+// Headroom for a full structured answer AFTER several tool rounds. 2000 was too
+// tight - long answers (e.g. an objections breakdown from 5 transcripts) got
+// cut off mid-list.
+const MAX_TOKENS = 4096
 // Tool-use loops chain several Claude round-trips + data fetches (Monday board
 // scrape can be slow). 120s (the creative route's cap) is too tight; give the
 // full serverless budget.
@@ -23,6 +26,16 @@ export const maxDuration = 300
 const MAX_ROUNDS = 8
 
 type ToolCallLog = { name: string; input: unknown; ok: boolean; summary: string }
+
+/** A short, human-readable detail for the status chip so 5 searches read as 5
+ *  distinct actions ("...: 'geen budget'") instead of 5 identical chips. */
+function toolDetail(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined
+  const i = input as Record<string, unknown>
+  const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined)
+  const d = s(i.query) ?? s(i.closer) ?? s(i.mondayItemId) ?? s(i.country)
+  return d && d.length > 40 ? `${d.slice(0, 40)}...` : d
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -149,7 +162,8 @@ export async function POST(req: NextRequest) {
           // Execute each tool, stream a status event, collect the results.
           const toolResults: Anthropic.ToolResultBlockParam[] = []
           for (const tu of toolUses) {
-            controller.enqueue(sse({ type: "tool", phase: "start", name: tu.name }))
+            const detail = toolDetail(tu.input)
+            controller.enqueue(sse({ type: "tool", phase: "start", name: tu.name, detail }))
             const result = await executeTool(
               tu.name,
               (tu.input ?? {}) as Record<string, unknown>,
@@ -157,7 +171,7 @@ export async function POST(req: NextRequest) {
             )
             toolLog.push({ name: tu.name, input: tu.input, ok: result.ok, summary: result.summary })
             controller.enqueue(
-              sse({ type: "tool", phase: "end", name: tu.name, ok: result.ok, summary: result.summary }),
+              sse({ type: "tool", phase: "end", name: tu.name, ok: result.ok, summary: result.summary, detail }),
             )
             toolResults.push({
               type: "tool_result",

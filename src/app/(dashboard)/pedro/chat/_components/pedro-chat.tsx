@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { cn } from "@/lib/utils"
 
-type ToolEvent = { name: string; ok: boolean | null; summary?: string }
+type ToolEvent = { name: string; ok: boolean | null; summary?: string; detail?: string }
 type ChatMessage = {
   role: "user" | "assistant"
   content: string
@@ -145,6 +145,7 @@ export function PedroChat({
               phase?: string
               ok?: boolean
               summary?: string
+              detail?: string
               conversationId?: string
               message?: string
             }
@@ -162,7 +163,7 @@ export function PedroChat({
               if (evt.phase === "start" && evt.name) {
                 patchAssistant((m) => ({
                   ...m,
-                  tools: [...(m.tools ?? []), { name: evt.name!, ok: null }],
+                  tools: [...(m.tools ?? []), { name: evt.name!, ok: null, detail: evt.detail }],
                 }))
               } else if (evt.phase === "end" && evt.name) {
                 patchAssistant((m) => {
@@ -170,7 +171,7 @@ export function PedroChat({
                   // Update the last pending entry for this tool name.
                   for (let i = tools.length - 1; i >= 0; i--) {
                     if (tools[i].name === evt.name && tools[i].ok === null) {
-                      tools[i] = { name: evt.name!, ok: evt.ok ?? false, summary: evt.summary }
+                      tools[i] = { name: evt.name!, ok: evt.ok ?? false, summary: evt.summary, detail: evt.detail }
                       break
                     }
                   }
@@ -373,6 +374,7 @@ function ToolChip({ tool }: { tool: ToolEvent }) {
         <Wrench className="size-3" />
       )}
       {label}
+      {tool.detail && <span className="text-muted-foreground/80">: {tool.detail}</span>}
     </span>
   )
 }
