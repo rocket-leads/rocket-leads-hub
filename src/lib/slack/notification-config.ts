@@ -222,7 +222,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "greeting", description: "Date-deterministic random morning greeting." },
     { name: "marketing_line", description: "Last 7d: spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
     { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
-    { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
+    { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, outcome split [follow up/not interested/unqualified], deal %, empty call outcomes), one bullet each." },
     { name: "appointments_lines", description: "Today's appointments: time, closer (wie_), lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
   eod: [
@@ -260,12 +260,28 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
  * Returns true if the cron should proceed: enabled AND current Amsterdam hour
  * matches the configured hour. Bypasses the hour check when force=true.
  */
-export function shouldRunNow(config: NotificationConfig, force: boolean): {
+export function shouldRunNow(
+  config: NotificationConfig,
+  force: boolean,
+  opts: { weekdaysOnly?: boolean } = {},
+): {
   ok: boolean
   reason?: string
 } {
   if (force) return { ok: config.enabled, reason: config.enabled ? undefined : "disabled in settings" }
   if (!config.enabled) return { ok: false, reason: "disabled in settings" }
+
+  // Weekday-only notifications (BOD / EOD / Targets) skip Saturday + Sunday.
+  // Amsterdam-local so the weekend boundary matches the team's calendar.
+  if (opts.weekdaysOnly) {
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Amsterdam",
+      weekday: "short",
+    }).format(new Date())
+    if (weekday === "Sat" || weekday === "Sun") {
+      return { ok: false, reason: `weekend (${weekday}) - weekday-only notification` }
+    }
+  }
 
   // Round to nearest hour Amsterdam-time so a cron fire at 05:59 still counts as "06:00".
   // Vercel cron timing can drift a few seconds in either direction; a strict equality on

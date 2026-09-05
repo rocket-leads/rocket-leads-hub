@@ -87,6 +87,9 @@ export function computeBodVars(
       taken: c.takenCalls,
       deals: c.deals,
       empty: c.notUpdated,
+      followUp: c.followUp,
+      notInterested: c.notInterested,
+      unqualified: c.unqualified,
     } satisfies SalesCounts,
   }))
   const closers = closerLinesFrom(closerRows, "• Geen calls in de afgelopen 7 dagen")
@@ -117,8 +120,12 @@ function last7dRange(): { start: string; end: string } {
 
 export async function loadMondayTargets(start: string, end: string): Promise<MondayTargetsData> {
   const cached = await readCache<MondayTargetsByCountry>(`targets_monday:${start}:${end}`)
-  const data = cached ?? (await fetchMondayTargets(start, end))
-  return data.all
+  // A cache written before the per-closer outcome breakdown (followUp/…) was added
+  // lacks those fields; treat it as stale and refetch live so the closer stats show
+  // the breakdown immediately instead of waiting for the next refresh-targets run.
+  const stale = !!cached && cached.all.closers.some((c) => c.followUp === undefined)
+  if (cached && !stale) return cached.all
+  return (await fetchMondayTargets(start, end)).all
 }
 
 export async function loadSpend(start: string, end: string): Promise<number> {

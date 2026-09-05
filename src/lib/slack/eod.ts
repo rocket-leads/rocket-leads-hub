@@ -43,14 +43,17 @@ function classifyStatus(status: string): "empty" | "noShow" | "cancel" | "taken"
   return "taken"
 }
 
-type DayAcc = { scheduled: number; noShow: number; cancel: number; taken: number; empty: number; deals: number }
-const emptyAcc = (): DayAcc => ({ scheduled: 0, noShow: 0, cancel: 0, taken: 0, empty: 0, deals: 0 })
+type DayAcc = { scheduled: number; noShow: number; cancel: number; taken: number; empty: number; deals: number; followUp: number; notInterested: number; unqualified: number }
+const emptyAcc = (): DayAcc => ({ scheduled: 0, noShow: 0, cancel: 0, taken: 0, empty: 0, deals: 0, followUp: 0, notInterested: 0, unqualified: 0 })
 const toCounts = (a: DayAcc): SalesCounts => ({
   scheduled: a.scheduled,
   noShowCancel: a.noShow + a.cancel,
   taken: a.taken,
   deals: a.deals,
   empty: a.empty,
+  followUp: a.followUp,
+  notInterested: a.notInterested,
+  unqualified: a.unqualified,
 })
 
 /**
@@ -79,6 +82,11 @@ function computeDayFunnel(
       const c = accFor(closerKey)
       team.scheduled++; c.scheduled++
       team[bucket]++; c[bucket]++
+      if (bucket === "taken") {
+        if (item.status === "No deal/FU") { team.followUp++; c.followUp++ }
+        else if (item.status === "No deal/NI") { team.notInterested++; c.notInterested++ }
+        else if (item.status === "No deal/UQ") { team.unqualified++; c.unqualified++ }
+      }
     }
     if (item.dateDeal === date && STATUS_MAP.deals.includes(item.status)) {
       team.deals++

@@ -40,6 +40,11 @@ export type SalesCounts = {
   taken: number
   deals: number
   empty: number
+  /** Taken-call outcome breakdown (Monday No deal/FU, /NI, /UQ). Optional -
+   *  only the per-closer line renders these, and only when > 0. */
+  followUp?: number
+  notInterested?: number
+  unqualified?: number
 }
 
 /** Team sales line: scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome. */
@@ -47,9 +52,18 @@ export function salesLine(c: SalesCounts): string {
   return `${c.scheduled} scheduled · ${c.noShowCancel} no show/cancel · ${c.taken} taken calls (${pct(c.taken, c.scheduled)}) · ${c.deals} deal (${pct(c.deals, c.taken)}) · ${c.empty} empty outcome`
 }
 
-/** One per-closer bullet, same fields as the team sales line. */
+/**
+ * One per-closer bullet. Between "taken" and "deal" it inserts the taken-call
+ * outcome breakdown - follow up (No deal/FU), not interested (No deal/NI),
+ * unqualified (No deal/UQ) - showing only the outcomes that occurred.
+ */
 export function closerLine(name: string, c: SalesCounts): string {
-  return `• ${name}: ${c.scheduled} scheduled, ${c.noShowCancel} no show/cancel, ${c.taken} taken (${pct(c.taken, c.scheduled)}), ${c.deals} deal (${pct(c.deals, c.taken)}), ${c.empty} empty outcome`
+  const outcomes: string[] = []
+  if (c.followUp) outcomes.push(`${c.followUp} follow up`)
+  if (c.notInterested) outcomes.push(`${c.notInterested} not interested`)
+  if (c.unqualified) outcomes.push(`${c.unqualified} unqualified`)
+  const outcomePart = outcomes.length > 0 ? `${outcomes.join(", ")}, ` : ""
+  return `• ${name}: ${c.scheduled} scheduled, ${c.noShowCancel} no show/cancel, ${c.taken} taken (${pct(c.taken, c.scheduled)}), ${outcomePart}${c.deals} deal (${pct(c.deals, c.taken)}), ${c.empty} empty call outcomes`
 }
 
 /**

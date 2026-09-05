@@ -130,6 +130,10 @@ export interface CloserData {
   upcomingCalls: number
   /** Subset that was actually held (status in taken set: No deal/FU, No deal, DEAL). */
   takenCalls: number
+  /** Taken-call outcome breakdown (appointment-date basis). */
+  followUp: number // No deal/FU
+  notInterested: number // No deal/NI
+  unqualified: number // No deal/UQ
   /** Past appointments still sitting in pre-call status (Qualified / Gepland) - closer hasn't updated. */
   notUpdated: number
   deals: number

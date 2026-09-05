@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   const tracker = startCronRun("slack-eod")
 
   const config = await getNotificationConfig("eod")
-  const guard = shouldRunNow(config, force)
+  const guard = shouldRunNow(config, force, { weekdaysOnly: true })
   if (!guard.ok) {
     console.log(TAG, "skipped:", guard.reason, "config:", JSON.stringify(config))
     await tracker.ok({ skipped: guard.reason })

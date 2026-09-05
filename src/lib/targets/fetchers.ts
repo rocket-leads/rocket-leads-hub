@@ -444,7 +444,7 @@ export async function fetchMondayTargets(
   const platform = platformFilter && platformFilter !== "all" ? platformFilter : null
 
   // Per-country accumulators
-  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
+  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; followUp: number; notInterested: number; unqualified: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
     takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
@@ -595,7 +595,7 @@ export async function fetchMondayTargets(
     if (apptInRange || dealInRangeForCloser) {
       const ensureCloser = (a: Acc) => {
         if (!a.closerMap[closerKey]) {
-          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, notUpdated: 0, deals: 0, revenue: 0, collectedRevenue: 0 }
+          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, followUp: 0, notInterested: 0, unqualified: 0, notUpdated: 0, deals: 0, revenue: 0, collectedRevenue: 0 }
         }
         return a.closerMap[closerKey]
       }
@@ -612,7 +612,14 @@ export async function fetchMondayTargets(
           } else if (!STATUS_MAP.noShows.includes(status) && !STATUS_MAP.cancellations.includes(status)) {
             // Any real outcome (Deal/Signed/No-deal-*, or a new positive label) -
             // subtractive, same rule as the top-level Taken so the totals match.
-            addTo(country, (a) => { ensureCloser(a).takenCalls++ })
+            addTo(country, (a) => {
+              const c = ensureCloser(a)
+              c.takenCalls++
+              // Outcome breakdown for the closer-stats line (full-term labels downstream).
+              if (status === "No deal/FU") c.followUp++
+              else if (status === "No deal/NI") c.notInterested++
+              else if (status === "No deal/UQ") c.unqualified++
+            })
           }
         } else {
           addTo(country, (a) => { ensureCloser(a).upcomingCalls++ })

@@ -741,7 +741,7 @@ Open Targets`,
       channelLabel: "Slack channel",
       channelKey: "bod",
       channelId: bodChannelId,
-      schedule: "Daily · 06:00 Europe/Amsterdam",
+      schedule: "Weekdays · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-bod",
       cronEndpoint: "/api/cron/slack-bod",
       audience: "closers",
@@ -756,7 +756,7 @@ Open Targets`,
 8 scheduled · 2 no show/cancel · 4 taken calls (50%) · 1 deal (25%) · 1 empty outcome
 
 *Closer stats last 7d* :bust_in_silhouette:
-• Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 0 deal (0%), 2 empty outcome
+• Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 1 follow up, 0 deal (0%), 2 empty call outcomes
 
 *Afspraken voor vandaag* :calendar:
 • 15:00: Anel - Melle Stam (Klatt Interieur) - Bekijk in Monday`,
@@ -768,7 +768,7 @@ Open Targets`,
       channelLabel: "Slack channel",
       channelKey: "eod",
       channelId: eodChannelId,
-      schedule: "Daily · 18:00 Europe/Amsterdam",
+      schedule: "Weekdays · 18:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-eod",
       cronEndpoint: "/api/cron/slack-eod",
       audience: "closers",
@@ -783,7 +783,7 @@ Open Targets`,
 17 scheduled · 4 no show/cancel · 10 taken calls (59%) · 3 deal (30%) · 3 empty outcome
 
 *Closer stats* :bust_in_silhouette:
-• Quintus: 2 scheduled, 1 no show/cancel, 0 taken (0%), 0 deal (0%), 1 empty outcome
+• Quintus: 2 scheduled, 1 no show/cancel, 0 taken (0%), 0 deal (0%), 1 empty call outcomes
 
 *Afspraken voor morgen* :calendar:
 • 12:00: Anel - Jeroen de Roon (Daaf) - Bekijk in Monday
@@ -796,7 +796,7 @@ Open Targets`,
       channelLabel: "Slack channel",
       channelKey: "targets",
       channelId: targetsChannelId,
-      schedule: "Daily · 06:00 Europe/Amsterdam",
+      schedule: "Weekdays · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-targets",
       cronEndpoint: "/api/cron/slack-targets",
       audience: "closers",
