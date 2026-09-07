@@ -66,7 +66,8 @@ function trackerLine(
   return `${ok ? "✅" : "❌"} ${label} ${fmt(actual)}/${fmt(proRata)} (${pace}% van ${fmt(fullTarget)})`
 }
 
-function trackerLines(mkt: MondayTargetsData, delivery: DeliveryOverview, cfg: TargetsConfig | null, frac: number): string {
+/** Sales-funnel side (Monday): taken calls, deals, new business closed & collected. */
+function marketingSalesLines(mkt: MondayTargetsData, cfg: TargetsConfig | null, frac: number): string {
   // Taken-calls target is derived like the dashboard: adSpend / ctc, adSpend = deals × cpd.
   const takenTarget = cfg && cfg.ctc > 0 ? (cfg.deals * cfg.cpd) / cfg.ctc : 0
   return [
@@ -74,7 +75,17 @@ function trackerLines(mkt: MondayTargetsData, delivery: DeliveryOverview, cfg: T
     trackerLine("Deals", mkt.deals, cfg?.deals ?? 0, frac, false),
     trackerLine("New business closed", mkt.closedRevenue, cfg?.revenue ?? 0, frac, true),
     trackerLine("New business collected", mkt.collectedRevenue, cfg?.collectedRevenue ?? 0, frac, true),
+  ].join("\n")
+}
+
+/** Finance side (delivery/Stripe): total service-fee revenue, MRR, new business. */
+function revenueLines(delivery: DeliveryOverview, cfg: TargetsConfig | null, frac: number): string {
+  // Total Revenue = total service fee (MRR + NB); ad-budget passthrough excluded so it
+  // maps to config.serviceFeeRevenue (the only total-revenue target in Settings).
+  return [
+    trackerLine("Total Revenue", delivery.serviceFeeRevenue, cfg?.serviceFeeRevenue ?? 0, frac, true),
     trackerLine("MRR", delivery.mrr, cfg?.mrr ?? 0, frac, true),
+    trackerLine("NB", delivery.newBusiness, cfg?.newBusiness ?? 0, frac, true),
   ].join("\n")
 }
 
@@ -90,14 +101,18 @@ function salesLeaderboard(closers: CloserData[]): string {
 }
 
 function deliveryLeaderboard(delivery: DeliveryOverview): string {
-  const teams = delivery.byTeam.filter((t) => t.mrr > 0).sort((a, b) => b.mrr - a.mrr)
-  const lines = teams.map((t, i) => `${MEDALS[i] ?? "•"} ${t.name} ${eur0(t.mrr)} MRR`)
+  // Ranked by total service fee (MRR + NB), matching the dashboard's "BY SERVICE FEE"
+  // leaderboard. Each team shows its total split into MRR & NB.
+  const teams = delivery.byTeam.filter((t) => t.serviceFee > 0).sort((a, b) => b.serviceFee - a.serviceFee)
+  const lines = teams.map(
+    (t, i) => `${MEDALS[i] ?? "•"} ${t.name}: ${eur0(t.serviceFee)} - ${eur0(t.mrr)} MRR & ${eur0(t.newBusiness)} NB`,
+  )
   // Unassigned = total revenue not attributed to a team (fee + ad budget), matching
   // the delivery dashboard's bold "Unassigned" figure. Uses the pre-existing
   // `revenue` field so it renders even before the cache picks up newer fields.
   const unassignedRevenue = delivery.unassignedCustomers.reduce((s, c) => s + (c.revenue ?? 0), 0)
   if (unassignedRevenue > 0) lines.push(`⏳ Unassigned revenue ${eur0(unassignedRevenue)}`)
-  if (lines.length === 0) return "• Geen MRR deze maand"
+  if (lines.length === 0) return "• Geen omzet deze maand"
   return lines.join("\n")
 }
 
@@ -147,7 +162,8 @@ export async function buildTargetsTrackerMessage(
   const frac = monthFraction(today)
   const vars = {
     header: header(today),
-    tracker_lines: trackerLines(mkt, delivery, cfg, frac),
+    marketing_sales_lines: marketingSalesLines(mkt, cfg, frac),
+    revenue_lines: revenueLines(delivery, cfg, frac),
     sales_leaderboard: salesLeaderboard(mkt.closers),
     delivery_leaderboard: deliveryLeaderboard(delivery),
   }

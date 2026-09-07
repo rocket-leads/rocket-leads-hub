@@ -801,22 +801,26 @@ Open Targets`,
       cronEndpoint: "/api/cron/slack-targets",
       audience: "closers",
       description:
-        "Team-wide month-to-date targets pulse (finance + delivery). Each metric shows MTD actual vs pro-rata target (✅ on track / ❌ behind) with the full-month target in parentheses: taken calls, deals, new business closed & collected, MRR. Plus a sales leaderboard (closed & collected per closer) and a delivery leaderboard (MRR per team + unassigned).",
-      examplePreview: `BOD | Donderdag 3 september
+        "Team-wide month-to-date targets pulse. Each metric shows MTD actual vs pro-rata target (✅ on track / ❌ behind) with pace% and the full-month target. Marketing/Sales Tracker: taken calls, deals, new business closed & collected. Revenue Tracker: total revenue (service fee), MRR, NB. Plus a sales leaderboard (closed & collected per closer) and a delivery leaderboard (service fee per team, split into MRR & NB, + unassigned).",
+      examplePreview: `BOD | Maandag 7 september
 
-*Targets Tracker* 🎯
-✅ Taken calls 10/5 (200% van 54)
-✅ Deals 1/1 (100% van 9)
-✅ New business closed €4,500/€4,000 (113% van €40,000)
-✅ New business collected €4,500/€2,500 (180% van €25,000)
-✅ MRR €5,500/€4,000 (138% van €40,000)
+*Marketing/Sales Tracker* 🎯
+✅ Taken calls 13/13 (103% van 54)
+❌ Deals 1/2 (48% van 9)
+❌ New business closed €4,500/€9,333 (48% van €40,000)
+❌ New business collected €4,500/€5,833 (77% van €25,000)
+
+*Revenue Tracker* 💰
+❌ Total Revenue €11,950/€15,000 (80% van €70,000)
+✅ MRR €8,200/€8,000 (103% van €40,000)
+❌ NB €3,750/€9,333 (40% van €40,000)
 
 *Sales leaderboard*
 🥇 Roy €4,500 closed & €4,500 collected (100%)
 
 *Delivery leaderboard*
-🥇 Roel & Mike €1,300 MRR
-🥈 Danny & Stefan €450 MRR
+🥇 Roel & Mike: €7,250 - €4,250 MRR & €3,000 NB
+🥈 Danny & Stefan: €4,700 - €3,950 MRR & €750 NB
 ⏳ Unassigned revenue €6,750`,
     },
   ]

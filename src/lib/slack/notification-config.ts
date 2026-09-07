@@ -162,8 +162,11 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 
   targets: `{{header}}
 
-*Targets Tracker* 🎯
-{{tracker_lines}}
+*Marketing/Sales Tracker* 🎯
+{{marketing_sales_lines}}
+
+*Revenue Tracker* 💰
+{{revenue_lines}}
 
 *Sales leaderboard*
 {{sales_leaderboard}}
@@ -233,10 +236,11 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "appointments_lines", description: "Tomorrow's appointments: time, closer (wie_), lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
   targets: [
-    { name: "header", description: "Date header, e.g. 'BOD | Donderdag 3 september'." },
-    { name: "tracker_lines", description: "MTD vs target lines (taken calls, deals, NB closed, NB collected, MRR): actual/pro-rata ✅|❌ (full-month target)." },
+    { name: "header", description: "Date header, e.g. 'BOD | Maandag 7 september'." },
+    { name: "marketing_sales_lines", description: "Sales-funnel MTD vs target (taken calls, deals, new business closed & collected): status actual/pro-rata (pace% van full-month target)." },
+    { name: "revenue_lines", description: "Finance MTD vs target (total revenue = service fee, MRR, NB): status actual/pro-rata (pace% van full-month target)." },
     { name: "sales_leaderboard", description: "Top-3 closers this month by closed revenue: closed & collected (collected%)." },
-    { name: "delivery_leaderboard", description: "Delivery teams ranked by MRR this month + an Unassigned-revenue MRR line." },
+    { name: "delivery_leaderboard", description: "Delivery teams ranked by service fee: total - MRR & NB per team, + an Unassigned-revenue line." },
   ],
   personal_inbox: [
     { name: "first_name", description: "Hub user's first name (split on space)." },
