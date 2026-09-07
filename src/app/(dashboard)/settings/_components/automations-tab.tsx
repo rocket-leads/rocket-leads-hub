@@ -753,7 +753,7 @@ Open Targets`,
 €1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales last 7d* :dart:
-8 scheduled · 2 no show/cancel · 4 taken calls (50%) · 1 deal (25%) · 1 empty outcome
+8 scheduled · 2 no show/cancel · 4 taken calls (50%) · 2 follow up · 1 not interested · 1 deal (25%) · 1 empty outcome
 
 *Closer stats last 7d* :bust_in_silhouette:
 • Quintus: 3 scheduled, 0 no show/cancel, 1 taken (33%), 1 follow up, 0 deal (0%), 2 empty call outcomes
@@ -780,7 +780,7 @@ Open Targets`,
 €1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales vandaag* :dart:
-17 scheduled · 4 no show/cancel · 10 taken calls (59%) · 3 deal (30%) · 3 empty outcome
+17 scheduled · 4 no show/cancel · 10 taken calls (59%) · 5 follow up · 2 not interested · 3 deal (30%) · 3 empty outcome
 
 *Closer stats* :bust_in_silhouette:
 • Quintus: 2 scheduled, 1 no show/cancel, 0 taken (0%), 0 deal (0%), 1 empty call outcomes

@@ -69,12 +69,19 @@ export function computeBodVars(
   appointments: AppointmentRow[],
   today: string,
 ): { vars: BodVars; closerCount: number } {
+  // Team outcome breakdown = sum of the per-closer FU/NI/UQ counts (no closer
+  // filter on the BOD range, so this equals the top-level taken decomposition).
+  const sumCloser = (pick: (c: (typeof mkt.closers)[number]) => number): number =>
+    mkt.closers.reduce((s, c) => s + (pick(c) ?? 0), 0)
   const teamCounts: SalesCounts = {
     scheduled: mkt.calls,
     noShowCancel: mkt.noShows + mkt.cancellations,
     taken: mkt.takenCalls,
     deals: mkt.deals,
     empty: mkt.notUpdated,
+    followUp: sumCloser((c) => c.followUp),
+    notInterested: sumCloser((c) => c.notInterested),
+    unqualified: sumCloser((c) => c.unqualified),
   }
 
   // Per-closer no show/cancel is derived (scheduled − taken − empty) because

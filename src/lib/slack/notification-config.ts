@@ -221,14 +221,14 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
   bod: [
     { name: "greeting", description: "Date-deterministic random morning greeting." },
     { name: "marketing_line", description: "Last 7d: spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads; BR = booked (marketing lens) / opt-ins." },
-    { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
+    { name: "sales_line", description: "Last 7d (appointment-date lens): scheduled · no show/cancel · taken (take%) · outcome split (follow up/not interested/unqualified) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer last-7d breakdown (scheduled, no show/cancel, taken %, outcome split [follow up/not interested/unqualified], deal %, empty call outcomes), one bullet each." },
     { name: "appointments_lines", description: "Today's appointments: time, closer (wie_), lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
   eod: [
     { name: "greeting", description: "Date-deterministic evening greeting." },
     { name: "marketing_line", description: "Today (calendar day, spend up to now): spend · opt-ins (cost per opt-in) · booked (CBC) · BR. Spend = Meta + Google Ads - both per calendar day only, no rolling window." },
-    { name: "sales_line", description: "Today (appointment-date lens): scheduled · no show/cancel · taken (take%) · deal (conv%) · empty outcome." },
+    { name: "sales_line", description: "Today (appointment-date lens): scheduled · no show/cancel · taken (take%) · outcome split (follow up/not interested/unqualified) · deal (conv%) · empty outcome." },
     { name: "closer_lines", description: "Per-closer breakdown of today's calls (scheduled, no show/cancel, taken %, deal %, empty outcome), one bullet each." },
     { name: "appointments_lines", description: "Tomorrow's appointments: time, closer (wie_), lead name, company name (bedrijfsnaam) + a 'Bekijk in Monday' deep-link, one bullet each." },
   ],
