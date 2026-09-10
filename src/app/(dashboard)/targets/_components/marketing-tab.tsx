@@ -93,12 +93,15 @@ export function MarketingTab() {
   const hasMetaSpend = !data.metaLoading && spend > 0
   const fmtCost = (formatted: string) => (hasMetaSpend ? formatted : "-")
   const calls = m?.calls ?? 0
-  // Qualification stage dropped 2026-05-27 - the funnel is now Opt-in →
-  // Booked → Taken → Deal. cancellations + noShows expose how many booked
-  // calls didn't happen; the rest are taken.
+  // Qualification stage (re-added 2026-09): funnel is Opt-in → Booked → Qualified
+  // → Taken → Deal. Qualified = scheduled − cancellations − not-interested −
+  // unqualified; taken excludes NI/UQ (they drop at the qualification stage).
   const cancellations = m?.cancellations ?? 0
   const noShows = m?.noShows ?? 0
-  const taken = m?.takenCalls ?? 0
+  const notInterested = m?.notInterested ?? 0
+  const unqualified = m?.unqualified ?? 0
+  const qualified = calls - cancellations - notInterested - unqualified
+  const taken = (m?.takenCalls ?? 0) - notInterested - unqualified
   const deals = m?.deals ?? 0
   // Per-deal averages + their auto-derived targets (target revenue ÷ target deals).
   const closedRevenue = m?.closedRevenue ?? 0
@@ -139,7 +142,7 @@ export function MarketingTab() {
   // the card can never lie, it just labels the unclassified rest as "other".
   // Roy 2026-08-28: "taken + no-show/cancel should be exactly the same as
   // scheduled - I'm missing a couple of calls there."
-  const bucketRemainder = calls - (taken + noShows + cancellations + notUpdated + upcoming)
+  const bucketRemainder = calls - (taken + noShows + cancellations + notInterested + unqualified + notUpdated + upcoming)
   const loading = data.mondayLoading || data.metaLoading
   // MTD placeholder removed 2026-08-07 (Roy: the date selector isn't MTD, so the
   // "MTD" pill was confusing). Tiles now show a loading skeleton for the selected
@@ -154,6 +157,7 @@ export function MarketingTab() {
   const derivedT = deriveTargets(tgt)
   const prOptIns = derivedT.optIns > 0 ? Math.round(proRata(derivedT.optIns, range)) : undefined
   const prCalls = derivedT.calls > 0 ? Math.round(proRata(derivedT.calls, range)) : undefined
+  const prQualified = derivedT.qualifiedCalls > 0 ? Math.round(proRata(derivedT.qualifiedCalls, range)) : undefined
   const prTaken = derivedT.takenCalls > 0 ? Math.round(proRata(derivedT.takenCalls, range)) : undefined
   const prDeals = tgt?.deals ? Math.round(proRata(tgt.deals, range)) : undefined
 
@@ -429,6 +433,21 @@ export function MarketingTab() {
             />
             {!isMarketing && (
               <KpiCard
+                label="Qualified Calls" value={qualified} formatted={String(qualified)}
+                target={prQualified}
+                targetFormatted={prQualified != null ? t("targets.kpi.target_of", locale, { value: String(qualified), target: String(prQualified) }) : undefined}
+                notices={[
+                  cancellations + notInterested + unqualified > 0 ? {
+                    label: `${cancellations + notInterested + unqualified} not qualified`,
+                    tone: "danger" as "warn" | "danger" | "muted",
+                    title: `${cancellations} cancellation${cancellations === 1 ? "" : "s"} + ${notInterested} not interested + ${unqualified} unqualified - scheduled calls that dropped out before qualification. Scheduled = Qualified + these.`,
+                  } : null,
+                ].filter((n): n is { label: string; tone: "warn" | "danger" | "muted"; title: string } => n !== null)}
+                variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
+            {!isMarketing && (
+              <KpiCard
                 label="Taken Calls" value={taken} formatted={String(taken)}
                 target={prTaken}
                 targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
@@ -439,10 +458,10 @@ export function MarketingTab() {
                 // range - Roy 2026-08-28: "36 + 6 + 32 = 74, not 77, I'm missing a
                 // couple of calls." Those 3 were upcoming.
                 notices={[
-                  noShows + cancellations > 0 ? {
-                    label: `${noShows + cancellations} no-show / cancel`,
+                  noShows > 0 ? {
+                    label: `${noShows} no-show${noShows === 1 ? "" : "s"}`,
                     tone: "danger" as const,
-                    title: `${noShows} no-show + ${cancellations} cancellation${cancellations === 1 ? "" : "s"} - booked calls that dropped off before a taken call. Scheduled = Taken + no-show/cancel + Not-updated + Upcoming.`,
+                    title: `No-shows - qualified calls that didn't show up. Qualified = Taken + no-show + Not-updated + Upcoming.`,
                   } : null,
                   notUpdated > 0 ? {
                     label: t("targets.kpi.not_updated", locale, { n: String(notUpdated) }),
@@ -504,6 +523,20 @@ export function MarketingTab() {
               }]}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
+            {!isMarketing && (
+              <KpiCard
+                label="CQC" value={hasMetaSpend ? safeDivide(spend, qualified) : null}
+                formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, qualified)))}
+                target={hasMetaSpend ? tgt?.cqc || undefined : undefined}
+                targetFormatted={hasMetaSpend && tgt?.cqc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, qualified)), target: formatCurrencyDecimal(tgt.cqc) }) : undefined}
+                notices={[{
+                  label: "cost per qualified call",
+                  tone: "muted",
+                  title: "CQC = ad spend ÷ qualified calls (scheduled minus cancellations, not-interested and unqualified).",
+                }]}
+                variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
             {!isMarketing && (
               <KpiCard
                 label="CTC" value={hasMetaSpend ? safeDivide(spend, taken) : null}
@@ -589,26 +622,38 @@ export function MarketingTab() {
             reconciles the appointment-date "Scheduled Calls"; in Marketing
             "Booked Calls" is the creation-date cohort, a different set. */}
         {!isMarketing && calls > 0 && (
-          <div className="pt-1 text-[11px] text-muted-foreground px-1">
-            <span className="font-medium">Scheduled breakdown:</span>{" "}
-            <span className="tabular-nums">{calls} scheduled</span>
-            {" = "}
-            <span className="tabular-nums">{taken} taken</span>
-            {" + "}
-            <span className="tabular-nums">{noShows} no-show{noShows === 1 ? "" : "s"}</span>
-            {" + "}
-            <span className="tabular-nums">{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>
-            {" + "}
-            <span
-              className={cn("tabular-nums", notUpdated > 0 && "text-amber-600")}
-              title="Past appointments still in Planned / Qualified / Gepland - the closer hasn't recorded an outcome. Not counted as taken."
-            >
-              {notUpdated} not updated
-            </span>
-            {" + "}
-            <span className="tabular-nums" title="Future appointments booked in this period - haven't happened yet.">
-              {upcoming} upcoming
-            </span>
+          <div className="pt-1 text-[11px] text-muted-foreground px-1 space-y-0.5">
+            <div>
+              <span className="font-medium">Scheduled breakdown:</span>{" "}
+              <span className="tabular-nums">{calls} scheduled</span>
+              {" = "}
+              <span className="tabular-nums">{qualified} qualified</span>
+              {" + "}
+              <span className="tabular-nums">{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>
+              {" + "}
+              <span className="tabular-nums">{notInterested} not interested</span>
+              {" + "}
+              <span className="tabular-nums">{unqualified} unqualified</span>
+            </div>
+            <div>
+              <span className="font-medium">Qualified breakdown:</span>{" "}
+              <span className="tabular-nums">{qualified} qualified</span>
+              {" = "}
+              <span className="tabular-nums">{taken} taken</span>
+              {" + "}
+              <span className="tabular-nums">{noShows} no-show{noShows === 1 ? "" : "s"}</span>
+              {" + "}
+              <span
+                className={cn("tabular-nums", notUpdated > 0 && "text-amber-600")}
+                title="Past appointments still in Planned / Qualified / Gepland - the closer hasn't recorded an outcome. Not counted as taken."
+              >
+                {notUpdated} not updated
+              </span>
+              {" + "}
+              <span className="tabular-nums" title="Future appointments booked in this period - haven't happened yet.">
+                {upcoming} upcoming
+              </span>
+            </div>
           </div>
         )}
       </section>

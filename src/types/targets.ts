@@ -16,6 +16,8 @@ export interface TargetsConfig {
    *  rate target (cpOptIn / cbc). */
   cpOptIn: number
   cbc: number
+  /** Max cost per qualified call. Cost ladder sits between cbc and ctc. */
+  cqc: number
   ctc: number
   cpd: number
   // Finance - net profit € and max total costs € are derived from serviceFeeRevenue × profitMargin
@@ -47,8 +49,14 @@ export interface MondayTargetsData {
   /** Subset of booked calls where the lead didn't show up. */
   noShows: number
   /** Subset of booked calls that actually took place (Deal/Signed/No-deal-*).
-   *  EXCLUDES not-updated past appointments so it matches the per-closer table. */
+   *  EXCLUDES not-updated past appointments so it matches the per-closer table.
+   *  Still INCLUDES No deal/NI + No deal/UQ - subtract notInterested + unqualified
+   *  for the qualified-funnel "taken" (calls that proceeded past qualification). */
   takenCalls: number
+  /** No deal/NI subset of takenCalls (call happened, lead not interested). */
+  notInterested: number
+  /** No deal/UQ subset of takenCalls (call happened, lead unqualified). */
+  unqualified: number
   /** Past appointments still in a pre-outcome status (Planned/Qualified/Gepland) -
    *  the closer hasn't recorded a result yet. Its own bucket so Booked reconciles:
    *  Booked = Taken + noShows + cancellations + notUpdated + upcoming. */

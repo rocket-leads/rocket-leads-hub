@@ -447,7 +447,7 @@ export async function fetchMondayTargets(
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; noShows: number; cancellations: number; followUp: number; notInterested: number; unqualified: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
-    takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
+    takenCalls: number; notInterested: number; unqualified: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
     // Marketing lens: leads CREATED in range that booked a call, decomposed by
     // appointment status (gated on creation date, not appointment date). Sums as
     // mktBooked = mktTaken + mktNotUpdated + mktNoShowCancel + mktUpcoming.
@@ -457,7 +457,7 @@ export async function fetchMondayTargets(
   }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, notUpdated: 0, upcoming: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, mktBooked: 0, mktTaken: 0, mktNotUpdated: 0, mktNoShowCancel: 0, mktUpcoming: 0, industryMap: {}, closerMap: {} }
+    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, notInterested: 0, unqualified: 0, notUpdated: 0, upcoming: 0, deals: 0, closedRevenue: 0, collectedRevenue: 0, totalItems: 0, mktBooked: 0, mktTaken: 0, mktNotUpdated: 0, mktNoShowCancel: 0, mktUpcoming: 0, industryMap: {}, closerMap: {} }
   }
   // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
   // deal alongside the Stripe-side invoices.
@@ -554,7 +554,13 @@ export async function fetchMondayTargets(
       } else if (STATUS_MAP.cancellations.includes(status)) {
         addTo(country, (a) => a.cancellations++)
       } else {
-        addTo(country, (a) => a.takenCalls++)
+        addTo(country, (a) => {
+          a.takenCalls++
+          // NI/UQ subset of taken - the dashboard subtracts these to get qualified
+          // calls + the qualified-funnel taken. Only these two are tracked at top level.
+          if (status === "No deal/NI") a.notInterested++
+          else if (status === "No deal/UQ") a.unqualified++
+        })
       }
     }
     if (includeInTopLevel && isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {

@@ -23,26 +23,32 @@ function getProRataTarget(monthlyTarget: number, range: DateRange): number {
  *   target ad spend  = deals × cpd
  *   target opt-ins   = ad spend / cpOptIn
  *   target booked    = ad spend / cbc
+ *   target qualified = ad spend / cqc
  *   target taken     = ad spend / ctc
  *   booking rate     = cpOptIn / cbc          (Booked / Opt-ins)
- *   show-up rate     = cbc / ctc              (Taken / Booked)
+ *   qualification rate = cbc / cqc            (Qualified / Booked)
+ *   show-up rate     = cqc / ctc              (Taken / Qualified)
  *   conversion rate  = ctc / cpd              (Deals / Taken)
  *   roas             = revenue / ad spend
  *
- * 2026-05-27: qualification stage removed from the funnel - Booked → Taken
- * directly. `cqc` and `qualRate` are no longer part of TargetsConfig /
- * DerivedTargets, and `showUpRate` is now `cbc / ctc` instead of `cqc / ctc`.
+ * Cost ladder: cpOptIn < cbc < cqc < ctc < cpd. The qualification stage
+ * (re-added 2026-09): Booked → Qualified → Taken. Qualified = scheduled minus
+ * cancellations, not-interested and unqualified.
  */
 export interface DerivedTargets {
   adSpend: number
   /** Opt-ins volume target = adSpend / cpOptIn. */
   optIns: number
   calls: number
+  /** Qualified-calls volume target = adSpend / cqc. */
+  qualifiedCalls: number
   takenCalls: number
   /** Min appointment booking rate (booked / opt-ins) - derived as
    *  cpOptIn / cbc. E.g. €5 opt-in × €25 booked → 20% target rate. */
   bookingRate: number
-  /** Min show-up rate (taken / booked) - derived as cbc / ctc. */
+  /** Min qualification rate (qualified / booked) - derived as cbc / cqc. */
+  qualificationRate: number
+  /** Min show-up rate (taken / qualified) - derived as cqc / ctc. */
   showUpRate: number
   convRate: number
   roas: number
@@ -50,20 +56,22 @@ export interface DerivedTargets {
 
 export function deriveTargets(t: TargetsConfig | null | undefined): DerivedTargets {
   if (!t) {
-    return { adSpend: 0, optIns: 0, calls: 0, takenCalls: 0, bookingRate: 0, showUpRate: 0, convRate: 0, roas: 0 }
+    return { adSpend: 0, optIns: 0, calls: 0, qualifiedCalls: 0, takenCalls: 0, bookingRate: 0, qualificationRate: 0, showUpRate: 0, convRate: 0, roas: 0 }
   }
   const adSpend = t.deals > 0 && t.cpd > 0 ? t.deals * t.cpd : 0
   const optIns = adSpend > 0 && t.cpOptIn > 0 ? adSpend / t.cpOptIn : 0
   const calls = adSpend > 0 && t.cbc > 0 ? adSpend / t.cbc : 0
+  const qualifiedCalls = adSpend > 0 && t.cqc > 0 ? adSpend / t.cqc : 0
   const takenCalls = adSpend > 0 && t.ctc > 0 ? adSpend / t.ctc : 0
   const bookingRate = t.cpOptIn > 0 && t.cbc > 0 ? t.cpOptIn / t.cbc : 0
-  const showUpRate = t.cbc > 0 && t.ctc > 0 ? t.cbc / t.ctc : 0
+  const qualificationRate = t.cbc > 0 && t.cqc > 0 ? t.cbc / t.cqc : 0
+  const showUpRate = t.cqc > 0 && t.ctc > 0 ? t.cqc / t.ctc : 0
   const convRate = t.ctc > 0 && t.cpd > 0 ? t.ctc / t.cpd : 0
   // ROAS actual is measured on collected revenue, so its target derives from the
   // collected revenue target (not closed) - keep them the same basis.
   const collectedTarget = t.collectedRevenue ?? 0
   const roas = collectedTarget > 0 && adSpend > 0 ? collectedTarget / adSpend : 0
-  return { adSpend, optIns, calls, takenCalls, bookingRate, showUpRate, convRate, roas }
+  return { adSpend, optIns, calls, qualifiedCalls, takenCalls, bookingRate, qualificationRate, showUpRate, convRate, roas }
 }
 
 export function calculateKpiGroups(
@@ -81,6 +89,12 @@ export function calculateKpiGroups(
   const calls = monday?.calls ?? 0
   const takenCalls = monday?.takenCalls ?? 0
   const deals = monday?.deals ?? 0
+  // Qualification stage: qualified = scheduled − cancellations − not-interested −
+  // unqualified; funnelTaken excludes NI/UQ (they drop at the qualification stage).
+  const notInterested = monday?.notInterested ?? 0
+  const unqualified = monday?.unqualified ?? 0
+  const qualified = calls - (monday?.cancellations ?? 0) - notInterested - unqualified
+  const funnelTaken = takenCalls - notInterested - unqualified
   const closedRevenue = monday?.closedRevenue ?? 0
   // Collected (actually-paid) revenue is the primary Revenue + ROAS figure;
   // closedRevenue (total contract value) rides along as a secondary reference.
@@ -98,7 +112,8 @@ export function calculateKpiGroups(
   const collectedTargetCfg = t?.collectedRevenue ?? 0
   const prRevenue = collectedTargetCfg > 0 ? Math.round(getProRataTarget(collectedTargetCfg, range)) : undefined
 
-  // Ratio targets derived from the cost ladder (cbc / ctc / cpd)
+  // Ratio targets derived from the cost ladder (cbc / cqc / ctc / cpd)
+  const qualificationRateTarget = derived.qualificationRate > 0 ? derived.qualificationRate : undefined
   const showUpRateTarget = derived.showUpRate > 0 ? derived.showUpRate : undefined
   const convRateTarget = derived.convRate > 0 ? derived.convRate : undefined
   const roasTarget = derived.roas > 0 ? derived.roas : undefined
@@ -207,17 +222,28 @@ export function calculateKpiGroups(
       title: "Ratios",
       kpis: [
         {
-          // Show-up rate is now Taken / Booked (was Taken / Qualified). The
-          // booked-call denominator excludes nothing - Planned/Qualified
-          // still-open items get counted as taken by the fetcher when their
-          // appointment date is past, so the rate isn't gamed by closers
-          // skipping the status update.
+          // Qualification rate = Qualified / Scheduled. Qualified = scheduled minus
+          // cancellations, not-interested and unqualified.
+          label: "Qualification Rate",
+          value: safeDivide(qualified, calls),
+          formatted: formatPercent(safeDivide(qualified, calls)),
+          target: qualificationRateTarget,
+          targetFormatted: qualificationRateTarget != null
+            ? `${formatPercent(safeDivide(qualified, calls))} of ${formatPercent(qualificationRateTarget)}`
+            : undefined,
+          variant: "volume",
+          isLoading: mondayLoading,
+          error: mondayError,
+        },
+        {
+          // Show-up rate = Taken / Qualified (of the qualified calls, how many were
+          // actually held). Taken excludes NI/UQ, which dropped at qualification.
           label: "Show-up Rate",
-          value: safeDivide(takenCalls, calls),
-          formatted: formatPercent(safeDivide(takenCalls, calls)),
+          value: safeDivide(funnelTaken, qualified),
+          formatted: formatPercent(safeDivide(funnelTaken, qualified)),
           target: showUpRateTarget,
           targetFormatted: showUpRateTarget != null
-            ? `${formatPercent(safeDivide(takenCalls, calls))} of ${formatPercent(showUpRateTarget)}`
+            ? `${formatPercent(safeDivide(funnelTaken, qualified))} of ${formatPercent(showUpRateTarget)}`
             : undefined,
           variant: "volume",
           isLoading: mondayLoading,
@@ -225,11 +251,11 @@ export function calculateKpiGroups(
         },
         {
           label: "Conversion Rate",
-          value: safeDivide(deals, takenCalls),
-          formatted: formatPercent(safeDivide(deals, takenCalls)),
+          value: safeDivide(deals, funnelTaken),
+          formatted: formatPercent(safeDivide(deals, funnelTaken)),
           target: convRateTarget,
           targetFormatted: convRateTarget != null
-            ? `${formatPercent(safeDivide(deals, takenCalls))} of ${formatPercent(convRateTarget)}`
+            ? `${formatPercent(safeDivide(deals, funnelTaken))} of ${formatPercent(convRateTarget)}`
             : undefined,
           variant: "volume",
           isLoading: mondayLoading,
