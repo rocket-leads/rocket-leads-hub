@@ -69,36 +69,39 @@ export function computeBodVars(
   appointments: AppointmentRow[],
   today: string,
 ): { vars: BodVars; closerCount: number } {
-  // Team outcome breakdown = sum of the per-closer FU/NI/UQ counts (no closer
-  // filter on the BOD range, so this equals the top-level taken decomposition).
+  // Not interested (NI) + unqualified (UQ) count as cancellations; follow up (FU)
+  // stays under taken. The team FU/NI/UQ come from summing the per-closer counts
+  // (no closer filter on the BOD range, so this equals the top-level decomposition).
   const sumCloser = (pick: (c: (typeof mkt.closers)[number]) => number): number =>
     mkt.closers.reduce((s, c) => s + (pick(c) ?? 0), 0)
+  const teamNI = sumCloser((c) => c.notInterested)
+  const teamUQ = sumCloser((c) => c.unqualified)
   const teamCounts: SalesCounts = {
-    scheduled: mkt.calls,
-    noShowCancel: mkt.noShows + mkt.cancellations,
-    taken: mkt.takenCalls,
+    booked: mkt.calls,
+    cancel: mkt.cancellations + teamNI + teamUQ,
+    noShow: mkt.noShows,
+    taken: mkt.takenCalls - teamNI - teamUQ,
+    followUp: sumCloser((c) => c.followUp),
     deals: mkt.deals,
     empty: mkt.notUpdated,
-    followUp: sumCloser((c) => c.followUp),
-    notInterested: sumCloser((c) => c.notInterested),
-    unqualified: sumCloser((c) => c.unqualified),
   }
 
-  // Per-closer no show/cancel is derived (scheduled − taken − empty) because
-  // CloserData doesn't split it out.
-  const closerRows = mkt.closers.map((c) => ({
-    name: c.closer,
-    counts: {
-      scheduled: c.qualifiedCalls,
-      noShowCancel: Math.max(0, c.qualifiedCalls - c.takenCalls - c.notUpdated),
-      taken: c.takenCalls,
-      deals: c.deals,
-      empty: c.notUpdated,
-      followUp: c.followUp,
-      notInterested: c.notInterested,
-      unqualified: c.unqualified,
-    } satisfies SalesCounts,
-  }))
+  const closerRows = mkt.closers.map((c) => {
+    const ni = c.notInterested ?? 0
+    const uq = c.unqualified ?? 0
+    return {
+      name: c.closer,
+      counts: {
+        booked: c.qualifiedCalls,
+        cancel: (c.cancellations ?? 0) + ni + uq,
+        noShow: c.noShows ?? 0,
+        taken: c.takenCalls - ni - uq,
+        followUp: c.followUp ?? 0,
+        deals: c.deals,
+        empty: c.notUpdated,
+      } satisfies SalesCounts,
+    }
+  })
   const closers = closerLinesFrom(closerRows, "• Geen calls in de afgelopen 7 dagen")
 
   return {
@@ -127,10 +130,11 @@ function last7dRange(): { start: string; end: string } {
 
 export async function loadMondayTargets(start: string, end: string): Promise<MondayTargetsData> {
   const cached = await readCache<MondayTargetsByCountry>(`targets_monday:${start}:${end}`)
-  // A cache written before the per-closer outcome breakdown (followUp/…) was added
-  // lacks those fields; treat it as stale and refetch live so the closer stats show
-  // the breakdown immediately instead of waiting for the next refresh-targets run.
-  const stale = !!cached && cached.all.closers.some((c) => c.followUp === undefined)
+  // A cache written before the per-closer no-show/cancel split (or outcome
+  // breakdown) was added lacks those fields; treat it as stale and refetch live so
+  // the funnel shows correct rates immediately instead of waiting for the next
+  // refresh-targets run.
+  const stale = !!cached && cached.all.closers.some((c) => c.noShows === undefined)
   if (cached && !stale) return cached.all
   return (await fetchMondayTargets(start, end)).all
 }

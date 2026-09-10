@@ -46,14 +46,13 @@ function classifyStatus(status: string): "empty" | "noShow" | "cancel" | "taken"
 type DayAcc = { scheduled: number; noShow: number; cancel: number; taken: number; empty: number; deals: number; followUp: number; notInterested: number; unqualified: number }
 const emptyAcc = (): DayAcc => ({ scheduled: 0, noShow: 0, cancel: 0, taken: 0, empty: 0, deals: 0, followUp: 0, notInterested: 0, unqualified: 0 })
 const toCounts = (a: DayAcc): SalesCounts => ({
-  scheduled: a.scheduled,
-  noShowCancel: a.noShow + a.cancel,
-  taken: a.taken,
+  booked: a.scheduled, // all appointments on the day = booked
+  cancel: a.cancel + a.notInterested + a.unqualified, // NI + UQ count as cancellations
+  noShow: a.noShow,
+  taken: a.taken - a.notInterested - a.unqualified, // taken excludes NI/UQ
+  followUp: a.followUp,
   deals: a.deals,
   empty: a.empty,
-  followUp: a.followUp,
-  notInterested: a.notInterested,
-  unqualified: a.unqualified,
 })
 
 /**

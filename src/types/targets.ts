@@ -130,6 +130,10 @@ export interface CloserData {
   upcomingCalls: number
   /** Subset that was actually held (status in taken set: No deal/FU, No deal, DEAL). */
   takenCalls: number
+  /** Booked but didn't show up (appointment-date basis). */
+  noShows: number
+  /** Cancelled before the call took place (appointment-date basis). */
+  cancellations: number
   /** Taken-call outcome breakdown (appointment-date basis). */
   followUp: number // No deal/FU
   notInterested: number // No deal/NI

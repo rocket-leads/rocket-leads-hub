@@ -33,46 +33,52 @@ export function marketingLine(input: { spend: number; optIns: number; booked: nu
   return `${eur0(spend)} spend · ${optIns} opt-ins (${eurCost(costPerOptIn)}) · ${booked} booked (${eurCost(cbc)}) · ${pct(booked, optIns)} BR`
 }
 
-/** One outcome-decomposed row of a sales funnel (top-level or per-closer). */
+/**
+ * One outcome-decomposed row of a sales funnel (top-level or per-closer).
+ * Funnel: booked = every appointment; cancels (real cancellations + not
+ * interested + unqualified) drop out → scheduled = booked − cancel; of those,
+ * no-shows drop out. taken = held calls that proceeded (DEAL + follow up +
+ * generic) = booked − cancel − noShow − empty.
+ */
 export type SalesCounts = {
-  scheduled: number
-  noShowCancel: number
+  booked: number
+  cancel: number
+  noShow: number
   taken: number
+  followUp: number
   deals: number
   empty: number
-  /** Taken-call outcome breakdown (Monday No deal/FU, /NI, /UQ). Optional -
-   *  only the per-closer line renders these, and only when > 0. */
-  followUp?: number
-  notInterested?: number
-  unqualified?: number
+}
+
+/** Shared field list for both the team and per-closer funnel lines. */
+function funnelParts(c: SalesCounts): string[] {
+  const scheduled = c.booked - c.cancel
+  const parts = [
+    `${c.booked} booked`,
+    `${pct(scheduled, c.booked)} schedule rate`,
+    `${pct(scheduled - c.noShow, scheduled)} show rate`,
+    `${c.taken} taken`,
+  ]
+  if (c.followUp) parts.push(`${c.followUp} follow up`)
+  parts.push(`${c.deals} deal (${pct(c.deals, c.taken)} conv)`)
+  parts.push(`${c.cancel} cancel`)
+  parts.push(`${c.noShow} no show`)
+  parts.push(`${c.empty} empty`)
+  return parts
 }
 
 /**
- * Team sales line: scheduled · no show/cancel · taken (take%) · [outcome split] ·
- * deal (conv%) · empty outcome. The taken-call outcome breakdown (follow up /
- * not interested / unqualified) shows only the outcomes that occurred.
+ * Team sales line: booked · schedule rate · show rate · taken · [follow up] ·
+ * deal (conv%) · cancel · no show · empty. schedule rate = scheduled/booked
+ * (scheduled = booked − cancel); show rate = (scheduled − no-shows)/scheduled.
  */
 export function salesLine(c: SalesCounts): string {
-  const outcomes: string[] = []
-  if (c.followUp) outcomes.push(`${c.followUp} follow up`)
-  if (c.notInterested) outcomes.push(`${c.notInterested} not interested`)
-  if (c.unqualified) outcomes.push(`${c.unqualified} unqualified`)
-  const outcomePart = outcomes.length > 0 ? `${outcomes.join(" · ")} · ` : ""
-  return `${c.scheduled} scheduled · ${c.noShowCancel} no show/cancel · ${c.taken} taken calls (${pct(c.taken, c.scheduled)}) · ${outcomePart}${c.deals} deal (${pct(c.deals, c.taken)}) · ${c.empty} empty outcome`
+  return funnelParts(c).join(" · ")
 }
 
-/**
- * One per-closer bullet. Between "taken" and "deal" it inserts the taken-call
- * outcome breakdown - follow up (No deal/FU), not interested (No deal/NI),
- * unqualified (No deal/UQ) - showing only the outcomes that occurred.
- */
+/** One per-closer bullet - same fields as the team line. */
 export function closerLine(name: string, c: SalesCounts): string {
-  const outcomes: string[] = []
-  if (c.followUp) outcomes.push(`${c.followUp} follow up`)
-  if (c.notInterested) outcomes.push(`${c.notInterested} not interested`)
-  if (c.unqualified) outcomes.push(`${c.unqualified} unqualified`)
-  const outcomePart = outcomes.length > 0 ? `${outcomes.join(", ")}, ` : ""
-  return `• ${name}: ${c.scheduled} scheduled, ${c.noShowCancel} no show/cancel, ${c.taken} taken (${pct(c.taken, c.scheduled)}), ${outcomePart}${c.deals} deal (${pct(c.deals, c.taken)}), ${c.empty} empty call outcomes`
+  return `• ${name}: ${funnelParts(c).join(", ")}`
 }
 
 /**
@@ -85,8 +91,8 @@ export function closerLinesFrom(
   emptyLabel: string,
 ): { text: string; count: number } {
   const active = [...rows]
-    .filter((r) => r.counts.scheduled > 0 || r.counts.deals > 0)
-    .sort((a, b) => b.counts.scheduled - a.counts.scheduled || b.counts.deals - a.counts.deals)
+    .filter((r) => r.counts.booked > 0 || r.counts.deals > 0)
+    .sort((a, b) => b.counts.booked - a.counts.booked || b.counts.deals - a.counts.deals)
   if (active.length === 0) return { text: emptyLabel, count: 0 }
   return { text: active.map((r) => closerLine(r.name, r.counts)).join("\n"), count: active.length }
 }

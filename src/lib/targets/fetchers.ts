@@ -444,7 +444,7 @@ export async function fetchMondayTargets(
   const platform = platformFilter && platformFilter !== "all" ? platformFilter : null
 
   // Per-country accumulators
-  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; followUp: number; notInterested: number; unqualified: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
+  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; noShows: number; cancellations: number; followUp: number; notInterested: number; unqualified: number; notUpdated: number; deals: number; revenue: number; collectedRevenue: number }
   type Acc = {
     leads: number; calls: number; cancellations: number; noShows: number;
     takenCalls: number; notUpdated: number; upcoming: number; deals: number; closedRevenue: number; collectedRevenue: number; totalItems: number;
@@ -595,7 +595,7 @@ export async function fetchMondayTargets(
     if (apptInRange || dealInRangeForCloser) {
       const ensureCloser = (a: Acc) => {
         if (!a.closerMap[closerKey]) {
-          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, followUp: 0, notInterested: 0, unqualified: 0, notUpdated: 0, deals: 0, revenue: 0, collectedRevenue: 0 }
+          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, noShows: 0, cancellations: 0, followUp: 0, notInterested: 0, unqualified: 0, notUpdated: 0, deals: 0, revenue: 0, collectedRevenue: 0 }
         }
         return a.closerMap[closerKey]
       }
@@ -609,7 +609,11 @@ export async function fetchMondayTargets(
             // Not-updated bucket. NOT counted as taken - Taken must mean "call
             // actually happened with an outcome", matching the top-level card.
             addTo(country, (a) => { ensureCloser(a).notUpdated++ })
-          } else if (!STATUS_MAP.noShows.includes(status) && !STATUS_MAP.cancellations.includes(status)) {
+          } else if (STATUS_MAP.noShows.includes(status)) {
+            addTo(country, (a) => { ensureCloser(a).noShows++ })
+          } else if (STATUS_MAP.cancellations.includes(status)) {
+            addTo(country, (a) => { ensureCloser(a).cancellations++ })
+          } else {
             // Any real outcome (Deal/Signed/No-deal-*, or a new positive label) -
             // subtractive, same rule as the top-level Taken so the totals match.
             addTo(country, (a) => {
