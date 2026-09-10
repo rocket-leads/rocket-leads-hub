@@ -34,49 +34,46 @@ export function marketingLine(input: { spend: number; optIns: number; booked: nu
 }
 
 /**
- * One outcome-decomposed row of a sales funnel (top-level or per-closer).
- * Funnel: booked = every appointment; cancels (real cancellations + not
- * interested + unqualified) drop out → scheduled = booked − cancel; of those,
- * no-shows drop out. taken = held calls that proceeded (DEAL + follow up +
- * generic) = booked − cancel − noShow − empty.
+ * One stage-decomposed row of a sales funnel (top-level or per-closer).
+ * Funnel: scheduled (every appointment) → qualified (scheduled − cancellations
+ * − not interested − unqualified) → taken (qualified − no-shows − empty; i.e.
+ * DEAL + follow up + generic) → deals.
  */
 export type SalesCounts = {
-  booked: number
-  cancel: number
-  noShow: number
+  scheduled: number
+  qualified: number
   taken: number
   followUp: number
   deals: number
-  empty: number
 }
 
-/** Shared field list for both the team and per-closer funnel lines. */
-function funnelParts(c: SalesCounts): string[] {
-  const scheduled = c.booked - c.cancel
+/**
+ * Shared field list for both the team and per-closer funnel lines.
+ * `cqc` (cost per qualified call = spend/qualified) is team-level only - there's
+ * no per-closer ad spend - so it's appended only when passed.
+ */
+function funnelParts(c: SalesCounts, cqc?: number): string[] {
   const parts = [
-    `${c.booked} booked`,
-    `${pct(scheduled, c.booked)} schedule rate`,
-    `${pct(scheduled - c.noShow, scheduled)} show rate`,
-    `${c.taken} taken`,
+    `${c.scheduled} scheduled`,
+    `${c.qualified} qualified (${pct(c.qualified, c.scheduled)} qual rate)`,
+    `${c.taken} taken (${pct(c.taken, c.qualified)} show rate)`,
+    `${c.deals} deal (${pct(c.deals, c.taken)} conv)`,
   ]
   if (c.followUp) parts.push(`${c.followUp} follow up`)
-  parts.push(`${c.deals} deal (${pct(c.deals, c.taken)} conv)`)
-  parts.push(`${c.cancel} cancel`)
-  parts.push(`${c.noShow} no show`)
-  parts.push(`${c.empty} empty`)
+  if (cqc !== undefined) parts.push(`CQC ${eurCost(cqc)}`)
   return parts
 }
 
 /**
- * Team sales line: booked · schedule rate · show rate · taken · [follow up] ·
- * deal (conv%) · cancel · no show · empty. schedule rate = scheduled/booked
- * (scheduled = booked − cancel); show rate = (scheduled − no-shows)/scheduled.
+ * Team sales line: scheduled · qualified (qual rate) · taken (show rate) ·
+ * deal (conv%) · [follow up] · [CQC]. Qualification rate = qualified/scheduled;
+ * show rate = taken/qualified; conversion = deals/taken.
  */
-export function salesLine(c: SalesCounts): string {
-  return funnelParts(c).join(" · ")
+export function salesLine(c: SalesCounts, cqc?: number): string {
+  return funnelParts(c, cqc).join(" · ")
 }
 
-/** One per-closer bullet - same fields as the team line. */
+/** One per-closer bullet - same funnel fields as the team line (no CQC). */
 export function closerLine(name: string, c: SalesCounts): string {
   return `• ${name}: ${funnelParts(c).join(", ")}`
 }
@@ -91,8 +88,8 @@ export function closerLinesFrom(
   emptyLabel: string,
 ): { text: string; count: number } {
   const active = [...rows]
-    .filter((r) => r.counts.booked > 0 || r.counts.deals > 0)
-    .sort((a, b) => b.counts.booked - a.counts.booked || b.counts.deals - a.counts.deals)
+    .filter((r) => r.counts.scheduled > 0 || r.counts.deals > 0)
+    .sort((a, b) => b.counts.scheduled - a.counts.scheduled || b.counts.deals - a.counts.deals)
   if (active.length === 0) return { text: emptyLabel, count: 0 }
   return { text: active.map((r) => closerLine(r.name, r.counts)).join("\n"), count: active.length }
 }

@@ -69,22 +69,22 @@ export function computeBodVars(
   appointments: AppointmentRow[],
   today: string,
 ): { vars: BodVars; closerCount: number } {
-  // Not interested (NI) + unqualified (UQ) count as cancellations; follow up (FU)
-  // stays under taken. The team FU/NI/UQ come from summing the per-closer counts
-  // (no closer filter on the BOD range, so this equals the top-level decomposition).
+  // Qualified = scheduled − cancellations − not interested − unqualified; taken
+  // excludes NI/UQ; follow up stays under taken. Team FU/NI/UQ come from summing
+  // the per-closer counts (no closer filter on the BOD range, so this equals the
+  // top-level decomposition).
   const sumCloser = (pick: (c: (typeof mkt.closers)[number]) => number): number =>
     mkt.closers.reduce((s, c) => s + (pick(c) ?? 0), 0)
   const teamNI = sumCloser((c) => c.notInterested)
   const teamUQ = sumCloser((c) => c.unqualified)
   const teamCounts: SalesCounts = {
-    booked: mkt.calls,
-    cancel: mkt.cancellations + teamNI + teamUQ,
-    noShow: mkt.noShows,
+    scheduled: mkt.calls,
+    qualified: mkt.calls - mkt.cancellations - teamNI - teamUQ,
     taken: mkt.takenCalls - teamNI - teamUQ,
     followUp: sumCloser((c) => c.followUp),
     deals: mkt.deals,
-    empty: mkt.notUpdated,
   }
+  const teamCqc = teamCounts.qualified > 0 ? spend7d / teamCounts.qualified : 0
 
   const closerRows = mkt.closers.map((c) => {
     const ni = c.notInterested ?? 0
@@ -92,13 +92,11 @@ export function computeBodVars(
     return {
       name: c.closer,
       counts: {
-        booked: c.qualifiedCalls,
-        cancel: (c.cancellations ?? 0) + ni + uq,
-        noShow: c.noShows ?? 0,
+        scheduled: c.qualifiedCalls,
+        qualified: c.qualifiedCalls - (c.cancellations ?? 0) - ni - uq,
         taken: c.takenCalls - ni - uq,
         followUp: c.followUp ?? 0,
         deals: c.deals,
-        empty: c.notUpdated,
       } satisfies SalesCounts,
     }
   })
@@ -108,7 +106,7 @@ export function computeBodVars(
     vars: {
       greeting: bodGreeting(today),
       marketing_line: marketingLine({ spend: spend7d, optIns: mkt.optIns, booked: mkt.mktBooked }),
-      sales_line: salesLine(teamCounts),
+      sales_line: salesLine(teamCounts, teamCqc),
       closer_lines: closers.text,
       appointments_lines: appointmentLines(appointments, "• Geen afspraken vandaag 🎉"),
     },

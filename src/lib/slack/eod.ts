@@ -46,13 +46,11 @@ function classifyStatus(status: string): "empty" | "noShow" | "cancel" | "taken"
 type DayAcc = { scheduled: number; noShow: number; cancel: number; taken: number; empty: number; deals: number; followUp: number; notInterested: number; unqualified: number }
 const emptyAcc = (): DayAcc => ({ scheduled: 0, noShow: 0, cancel: 0, taken: 0, empty: 0, deals: 0, followUp: 0, notInterested: 0, unqualified: 0 })
 const toCounts = (a: DayAcc): SalesCounts => ({
-  booked: a.scheduled, // all appointments on the day = booked
-  cancel: a.cancel + a.notInterested + a.unqualified, // NI + UQ count as cancellations
-  noShow: a.noShow,
+  scheduled: a.scheduled, // all appointments on the day
+  qualified: a.scheduled - a.cancel - a.notInterested - a.unqualified, // − cancel − NI − UQ
   taken: a.taken - a.notInterested - a.unqualified, // taken excludes NI/UQ
   followUp: a.followUp,
   deals: a.deals,
-  empty: a.empty,
 })
 
 /**
@@ -122,11 +120,12 @@ export async function buildEodMessage(
 
   const { team, closerRows } = computeDayFunnel(rawItems, today)
   const closers = closerLinesFrom(closerRows, "• Geen calls vandaag")
+  const teamCqc = team.qualified > 0 ? spendToday / team.qualified : 0
 
   const vars = {
     greeting: eodGreeting(today),
     marketing_line: marketingLine({ spend: spendToday, optIns: mkt.optIns, booked: mkt.mktBooked }),
-    sales_line: salesLine(team),
+    sales_line: salesLine(team, teamCqc),
     closer_lines: closers.text,
     appointments_lines: appointmentLines(tomorrowAppts, "• Geen afspraken morgen 🎉"),
   }

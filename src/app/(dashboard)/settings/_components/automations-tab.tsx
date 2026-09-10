@@ -753,10 +753,10 @@ Open Targets`,
 €1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales last 7d* :dart:
-33 booked · 64% schedule rate · 86% show rate · 14 taken · 11 follow up · 3 deal (21% conv) · 12 cancel · 3 no show · 4 empty
+33 scheduled · 21 qualified (64% qual rate) · 14 taken (67% show rate) · 3 deal (21% conv) · 11 follow up · CQC €100
 
 *Closer stats last 7d* :bust_in_silhouette:
-• Quintus: 7 booked, 71% schedule rate, 80% show rate, 4 taken, 3 follow up, 1 deal (25% conv), 2 cancel, 1 no show, 0 empty
+• Quintus: 7 scheduled, 5 qualified (71% qual rate), 4 taken (80% show rate), 1 deal (25% conv), 3 follow up
 
 *Afspraken voor vandaag* :calendar:
 • 15:00: Anel - Melle Stam (Klatt Interieur) - Bekijk in Monday`,
@@ -780,10 +780,10 @@ Open Targets`,
 €1,564 spend · 29 opt-ins (€53.92) · 14 booked (€111.69) · 48% BR
 
 *Sales vandaag* :dart:
-17 booked · 71% schedule rate · 83% show rate · 10 taken · 5 follow up · 3 deal (30% conv) · 5 cancel · 2 no show · 0 empty
+17 scheduled · 12 qualified (71% qual rate) · 10 taken (83% show rate) · 3 deal (30% conv) · 5 follow up · CQC €67
 
 *Closer stats* :bust_in_silhouette:
-• Quintus: 3 booked, 67% schedule rate, 100% show rate, 2 taken, 0 deal (0% conv), 1 cancel, 0 no show, 0 empty
+• Quintus: 3 scheduled, 2 qualified (67% qual rate), 2 taken (100% show rate), 0 deal (0% conv)
 
 *Afspraken voor morgen* :calendar:
 • 12:00: Anel - Jeroen de Roon (Daaf) - Bekijk in Monday
